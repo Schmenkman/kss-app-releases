@@ -1,9 +1,11 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "date": "2026-06-30",
   "notes": [
-    "Netz-Art: Auswahl 'Unbekannt' entfernt (füllte ohnehin nichts aus)",
-    "Bei unklarer Netzstruktur weiterhin 'Nicht zu ermittelnde Netzstruktur' nutzen"
+    "Pflichtfeld-Prüfung: fehlende Felder werden vor dem Versand angezeigt",
+    "Prüfung auch beim Hinzufügen eines weiteren Hauses",
+    "Mindestens ein Foto ist nun verpflichtend",
+    "Bei mehreren Häusern ist 'Objekt mitversorgt von' Pflicht"
   ],
   "apkUrl": "https://github.com/Schmenkman/kss-app-releases/raw/main/kss-negativbauakte.apk"
 }
