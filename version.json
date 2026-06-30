@@ -1,0 +1,11 @@
+{
+  "version": "1.1.0",
+  "date": "2026-06-30",
+  "notes": [
+    "Auto-Update direkt in der App (mit Patchnotes)",
+    "Fotos werden korrekt hochgeladen und automatisch verkleinert",
+    "Neuer-Auftrag-Button und automatisches Leeren nach dem Versand",
+    "Feste App-Signatur – Updates installieren jetzt ohne Deinstallieren"
+  ],
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/raw/main/kss-negativbauakte.apk"
+}
