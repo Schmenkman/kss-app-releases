@@ -1,11 +1,10 @@
 {
-  "version": "1.3.0",
-  "date": "2026-06-30",
+  "version": "1.3.1",
+  "date": "2026-07-01",
   "notes": [
-    "Pflichtfeld-Prüfung: fehlende Felder werden vor dem Versand angezeigt",
-    "Prüfung auch beim Hinzufügen eines weiteren Hauses",
-    "Mindestens ein Foto ist nun verpflichtend",
-    "Bei mehreren Häusern ist 'Objekt mitversorgt von' Pflicht"
+    "Foto-Upload zu OneDrive stabilisiert (Fehler 'Failed to fetch' behoben)",
+    "Uploads laufen jetzt über eine Upload-Session (kein CORS/Redirect-Problem mehr)",
+    "Automatische Wiederholung bei kurzen Netzaussetzern"
   ],
   "apkUrl": "https://github.com/Schmenkman/kss-app-releases/raw/main/kss-negativbauakte.apk"
 }
