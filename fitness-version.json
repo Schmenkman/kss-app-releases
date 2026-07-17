@@ -1,0 +1,10 @@
+{
+  "version": "0.1.0",
+  "notes": [
+    "Erste Version: Ganzkörper-Training zu Hause und im Gym",
+    "Übungskatalog mit Technik-Erklärungen und Rückenschutz-Filter",
+    "Satz-Protokoll mit Feedback-Knöpfen und Pausen-Timer",
+    "Automatische Gewichtsempfehlung aus den letzten Einheiten"
+  ],
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/raw/main/fitness-tracker.apk"
+}
