@@ -1,9 +1,9 @@
 {
-  "version": "1.3.4",
+  "version": "1.3.5",
   "date": "2026-07-23",
   "notes": [
-    "App-Icon: Kupfer-Signet jetzt auf weißer Fläche (transparent wurde vom Launcher schwarz dargestellt)",
-    "Sauberes, einheitliches Icon auf hellem wie dunklem Homescreen"
+    "Update-Hinweis behoben: Nach dieser Installation meldet die App ihre Version wieder korrekt (stand intern fälschlich auf 1.3.2)",
+    "Enthält weiterhin das neue App-Icon (Kupfer-Signet auf Weiß)"
   ],
   "apkUrl": "https://github.com/Schmenkman/kss-app-releases/raw/main/kss-negativbauakte.apk"
 }
