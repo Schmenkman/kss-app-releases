@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "notes": [
+    "Neuer Bereich 'BK-Installation' mit der Funktion Negativbauakte",
+    "Bereich 'BayernWLAN' bündelt die bestehenden MP- und MM-Funktionen",
+    "Automatisches Update von DokuBW.exe"
+  ],
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.0.0/DokuBW.exe"
+}
