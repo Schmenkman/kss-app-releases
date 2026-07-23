@@ -1,9 +1,10 @@
 {
-  "version": "1.3.5",
+  "version": "1.3.6",
   "date": "2026-07-23",
   "notes": [
-    "Update-Hinweis behoben: Nach dieser Installation meldet die App ihre Version wieder korrekt (stand intern fälschlich auf 1.3.2)",
-    "Enthält weiterhin das neue App-Icon (Kupfer-Signet auf Weiß)"
+    "KSS-Logo jetzt im App-Kopf (oben links)",
+    "Neues App-Design in Firmenfarbe Kupfer statt Blau",
+    "Update-Hinweis erscheint nach dieser Installation nicht mehr"
   ],
   "apkUrl": "https://github.com/Schmenkman/kss-app-releases/raw/main/kss-negativbauakte.apk"
 }
