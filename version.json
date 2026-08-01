@@ -1,10 +1,9 @@
 {
-  "version": "1.3.6",
-  "date": "2026-07-23",
+  "version": "1.3.7",
+  "date": "2026-08-01",
   "notes": [
-    "KSS-Logo jetzt im App-Kopf (oben links)",
-    "Neues App-Design in Firmenfarbe Kupfer statt Blau",
-    "Update-Hinweis erscheint nach dieser Installation nicht mehr"
+    "Fotos: es öffnet sich jetzt die Bildergalerie statt der Kamera – mehrere Bilder auswählen und mit OK bestätigen",
+    "WE-Spiegel: Überschrift 'Etage' ist jetzt weiß und damit gut lesbar"
   ],
   "apkUrl": "https://github.com/Schmenkman/kss-app-releases/raw/main/kss-negativbauakte.apk"
 }
