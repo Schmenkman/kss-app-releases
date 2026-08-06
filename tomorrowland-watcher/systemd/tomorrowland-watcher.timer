@@ -1,0 +1,14 @@
+[Unit]
+Description=Tomorrowland ticket watcher alle 30 Minuten
+
+[Timer]
+# Alle 30 Minuten, mit Zufallsversatz -- so schlaegt der Pi nicht sekundengenau
+# im selben Takt auf der Seite auf.
+OnCalendar=*:0/30
+RandomizedDelaySec=300
+# Nach einem Neustart oder Stromausfall verpasste Laeufe nachholen.
+Persistent=true
+OnBootSec=3min
+
+[Install]
+WantedBy=timers.target

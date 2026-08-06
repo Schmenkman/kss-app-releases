@@ -1,0 +1,73 @@
+{
+  "_comment": "Kopiere diese Datei nach config.json und passe sie an. config.json ist per .gitignore ausgeschlossen, weil dort Tokens drinstehen.",
+
+  "timezone": "Europe/Berlin",
+  "poll_interval_minutes": 30,
+  "timeout_seconds": 30,
+  "user_agent": "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+  "primary_url": "https://www.tomorrowland.com/en/festival/tickets",
+
+  "heartbeat_hours": 24,
+  "failure_alert_after": 3,
+
+  "notify": {
+    "ntfy": {
+      "enabled": true,
+      "server": "https://ntfy.sh",
+      "topic": "CHANGE-ME-tml-watch-4711-xyz",
+      "token": ""
+    },
+    "telegram": {
+      "enabled": false,
+      "bot_token": "",
+      "chat_id": ""
+    }
+  },
+
+  "sources": [
+    {
+      "name": "Tomorrowland Tickets",
+      "url": "https://www.tomorrowland.com/en/festival/tickets",
+      "enabled": true
+    },
+    {
+      "name": "Tomorrowland Startseite",
+      "url": "https://www.tomorrowland.com/en/",
+      "enabled": true
+    },
+    {
+      "name": "Global Journey",
+      "url": "https://global-journey.tomorrowland.com/",
+      "enabled": true
+    },
+    {
+      "name": "Tomorrowland Presse",
+      "url": "https://press.tomorrowland.com/",
+      "enabled": true
+    }
+  ],
+
+  "watch_terms": {
+    "prereg": [
+      "pre-registration",
+      "pre registration",
+      "preregistration",
+      "pre-register",
+      "vorregistrierung",
+      "voorregistratie"
+    ],
+    "sale": [
+      "ticket sale",
+      "ticketverkauf",
+      "pre-sale",
+      "presale",
+      "global journey",
+      "worldwide sale",
+      "tickets on sale"
+    ],
+    "year": ["2027"]
+  },
+
+  "key_dates": [],
+  "reminder_offsets_minutes": [10080, 1440, 120, 15]
+}

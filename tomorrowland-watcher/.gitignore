@@ -1,0 +1,6 @@
+config.json
+state.json
+*.json.tmp
+snapshots/
+.venv/
+__pycache__/

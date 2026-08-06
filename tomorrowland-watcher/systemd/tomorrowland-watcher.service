@@ -1,0 +1,17 @@
+[Unit]
+Description=Tomorrowland ticket watcher (one poll cycle)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/tomorrowland-watcher
+ExecStart=%h/tomorrowland-watcher/.venv/bin/python %h/tomorrowland-watcher/watcher.py --once
+TimeoutStartSec=600
+
+# Nur Lesezugriff auf das System, Schreibrechte bleiben im Projektordner.
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/tomorrowland-watcher
+NoNewPrivileges=true
