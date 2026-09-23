@@ -1,11 +1,9 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "notes": [
-    "Bauakte per Delphi-Nummer: Adresse, Vorhabennummer, Termin, Techniker und Geraetezahlen kommen aus der KSS-Dispo-App",
-    "Handschrift-Erkennung mit Ausschnitt, zweitem Durchgang und Pruefmaske vor dem Schreiben",
-    "AP-Typ fuers FPP (IN/IHD/OD/ODS) automatisch, Unterschrift wird eingestempelt",
-    "ZIP und Outlook-Entwurf werden erzeugt - der Versand bleibt von Hand",
-    "Kein API-Schluessel mehr noetig: die Bilderkennung laeuft ueber die Claude-App"
+    "Unterschrift sitzt jetzt bei 'Unterschrift Auftragnehmer VKD' statt beim Auftragsberechtigten",
+    "Fotos in der Bauakte werden nicht mehr verzerrt - das Seitenverhaeltnis bleibt erhalten",
+    "Neue Abfrage 'Liegt ein Plan vor?': bei Ja wird der Ausleuchtungs-Ordner geprueft, bei Nein kommt der Vermerk in die Bauakte"
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.1.0/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.1.1/DokuBW.exe"
 }
