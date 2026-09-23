@@ -1,9 +1,7 @@
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "notes": [
-    "Unterschrift sitzt jetzt bei 'Unterschrift Auftragnehmer VKD' statt beim Auftragsberechtigten",
-    "Fotos in der Bauakte werden nicht mehr verzerrt - das Seitenverhaeltnis bleibt erhalten",
-    "Neue Abfrage 'Liegt ein Plan vor?': bei Ja wird der Ausleuchtungs-Ordner geprueft, bei Nein kommt der Vermerk in die Bauakte"
+    "Update-Vorgang repariert: die neue Datei wird vor dem Einsetzen geprueft, die alte erst zur Seite gelegt statt geloescht, und der Neustart wartet, bis das alte Programm wirklich beendet ist"
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.1.1/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.1.2/DokuBW.exe"
 }
