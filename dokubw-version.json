@@ -1,9 +1,11 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "notes": [
-    "Neuer Bereich 'BK-Installation' mit der Funktion Negativbauakte",
-    "Bereich 'BayernWLAN' bündelt die bestehenden MP- und MM-Funktionen",
-    "Automatisches Update von DokuBW.exe"
+    "Bauakte per Delphi-Nummer: Adresse, Vorhabennummer, Termin, Techniker und Geraetezahlen kommen aus der KSS-Dispo-App",
+    "Handschrift-Erkennung mit Ausschnitt, zweitem Durchgang und Pruefmaske vor dem Schreiben",
+    "AP-Typ fuers FPP (IN/IHD/OD/ODS) automatisch, Unterschrift wird eingestempelt",
+    "ZIP und Outlook-Entwurf werden erzeugt - der Versand bleibt von Hand",
+    "Kein API-Schluessel mehr noetig: die Bilderkennung laeuft ueber die Claude-App"
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.0.0/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.1.0/DokuBW.exe"
 }
