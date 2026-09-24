@@ -1,9 +1,9 @@
 {
-  "version": "1.1.3",
+  "version": "1.1.4",
   "notes": [
-    "Gab es zur Adresse vorher eine Ortsbegehung, kennt die Erkennung deren geplante Standorte - gemessen 49 auf 57 Prozent Trefferquote",
-    "Plaene aus dem MP-Ordner koennen fuer die Montage uebernommen werden",
-    "Zeilen, die sich mit der Ortsbegehung decken, sind in der Pruefmaske vermerkt"
+    "Bauakte laeuft wieder: COM wird im Nebenfaden richtig angemeldet, der makepy-Fehler kann nicht mehr auftreten",
+    "DokuBW benutzt eine EIGENE Excel-Instanz - offene Arbeitsmappen werden nicht mehr mitgeschlossen",
+    "Update: PATH-abhaengige Warteschleife entfernt, PyInstaller-Variablen werden dem Neustart nicht mehr vererbt"
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.1.3/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.1.4/DokuBW.exe"
 }
