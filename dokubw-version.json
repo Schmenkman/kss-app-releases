@@ -1,10 +1,11 @@
 {
-  "version": "1.1.5",
+  "version": "1.2.0",
   "notes": [
-    "Feld 'Typ' im AP-Blatt wird mit dem genauen Modell gefuellt (R350/R550/R650/R750/T350c/T350SE) statt das 'R350' aus der Vorlage stehen zu lassen",
-    "Materialliste: jedes Modell in seine eigene Zeile - R550 nach A7, R750 nach A8",
-    "Halterungen zaehlen jetzt die Indoor-Geraete (vorher faelschlich die Outdoor-Geraete)",
-    "R750 zaehlt im FPP als IHD"
+    "Neu: Objektbogen fuer MM Express und Neubau per Delphi-Nummer (Bereich BK-Installation)",
+    "Haeuser, Delphi-Nummern und UeP kommen aus der Dispo-App, WE je Etage und Verstaerker aus der MM-Gruppe in WhatsApp (einmalig per QR-Code verbinden)",
+    "Pegel werden von der Pegelcheck-Karte unter den Fotos gelesen - unsichere Werte sind in der Pruefmaske markiert",
+    "Bilder-ZIP wird verkleinert, je Haus ein Word-Objektbogen, Outlook-Entwurf an Circet mit Leistungspositionen (Trennglieder je Verstaerker/Kasten)",
+    "Express-/Neubau-Nummern im BayKom-Feld werden zum Objektbogen umgeleitet"
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.1.5/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.2.0/DokuBW.exe"
 }
