@@ -1,9 +1,10 @@
 {
-  "version": "1.1.4",
+  "version": "1.1.5",
   "notes": [
-    "Bauakte laeuft wieder: COM wird im Nebenfaden richtig angemeldet, der makepy-Fehler kann nicht mehr auftreten",
-    "DokuBW benutzt eine EIGENE Excel-Instanz - offene Arbeitsmappen werden nicht mehr mitgeschlossen",
-    "Update: PATH-abhaengige Warteschleife entfernt, PyInstaller-Variablen werden dem Neustart nicht mehr vererbt"
+    "Feld 'Typ' im AP-Blatt wird mit dem genauen Modell gefuellt (R350/R550/R650/R750/T350c/T350SE) statt das 'R350' aus der Vorlage stehen zu lassen",
+    "Materialliste: jedes Modell in seine eigene Zeile - R550 nach A7, R750 nach A8",
+    "Halterungen zaehlen jetzt die Indoor-Geraete (vorher faelschlich die Outdoor-Geraete)",
+    "R750 zaehlt im FPP als IHD"
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.1.4/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.1.5/DokuBW.exe"
 }
