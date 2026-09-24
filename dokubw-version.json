@@ -1,11 +1,9 @@
 {
-  "version": "1.2.0",
+  "version": "1.2.1",
   "notes": [
-    "Neu: Objektbogen fuer MM Express und Neubau per Delphi-Nummer (Bereich BK-Installation)",
-    "Haeuser, Delphi-Nummern und UeP kommen aus der Dispo-App, WE je Etage und Verstaerker aus der MM-Gruppe in WhatsApp (einmalig per QR-Code verbinden)",
-    "Pegel werden von der Pegelcheck-Karte unter den Fotos gelesen - unsichere Werte sind in der Pruefmaske markiert",
-    "Bilder-ZIP wird verkleinert, je Haus ein Word-Objektbogen, Outlook-Entwurf an Circet mit Leistungspositionen (Trennglieder je Verstaerker/Kasten)",
-    "Express-/Neubau-Nummern im BayKom-Feld werden zum Objektbogen umgeleitet"
+    "Objektbogen: WhatsApp-Eintraege werden nicht mehr uebersprungen - die Gruppe wird in kleinen Schritten gelesen (Maria-Theresia-Str. 7 vom 7.9. fehlte)",
+    "Objektbogen: als Eintrag zaehlt nur eine Nachricht, die wie ein MM-Eintrag aussieht - Rueckfragen mit der Adresse erscheinen nur noch als Zusatzinfo (Werneckstr. 9)",
+    "Objektbogen: Einzelhaus ohne UeP-Angabe in COMP gilt als UeP-Haus - keine Rueckfrage mehr im Kopfdialog"
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.2.0/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.2.1/DokuBW.exe"
 }
