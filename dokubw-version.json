@@ -1,10 +1,11 @@
 {
-  "version": "1.3.2",
+  "version": "1.3.3",
   "notes": [
-    "Ortsbegehung mit Outdoor-APs: Lageplaene, Flurkarten und Luftbilder werden als Aussenplan erkannt - die umliegenden Gebaeude werden automatisch erkannt und sind das Hindernis (harter Schatten dahinter wie in Ekahau)",
-    "Aussenplan: Ausbreitung im Freien an 10 Ekahau-Projekten kalibriert (2-2,5 dB Abweichung); AP ohne Typangabe wird Outdoor 360; liegt die Markierung auf dem Dach, rechnet der AP ab der Fassade",
-    "Pruefmaske: Schalter Aussenplan, Gebaeude einzeichnen, loeschen und automatisch erkennen - Gebaeude werden mit den Plaenen gespeichert und bei der Montage wieder verwendet",
-    "Legende bei Hochformat-Plaenen lesbar; im Protokoll kein haengender Strich bei APs ohne Standort"
+    "Adresse: fuehrt COMP im Auftrag die Hausnummer 0 (Theresienstr. 0 statt 6), gilt die Nummer aus der Auftragsliste; ohne Detailangaben bleibt der Zusatz erhalten (Hauptstr. 26a)",
+    "Startfenster von Bauakte und Ortsbegehung: Strasse, Nr., Zusatz, PLZ, Ort, Vorhabennummer, Termin und Techniker lassen sich vor dem Anlegen aendern - der ZIP-Name wird gleich angezeigt",
+    "Pruefmaske der Ortsbegehung: Plan zoomen (Strg + Mausrad, Knoepfe, Einpassen), rollen und mit der rechten Maustaste verschieben; das Fenster oeffnet maximiert, die Knoepfe bleiben sichtbar",
+    "Grenze der Ausleuchtung: auf Fotos wird der Rand des Papierblatts erkannt; die Ecken lassen sich mit der Maus ziehen; Knoepfe Grenze neu setzen, Vorschlag, ganzes Bild",
+    "Objektbogen: die WhatsApp-Gruppe wird erst ganz nach unten gelesen und auf nachkommende Nachrichten gewartet (Finkenstr. 27 wurde nicht gefunden); bei mehreren Eintraegen zur Adresse erscheint eine Auswahl mit Datum und Text; die Bilder werden im Hintergrund eingelesen"
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.3.2/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.3.3/DokuBW.exe"
 }
