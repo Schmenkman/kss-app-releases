@@ -1,9 +1,10 @@
 {
-  "version": "1.3.1",
+  "version": "1.3.2",
   "notes": [
-    "Ortsbegehung Basic: nur die AP-Standorte im Plan, ohne Ausleuchtung - Premium weiterhin mit Heatmap",
-    "Die Plaene der Ortsbegehung werden gespeichert (DokuBW_Plaene_MP.json im Adressordner): ein zweiter Durchgang oeffnet sie zum Aendern, ohne neu zu lesen",
-    "Montage: lief die Ortsbegehung ueber DokuBW, wird die Ausleuchtung mit nur den montierten APs neu gezeichnet - immer mit Heatmap, Nummern und Standorte aus der Bauakte, Zuordnung ueber den Standorttext"
+    "Ortsbegehung mit Outdoor-APs: Lageplaene, Flurkarten und Luftbilder werden als Aussenplan erkannt - die umliegenden Gebaeude werden automatisch erkannt und sind das Hindernis (harter Schatten dahinter wie in Ekahau)",
+    "Aussenplan: Ausbreitung im Freien an 10 Ekahau-Projekten kalibriert (2-2,5 dB Abweichung); AP ohne Typangabe wird Outdoor 360; liegt die Markierung auf dem Dach, rechnet der AP ab der Fassade",
+    "Pruefmaske: Schalter Aussenplan, Gebaeude einzeichnen, loeschen und automatisch erkennen - Gebaeude werden mit den Plaenen gespeichert und bei der Montage wieder verwendet",
+    "Legende bei Hochformat-Plaenen lesbar; im Protokoll kein haengender Strich bei APs ohne Standort"
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.3.1/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.3.2/DokuBW.exe"
 }
