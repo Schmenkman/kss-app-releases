@@ -1,9 +1,11 @@
 {
-  "version": "1.2.1",
+  "version": "1.3.0",
   "notes": [
-    "Objektbogen: WhatsApp-Eintraege werden nicht mehr uebersprungen - die Gruppe wird in kleinen Schritten gelesen (Maria-Theresia-Str. 7 vom 7.9. fehlte)",
-    "Objektbogen: als Eintrag zaehlt nur eine Nachricht, die wie ein MM-Eintrag aussieht - Rueckfragen mit der Adresse erscheinen nur noch als Zusatzinfo (Werneckstr. 9)",
-    "Objektbogen: Einzelhaus ohne UeP-Angabe in COMP gilt als UeP-Haus - keine Rueckfrage mehr im Kopfdialog"
+    "Neu: Ortsbegehung (MP BayKom) per Delphi-Nummer im MP-Reiter - die Plaene mit den eingezeichneten AP-Standorten (Foto oder PDF-Scan) in den Auftragsordner legen",
+    "Ausleuchtung je Etage wird automatisch gezeichnet (Waende werden aus dem Plan erkannt, Farbe nur innerhalb der Flaeche) - Pruefmaske je Etage: APs ziehen, Flaeche per Ecken, Massstab, Typ, Sektor-Richtung",
+    "AP-Typ je AP (Indoor, Indoor HD, Outdoor 360, Outdoor Sektor 120) aus der Legende; AP-Liste als PDF mit Modell und Kanal",
+    "Ergebnis-Protokoll mit Typ je AP, Ausbreitungsmessung bei Premium und der Frage nach dem Internet-Anschluss (A-1)",
+    "Mail-Entwurf mit 1107 / 1107a / 1108 (Premium laut Auftrag); ohne Plaene kommt 'Kunde hat keine Plaene bereitgestellt.' in den Text"
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.2.1/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.3.0/DokuBW.exe"
 }
