@@ -232,6 +232,8 @@ export default {
     if (t.txp !== null) info.push(`Sendeleistung laut AP ${t.txp} dBm`);
     if (s.attenDb) info.push(`Dämpfungsglied ${s.attenDb} dB`);
     if (tr.probeTx) info.push(`${tr.probeTx * 10} Probes/s`);
+    if (tr.beaconAvg !== null) info.push(`Beacons ${fmtDbm(tr.beaconAvg, 1)} dBm`);
+    if (tr.probeAvg !== null) info.push(`Probe-Antworten ${fmtDbm(tr.probeAvg, 1)} dBm${s.useProbeResp === false ? " (nicht gewertet)" : ""}`);
     $("#srInfo", el).textContent = info.join(" · ");
     this.drawSpark();
   },

@@ -41,8 +41,12 @@ export default {
         ${NUM_FIELDS.map(([k, label, min, max, step]) => `
           <label class="field"><span>${esc(label)}</span>
             <input type="number" id="st_${k}" min="${min}" max="${max}" step="${step}" inputmode="decimal" /></label>`).join("")}
+        <label class="check"><input type="checkbox" id="stProbeResp" /> Probe-Antworten mitwerten (mehr Messwerte)</label>
         <label class="check"><input type="checkbox" id="stData" /> Datenframes des APs mitzählen (nur Pegel, kein Inhalt)</label>
-        <p class="hint">Standard: nur Beacons und Probe Responses. Datenframes können mit Beamforming gesendet werden und schwanken stärker.</p>
+        <p class="hint">Beacons zählen immer. Datenframes richten Ruckus-APs (BeamFlex) gezielt auf Clients aus – für die Ortung ungeeignet.
+          Weichen Probe-Antworten im Suchen-Bildschirm deutlich von den Beacons ab, hier abschalten.</p>
+        <label class="field"><span>Nur diese SSID anzeigen (leer = alle)</span>
+          <input type="text" id="stSsid" autocomplete="off" spellcheck="false" placeholder="@BayernWLAN" /></label>
       </div>
       <div class="card">
         <h3>Verbindung</h3>
@@ -65,6 +69,12 @@ export default {
 
     $("#stAntenna", el).addEventListener("change", (e) => { s.antenna = e.target.value; save(); });
     $("#stAxis", el).addEventListener("change", (e) => { s.axis = e.target.value; save(); });
+    $("#stProbeResp", el).addEventListener("change", (e) => { s.useProbeResp = e.target.checked; save(); });
+    $("#stSsid", el).addEventListener("change", (e) => {
+      s.ssidFilter = e.target.value.trim();
+      if (s.ssidFilter) s.lastSsidFilter = s.ssidFilter;
+      save();
+    });
     $("#stData", el).addEventListener("change", async (e) => {
       s.countData = e.target.checked;
       save();
@@ -111,6 +121,8 @@ export default {
     $("#stAntenna", el).value = s.antenna;
     $("#stAxis", el).value = s.axis;
     $("#stData", el).checked = s.countData;
+    $("#stProbeResp", el).checked = s.useProbeResp !== false;
+    $("#stSsid", el).value = s.ssidFilter;
     for (const [k] of NUM_FIELDS) $("#st_" + k, el).value = s[k];
   },
 

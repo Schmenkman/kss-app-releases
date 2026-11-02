@@ -14,6 +14,8 @@ export const DEFAULTS = {
   nHi: 3.0,            // … verbaut
   probeHz: 10,         // aktive Probe Requests pro Sekunde (0 = nur passiv)
   countData: false,    // Datenframes des APs mitzählen
+  useProbeResp: true,  // Probe-Antworten mitwerten (Beacons immer)
+  ssidFilter: "@BayernWLAN", // nur diese SSID anzeigen ("" = alle)
   sound: true,
   fineTone: false,     // Ton relativ zur Spitze statt absolut
   bands: "25",

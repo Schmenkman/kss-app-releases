@@ -32,8 +32,8 @@ MAC-Adressen dürfen mit `:`, `-`, `.` oder ohne Trenner geschrieben werden.
  "txp":17,"ftm":1,"enc":"open","std":"ax","nm":"BY-Rathaus-OG1-Flur","bi":100}
 {"t":"sweep","no":3,"ms":4170,"bss":41,"drop":0}
 {"t":"ack","cmd":"TRACK","ch":6,"n":3,"probe":10}
-{"t":"rssi","ms":123400,"ch":6,"nb":12,"rb":-55.4,"xb":-51,"mb":-60,
- "nd":0,"rd":null,"xd":null,"nf":-96,"tx":1,"te":0}
+{"t":"rssi","ms":123400,"ch":6,"nb":1,"rb":-55.0,"xb":-55,"mb":-55,
+ "np":1,"rp":-53.0,"xp":-53,"nd":0,"rd":null,"xd":null,"nf":-96,"tx":1,"te":0}
 {"t":"ftm","b":"00:00:5e:00:53:30","ok":true,"status":0,"dist_cm":432,"rtt_ns":29,"rtt_raw":31,"n":24}
 {"t":"st","mode":"idle","ms":5000}
 {"t":"err","msg":"TRACK: ungueltiger Kanal"}
@@ -47,7 +47,8 @@ MAC-Adressen dürfen mit `:`, `-`, `.` oder ohne Trenner geschrieben werden.
 | `ap.ftm` | AP kündigt FTM-Responder an (Extended Capabilities, Bit 70) |
 | `ap.enc` / `std` | `open`/`wep`/`rsn`; höchster Standard `n`/`ac`/`ax` |
 | `ap.nm` | AP-Name aus Hersteller-Element (Cisco/Meraki, Aruba, Ruckus, Huawei, Mist, Ubiquiti, Extreme, Fortinet, Arista, Alcatel-Lucent, …) |
-| `rssi.nb` / `rb` / `xb` / `mb` | Beacons + Probe Responses im 100-ms-Fenster: Anzahl, Mittel, Max, Min |
+| `rssi.nb` / `rb` / `xb` / `mb` | Beacons im 100-ms-Fenster: Anzahl, Mittel, Max, Min |
+| `rssi.np` / `rp` / `xp` | Probe Responses (Antworten auf unsere Probe Requests): Anzahl, Mittel, Max – getrennt, weil APs mit adaptiven Antennen (Ruckus BeamFlex) Unicast-Antworten anders abstrahlen könnten |
 | `rssi.nd` / `rd` / `xd` | Datenframes/sonstige Mgmt-Frames des APs (nur mit `DATA 1`) |
 | `rssi.nf` | Rauschboden (dBm) |
 | `rssi.tx` / `te` | gesendete Probe Requests / Sendefehler im Fenster (z. B. DFS-Kanal) |

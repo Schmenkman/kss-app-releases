@@ -24,10 +24,8 @@ export class Orientation extends Emitter {
     if (e.alpha === null && e.beta === null && e.gamma === null) return;
     this.hasSensor = true;
     const d = orientationToDir(e.alpha, e.beta, e.gamma, this.getAxis());
-    const now = performance.now();
-    this.last = { ...d, t: now };
-    this.history.push(this.last);
-    while (this.history.length && now - this.history[0].t > 1500) this.history.shift();
+    this.last = { ...d, t: performance.now() };
+    this._remember(d.az, d.el, false);
     if (!this.usingSim) this.emit("change", this.current());
   }
 
@@ -40,22 +38,36 @@ export class Orientation extends Emitter {
     return { az: this.last.az, el: this.last.el, sim: false };
   }
 
-  /** Mittel über die letzten ms Millisekunden (passend zum 100-ms-Messfenster) */
-  averaged(ms = 100) {
-    if (this.usingSim || !this.last) return this.current();
+  _remember(az, el, sim) {
     const now = performance.now();
-    const h = this.history.filter((x) => now - x.t <= ms);
-    if (h.length < 2) return this.current();
+    this.history.push({ az, el, sim, t: now });
+    while (this.history.length && now - this.history[0].t > 2000) this.history.shift();
+  }
+
+  /**
+   * Lage gemittelt über das Zeitfenster, zu dem ein gerade eingetroffener
+   * Pegelwert gehört: Der Messkopf mittelt 100 ms, dazu kommen USB- und
+   * App-Laufzeit. Ohne diesen Ausgleich wäre die Peilung beim Drehen um
+   * einige Grad in Drehrichtung verschoben.
+   */
+  averaged(fromMs = 140, toMs = 20) {
+    const sim = this.usingSim;
+    const now = performance.now();
+    const h = this.history.filter((x) => x.sim === sim && now - x.t <= fromMs && now - x.t >= toMs);
+    if (!h.length) return this.current();
     return {
       az: circularMean(h.map((x) => x.az)),
       el: h.reduce((s, x) => s + x.el, 0) / h.length,
-      sim: false,
+      sim,
     };
   }
 
   setSim(az, el = this.sim.el) {
     this.sim.az = ((az % 360) + 360) % 360;
     this.sim.el = Math.max(-90, Math.min(90, el));
-    if (this.usingSim) this.emit("change", this.current());
+    if (this.usingSim) {
+      this._remember(this.sim.az, this.sim.el, true);
+      this.emit("change", this.current());
+    }
   }
 }

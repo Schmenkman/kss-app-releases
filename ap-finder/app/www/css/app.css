@@ -125,7 +125,17 @@ label.field > span { display: block; font-size: 13px; color: var(--muted); margi
 .ap .t2 { font-size: 13px; color: var(--muted); }
 .ap .t3 { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ap .bar { margin-top: 6px; height: 6px; }
-.score { font-weight: 700; color: var(--accent); }
+.score { font-weight: 700; color: var(--accent); white-space: nowrap; }
+.ap-dev .t1 { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-dev .t2 { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.ap-dev .t3 { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.ap-dev .bar { margin-top: 8px; height: 6px; }
+.radios { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.radio-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer;
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-height: 52px;
+}
+.radio-row .rs { font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums; }
 .empty { text-align: center; color: var(--muted); padding: 24px 10px; }
 
 /* Suchen */

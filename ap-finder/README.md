@@ -6,23 +6,27 @@ Decken) mit dem Android-Handy und einem **ESP32-C5 mit Richtantenne** finden:
 FTM-Laufzeit) und **Feinsuche mit Ton**. Den Ziel-AP wählt man aus der Liste
 oder sucht ihn über die **MAC vom Typenschild**.
 
-* Recherche, Verfahrensvergleich, Einkaufsliste, Vorgehen vor Ort:
+* Recherche, Verfahrensvergleich, Vorgehen vor Ort, Ruckus-Besonderheiten:
   **[KONZEPT.md](KONZEPT.md)**
+* Einkaufsliste mit Links und Verkabelung: **[HARDWARE.md](HARDWARE.md)**
 * Firmware: [firmware/](firmware/) · Protokoll: [docs/PROTOKOLL.md](docs/PROTOKOLL.md)
 * App (Capacitor, Vanilla-JS wie die anderen KSS-Apps): [app/](app/)
 
 ## Schnellstart
 
-1. **Hardware** laut [KONZEPT.md, Kapitel 4.1](KONZEPT.md#41-einkaufsliste-richtpreise-stand-2026)
-   besorgen: XIAO ESP32-C5, Dual-Band-Panelantenne, Pigtail,
-   20-dB-Dämpfungsglied, USB-C-Kabel.
+1. **Hardware** laut [HARDWARE.md](HARDWARE.md) besorgen: XIAO ESP32-C5,
+   Dual-Band-Panelantenne, Pigtail, Adapter, 20-dB-Dämpfungsglied,
+   Rundstrahler, USB-C-Kabel, Handyhalter.
 2. **Firmware flashen:** siehe [firmware/README.md](firmware/README.md).
    Die fertige `.bin` baut die GitHub-Actions-Pipeline.
 3. **App installieren:** Die APK (`ap-finder-debug.apk`) liegt im Artefakt
    `ap-finder-apk` des Laufs „AP-Finder Build“.
 4. Messkopf per USB-C anstecken. Android fragt, ob AP-Finder geöffnet werden
    soll: „Immer“ wählen, dann ist auch der USB-Zugriff erlaubt.
-5. **Geräte:** Der Scan läuft automatisch. AP antippen oder die MAC eingeben.
+5. **Geräte:** Der Scan läuft automatisch. Standardmäßig erscheinen nur APs
+   mit der SSID `@BayernWLAN`. Jede Karte ist ein physischer AP mit der
+   vermuteten Typenschild-MAC (Ruckus: `…x0`) und seinen Funkmodulen für
+   2,4 und 5 GHz. Typenschild-MAC eingeben → „Treffer 98 %“ → „Orten“.
    **Suchen:** Pegel, Ton, Entfernung, Messpunkte. **Peilen:** Rundum drehen,
    der Pfeil zeigt danach zum AP. Mit „Elevation“ ergibt sich der Abstand
    über die Deckenhöhe.

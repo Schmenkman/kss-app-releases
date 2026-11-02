@@ -134,7 +134,7 @@ export default {
       let el = 0;
       o.setSim(az, 0);
       this.simTimer = setInterval(() => {
-        el += 1.5;
+        el += 1;
         o.setSim(az, el);
         if (el >= 90) this.stop();
       }, 60);
@@ -143,7 +143,7 @@ export default {
 
   onSample(tr) {
     if (!this.recording || tr.raw === null || tr.stale) return;
-    const pose = this.app.orientation.averaged(120);
+    const pose = this.app.orientation.averaged();
     if (this.mode === "az") {
       if (pose.el < -35 || pose.el > 45) return; // Antenne grob waagerecht halten
       this.recAz.add(pose.az, tr.raw);

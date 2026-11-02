@@ -130,7 +130,8 @@ static struct {
     uint8_t  probe_rr;
     int64_t  next_emit_ms;
     int64_t  next_probe_ms;
-    agg_t    ab;            /* Beacons + Probe Responses */
+    agg_t    ab;            /* Beacons */
+    agg_t    apr;           /* Probe Responses (Antworten auf unsere Probe Requests) */
     agg_t    ad;            /* Datenframes + sonstige Mgmt-Frames */
     int32_t  nf_sum;
     uint16_t nf_n;
@@ -468,6 +469,7 @@ static void agg_add(agg_t *a, int8_t v)
 static void track_reset_window(void)
 {
     agg_reset(&P.ab);
+    agg_reset(&P.apr);
     agg_reset(&P.ad);
     P.nf_sum = 0;
     P.nf_n = 0;
@@ -515,7 +517,7 @@ static void fmt_avg(char *buf, size_t cap, int32_t sum, uint16_t n)
 
 static void track_emit(int64_t now)
 {
-    char rb[16], xb[8], mb[8], rd[16], xd[8], nf[8];
+    char rb[16], xb[8], mb[8], rp[16], xp[8], rd[16], xd[8], nf[8];
     if (P.ab.n) {
         fmt_avg(rb, sizeof(rb), P.ab.sum, P.ab.n);
         snprintf(xb, sizeof(xb), "%d", P.ab.max);
@@ -524,6 +526,13 @@ static void track_emit(int64_t now)
         strcpy(rb, "null");
         strcpy(xb, "null");
         strcpy(mb, "null");
+    }
+    if (P.apr.n) {
+        fmt_avg(rp, sizeof(rp), P.apr.sum, P.apr.n);
+        snprintf(xp, sizeof(xp), "%d", P.apr.max);
+    } else {
+        strcpy(rp, "null");
+        strcpy(xp, "null");
     }
     if (P.ad.n) {
         fmt_avg(rd, sizeof(rd), P.ad.sum, P.ad.n);
@@ -538,15 +547,17 @@ static void track_emit(int64_t now)
         strcpy(nf, "null");
     }
     out_line("{\"t\":\"rssi\",\"ms\":%" PRIu32 ",\"ch\":%u,\"nb\":%u,\"rb\":%s,\"xb\":%s,\"mb\":%s,"
-             "\"nd\":%u,\"rd\":%s,\"xd\":%s,\"nf\":%s,\"tx\":%u,\"te\":%u}",
-             (uint32_t)now, P.track_ch, P.ab.n, rb, xb, mb, P.ad.n, rd, xd, nf, P.tx_ok, P.tx_err);
+             "\"np\":%u,\"rp\":%s,\"xp\":%s,\"nd\":%u,\"rd\":%s,\"xd\":%s,\"nf\":%s,\"tx\":%u,\"te\":%u}",
+             (uint32_t)now, P.track_ch, P.ab.n, rb, xb, mb, P.apr.n, rp, xp, P.ad.n, rd, xd, nf, P.tx_ok, P.tx_err);
     track_reset_window();
 }
 
 static void track_add(const rx_item_t *it)
 {
-    if (it->kind == APF_FRAME_BEACON || it->kind == APF_FRAME_PROBE_RESP) {
+    if (it->kind == APF_FRAME_BEACON) {
         agg_add(&P.ab, it->rssi);
+    } else if (it->kind == APF_FRAME_PROBE_RESP) {
+        agg_add(&P.apr, it->rssi);
     } else {
         agg_add(&P.ad, it->rssi);
     }

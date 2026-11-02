@@ -5,36 +5,41 @@ import { bandOf, chanToMHz } from "./signal.js";
 
 const D2R = Math.PI / 180;
 
-/** Beispielgebäude: Raum 20 × 12 m, Decke 3 m, APs über der abgehängten Decke. */
+/**
+ * Beispielgebäude: Raum 20 × 12 m, Decke 3 m, Ruckus-APs über der abgehängten
+ * Decke, SSID @BayernWLAN. Adressen nach dem Ruckus-Schema (Basis-MAC …x0,
+ * BSSIDs im selben 16er-Block; bei AP B liegt die 5-GHz-BSSID in einer
+ * Variante des 4. Bytes). Alle Adressen sind Beispiele.
+ */
 export const DEFAULT_WORLD = {
   room: { w: 20, h: 12, ceiling: 3.0 },
   aps: [
     {
-      id: "A", name: "BY-Rathaus-OG1-Flur", label: "00:00:5e:00:53:10", pos: [14.4, 7.8, 3.1], loss: 2, ftm: true,
+      id: "A", name: "", model: "R650", label: "8c:0c:90:1f:a9:30", pos: [14.4, 7.8, 3.1], loss: 2, ftm: false,
       radios: [
-        { ch: 6, txp: 17, bssids: ["00:00:5e:00:53:20", "00:00:5e:00:53:21", "00:00:5e:00:53:22"] },
-        { ch: 44, txp: 20, bssids: ["00:00:5e:00:53:30", "00:00:5e:00:53:31", "00:00:5e:00:53:32"] },
+        { ch: 6, txp: 17, bssids: ["8c:0c:90:1f:a9:38"] },
+        { ch: 44, txp: 20, bssids: ["8c:0c:90:1f:a9:3c"] },
       ],
-      ssids: ["@BayernWLAN", "eduroam", "Verwaltung"],
+      ssids: ["@BayernWLAN"],
     },
     {
-      id: "B", name: "", label: "a8:b1:c2:44:55:60", pos: [3.2, 9.6, 3.1], loss: 2, ftm: false,
+      id: "B", name: "", model: "R510", label: "c4:10:8a:18:22:80", pos: [3.2, 9.6, 3.1], loss: 2, ftm: false,
       radios: [
-        { ch: 1, txp: 18, bssids: ["aa:b1:c2:44:55:60", "ae:b1:c2:44:55:60"] },
-        { ch: 100, txp: 23, bssids: ["aa:b1:c2:44:55:61", "ae:b1:c2:44:55:61"] },
+        { ch: 1, txp: 18, bssids: ["c4:10:8a:18:22:88"] },
+        { ch: 100, txp: 23, bssids: ["c4:10:8a:58:22:8c"] },
       ],
-      ssids: ["@BayernWLAN", "Schule-Intern"],
+      ssids: ["@BayernWLAN"],
     },
     {
-      id: "C", name: "BY-Rathaus-OG1-Saal", label: "00:00:5e:00:53:a0", pos: [2.0, 22.0, 3.1], loss: 8, ftm: true,
+      id: "C", name: "BY-Rathaus-OG1-Saal", model: "R550", label: "c4:10:8a:18:23:40", pos: [2.0, 22.0, 3.1], loss: 8, ftm: true,
       radios: [
-        { ch: 11, txp: 17, bssids: ["00:00:5e:00:53:b0", "00:00:5e:00:53:b1"] },
-        { ch: 52, txp: 20, bssids: ["00:00:5e:00:53:c0", "00:00:5e:00:53:c1"] },
+        { ch: 11, txp: 17, bssids: ["c4:10:8a:18:23:48"] },
+        { ch: 52, txp: 20, bssids: ["c4:10:8a:18:23:4c"] },
       ],
-      ssids: ["@BayernWLAN", "eduroam"],
+      ssids: ["@BayernWLAN"],
     },
     {
-      id: "D", name: "", label: "3c:d9:2b:01:02:00", pos: [27, -6, 1.2], loss: 14, ftm: false,
+      id: "D", name: "", model: "Fremdgerät", label: "3c:d9:2b:01:02:00", pos: [27, -6, 1.2], loss: 14, ftm: false,
       radios: [
         { ch: 11, txp: 20, bssids: ["3c:d9:2b:01:02:01"] },
         { ch: 36, txp: 20, bssids: ["3c:d9:2b:01:02:11"] },
@@ -183,7 +188,7 @@ export class Simulator {
   }
 
   _resetTrack() {
-    this.track = { ch: 0, probe: 0, bssids: [], next: 0, nextProbe: 0, b: [], d: [], tx: 0, beaconPhase: 0 };
+    this.track = { ch: 0, probe: 0, bssids: [], next: 0, nextProbe: 0, b: [], p: [], d: [], tx: 0, beaconPhase: 0 };
   }
 
   _ftm(ch, bssid) {
@@ -225,7 +230,7 @@ export class Simulator {
       radio.bssids.forEach((b, i) => {
         const r = this.rssiFor(ap, radio);
         if (r < -94) return;
-        this._out({ t: "ap", b, s: ap.ssids[i] || ap.ssids[0], h: 0, ch, r, n: 1, txp: ap.id === "A" ? radio.txp : null,
+        this._out({ t: "ap", b, s: ap.ssids[i] || ap.ssids[0], h: 0, ch, r, n: 1, txp: null,
           ftm: ap.ftm ? 1 : 0, enc: i === 0 ? "open" : "rsn", std: ch > 14 ? "ax" : "n", nm: ap.name, bi: 100 });
         s.bss++;
       });
@@ -262,7 +267,7 @@ export class Simulator {
       if (targets.length) {
         const tg = targets[tr.tx % targets.length];
         const r = this.rssiFor(tg.ap, tg.radio);
-        if (r >= -92) tr.b.push(r);
+        if (r >= -92) tr.p.push(r);
       }
     }
     if (this.countData && targets.length && this.rand() < 0.15) {
@@ -276,10 +281,12 @@ export class Simulator {
         t: "rssi", ms: Math.round(this.t), ch: tr.ch,
         nb: tr.b.length, rb: tr.b.length ? Math.round(agg(tr.b) * 10) / 10 : null,
         xb: tr.b.length ? Math.max(...tr.b) : null, mb: tr.b.length ? Math.min(...tr.b) : null,
+        np: tr.p.length, rp: tr.p.length ? Math.round(agg(tr.p) * 10) / 10 : null, xp: tr.p.length ? Math.max(...tr.p) : null,
         nd: tr.d.length, rd: tr.d.length ? Math.round(agg(tr.d) * 10) / 10 : null, xd: tr.d.length ? Math.max(...tr.d) : null,
         nf: -95, tx: tr.tx, te: 0,
       });
       tr.b = [];
+      tr.p = [];
       tr.d = [];
       tr.tx = 0;
       tr.next += 100;

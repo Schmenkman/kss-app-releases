@@ -98,6 +98,26 @@ export class SweepRecorder {
   }
 }
 
+/** Scheitel einer Ausgleichsparabel y = a·x² + b·x + c (nur bei a < 0), sonst null */
+export function parabolaVertex(pts) {
+  if (pts.length < 3) return null;
+  let s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, t0 = 0, t1 = 0, t2 = 0;
+  for (const [x, y] of pts) {
+    const x2 = x * x;
+    s0 += 1; s1 += x; s2 += x2; s3 += x2 * x; s4 += x2 * x2;
+    t0 += y; t1 += x * y; t2 += x2 * y;
+  }
+  // Normalgleichungen [s4 s3 s2; s3 s2 s1; s2 s1 s0]·[a b c] = [t2 t1 t0]
+  const det = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const M = [[s4, s3, s2], [s3, s2, s1], [s2, s1, s0]];
+  const D = det(M);
+  if (Math.abs(D) < 1e-12) return null;
+  const a = det([[t2, s3, s2], [t1, s2, s1], [t0, s1, s0]]) / D;
+  const b = det([[s4, t2, s2], [s3, t1, s1], [s2, t0, s0]]) / D;
+  if (!(a < 0)) return null;
+  return -b / (2 * a);
+}
+
 /**
  * Schätzt die Richtung des Maximums aus Bin-Werten (dBm, null = keine Daten).
  * Verfahren: Gauß-Glättung, Maximum suchen, dann Mitte zwischen den beiden
@@ -152,6 +172,19 @@ export function estimatePeak(values, { binDeg = 5, circular = true, sigmaBins = 
   if (L.found && Rr.found) {
     center = (L.pos + Rr.pos) / 2;
     width = (Rr.pos - L.pos) * binDeg;
+  } else {
+    // Eine Flanke fehlt (z. B. Elevation nahe 0°/90° bei breiter Keule):
+    // Parabel durch den Bereich oberhalb von −3 dB legen, Scheitel nehmen.
+    const pts = [[0, peak]];
+    for (const dir of [-1, 1]) {
+      for (let k = 1; k < n; k++) {
+        const v = smAt(pi + dir * k);
+        if (v === null || v === undefined || v < peak - 3) break;
+        pts.push([dir * k, v]);
+      }
+    }
+    const xv = parabolaVertex(pts);
+    if (xv !== null && Math.abs(xv) <= n / 2) center = pi + xv;
   }
   let angle = (center + 0.5) * binDeg;
   if (circular) angle = norm360(angle);

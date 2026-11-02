@@ -1,6 +1,7 @@
-// Ansicht „Geräte“: Scan beider Bänder, Funkmodule, Suche nach SSID/Name/MAC.
+// Ansicht „Geräte“: Scan beider Bänder, physische APs mit ihren Funkmodulen,
+// Suche nach SSID/Name/MAC, Filter auf die BayernWLAN-SSID.
 import { $, $$, esc, throttle } from "../util.js";
-import { groupRadios, groupScore, looksLikeMac, macContains, normalizeMac } from "../mac.js";
+import { deviceScore, groupDevices, groupRadios, looksLikeMac, macContains, normalizeMac, preferredRadio } from "../mac.js";
 import { bandLabel, bandOf, level01, rssiColor } from "../signal.js";
 import { rememberMac, set, settings } from "../store.js";
 
@@ -14,7 +15,7 @@ export default {
     el.innerHTML = `
       <div class="card">
         <input id="devQuery" type="text" inputmode="search" autocomplete="off" spellcheck="false"
-               placeholder="SSID, AP-Name oder MAC vom Typenschild" />
+               placeholder="MAC vom Typenschild, AP-Name oder BSSID" />
         <div class="row between" style="margin-top:10px">
           <div class="seg" id="devBands">
             <button type="button" data-b="25">Alle</button>
@@ -23,7 +24,9 @@ export default {
           </div>
           <button id="devScan" class="btn btn-sm btn-primary" type="button">Scan starten</button>
         </div>
-        <div class="small" id="devInfo" style="margin-top:8px"></div>
+        <label class="check small" style="margin-top:6px"><input type="checkbox" id="devSsidOnly" />
+          <span>nur SSID <b id="devSsidName"></b></span></label>
+        <div class="small" id="devInfo" style="margin-top:4px"></div>
         <div class="row" id="devRecent" style="margin-top:6px"></div>
       </div>
       <div id="devList"></div>`;
@@ -48,6 +51,16 @@ export default {
         this.render();
       })
     );
+    $("#devSsidOnly", el).addEventListener("change", (e) => {
+      // Haken aus = alle SSIDs; Haken an = zuletzt benutzte SSID (Standard @BayernWLAN)
+      const s = settings();
+      if (e.target.checked) set("ssidFilter", s.lastSsidFilter || "@BayernWLAN");
+      else {
+        if (s.ssidFilter) set("lastSsidFilter", s.ssidFilter);
+        set("ssidFilter", "");
+      }
+      this.render();
+    });
     $("#devScan", el).addEventListener("click", async () => {
       if (!app.device.connected) return app.openConnect();
       if (app.device.mode === "scan") await app.device.stop();
@@ -55,10 +68,16 @@ export default {
       this.render();
     });
     el.addEventListener("click", (e) => {
-      const card = e.target.closest("[data-key]");
-      if (card) {
-        const g = this.groups.find((x) => x.key === card.dataset.key);
+      const radio = e.target.closest("[data-key]");
+      if (radio) {
+        const g = this.radios.find((x) => x.key === radio.dataset.key);
         if (g) app.selectTarget(g);
+        return;
+      }
+      const dev = e.target.closest("[data-dev]");
+      if (dev) {
+        const d = this.devices.find((x) => x.key === dev.dataset.dev);
+        if (d) app.selectTarget(preferredRadio(d));
         return;
       }
       const act = e.target.closest("[data-act]");
@@ -71,7 +90,8 @@ export default {
       }
     });
 
-    this.groups = [];
+    this.devices = [];
+    this.radios = [];
     const rerender = throttle(() => { if (!el.hidden) this.render(); }, 700);
     app.device.on("ap", rerender);
     app.device.on("state", () => this.render());
@@ -105,9 +125,12 @@ export default {
   render() {
     const { app, el } = this;
     const d = app.device;
+    const s = settings();
     const scanBtn = $("#devScan", el);
     scanBtn.textContent = d.mode === "scan" ? "Scan stoppen" : "Scan starten";
     scanBtn.classList.toggle("btn-primary", d.mode !== "scan");
+    $("#devSsidOnly", el).checked = !!s.ssidFilter;
+    $("#devSsidName", el).textContent = s.ssidFilter || s.lastSsidFilter || "@BayernWLAN";
 
     const list = $("#devList", el);
     if (!d.connected) {
@@ -120,11 +143,12 @@ export default {
       return;
     }
 
-    const aps = d.apList();
-    const all = groupRadios(aps);
-    app.state.groups = all;
-    const bands = settings().bands;
-    let groups = all.filter((g) => bands.includes(String(bandOf(g.ch))));
+    const all = d.apList();
+    const aps = s.ssidFilter ? all.filter((a) => a.ssid === s.ssidFilter) : all;
+    const radiosAll = groupRadios(aps);
+    app.state.groups = radiosAll;
+    const radios = radiosAll.filter((g) => s.bands.includes(String(bandOf(g.ch))));
+    let devices = groupDevices(radios);
 
     const q = $("#devQuery", el).value.trim();
     let macMode = false;
@@ -132,46 +156,56 @@ export default {
       macMode = true;
       const full = normalizeMac(q);
       if (full) {
-        groups = groups
-          .map((g) => ({ ...g, score: groupScore(g, full) }))
-          .filter((g) => g.score > 0)
+        devices = devices
+          .map((dv) => ({ ...dv, score: deviceScore(dv, full) }))
+          .filter((dv) => dv.score > 0)
           .sort((a, b) => b.score - a.score || b.rssi - a.rssi);
       } else {
-        groups = groups.filter((g) => g.bssids.some((b) => macContains(b, q)));
+        devices = devices.filter((dv) => macContains(dv.base, q) || dv.bssids.some((b) => macContains(b, q)));
       }
     } else if (q) {
       const ql = q.toLowerCase();
-      groups = groups.filter((g) => (g.name + " " + g.ssids.join(" ") + " " + g.bssids.join(" ")).toLowerCase().includes(ql));
+      devices = devices.filter((dv) =>
+        (dv.name + " " + dv.base + " " + dv.bssids.join(" ") + " " + dv.radios.flatMap((r) => r.ssids).join(" ")).toLowerCase().includes(ql));
     }
-    this.groups = groups;
+    this.devices = devices;
+    this.radios = radiosAll;
 
     const sw = this.sweep ? ` · Durchlauf ${this.sweep.no} (${(this.sweep.ms / 1000).toFixed(1).replace(".", ",")} s)` : "";
-    $("#devInfo", el).textContent = `${aps.length} BSSIDs · ${all.length} Funkmodule${sw}` +
+    const hiddenOther = s.ssidFilter ? all.length - aps.length : 0;
+    $("#devInfo", el).textContent = `${groupDevices(radiosAll).length} Geräte · ${radiosAll.length} Funkmodule${sw}` +
+      (hiddenOther ? ` · ${hiddenOther} fremde BSSIDs ausgeblendet` : "") +
       (macMode && normalizeMac(q) ? " · sortiert nach MAC-Ähnlichkeit" : "");
 
-    if (!groups.length) {
+    if (!devices.length) {
       list.innerHTML = q
-        ? `<div class="card empty">Keine Treffer für „${esc(q)}“.<br><span class="small">Tipp: Die MAC vom Typenschild ist meist die Ethernet-MAC – gefunkt wird mit abgeleiteten BSSIDs. Die App zeigt ähnliche Adressen mit Trefferquote.</span></div>`
-        : `<div class="card empty">${d.mode === "scan" ? "Suche läuft … ein Durchlauf über alle Kanäle dauert ca. 4 s." : "Scan starten, um APs zu finden."}</div>`;
+        ? `<div class="card empty">Keine Treffer für „${esc(q)}“.<br><span class="small">Tipp: Bei Ruckus endet die Typenschild-MAC auf 0 und die Funk-MACs liegen im selben 16er-Block (…x0 bis …xF). Ist der AP gerade nicht in Reichweite oder auf einem anderen Band, erscheint er nicht.</span></div>`
+        : `<div class="card empty">${d.mode === "scan" ? "Suche läuft … ein Durchlauf über alle Kanäle dauert ca. 4 s." : "Scan starten, um APs zu finden."}${s.ssidFilter ? `<br><span class="small">Es werden nur APs mit der SSID „${esc(s.ssidFilter)}“ angezeigt.</span>` : ""}</div>`;
       return;
     }
 
-    list.innerHTML = groups.map((g) => {
-      const title = g.name || g.ssids[0] || g.bssids[0];
-      const sub = g.name ? g.ssids.join(" · ") : g.ssids.slice(1).join(" · ");
-      const color = rssiColor(g.rssi);
-      return `<div class="card ap" data-key="${esc(g.key)}">
-        <div class="grow">
-          <div class="t1">${esc(title)}</div>
-          <div class="t2">${bandLabel(g.ch)} · Kanal ${g.ch} · ${g.bssids.length} BSSID${g.bssids.length > 1 ? "s" : ""}
-            ${g.ftm ? ' <span class="chip ok">FTM</span>' : ""}
-            ${g.txp !== null ? ` · ${g.txp} dBm` : ""}
-            ${g.score ? ` · <span class="score">Treffer ${g.score} %</span>` : ""}</div>
-          ${sub ? `<div class="t3">${esc(sub)}</div>` : ""}
-          <div class="t3 mono">${esc(g.bssids[0])}${g.bssids.length > 1 ? ` +${g.bssids.length - 1}` : ""}</div>
-          <div class="bar"><i style="width:${Math.round(level01(g.rssi, -95, -30) * 100)}%;background:${color}"></i></div>
+    list.innerHTML = devices.map((dv) => {
+      const color = rssiColor(dv.rssi);
+      const title = dv.name || `AP ${dv.base}`;
+      const ssids = [...new Set(dv.radios.flatMap((r) => r.ssids))];
+      const rows = dv.radios.map((r) => {
+        const c = rssiColor(r.rssi);
+        return `<button type="button" class="radio-row" data-key="${esc(r.key)}">
+          <span class="grow">${bandLabel(r.ch)} · Kanal ${r.ch}${r.ftm ? ' <span class="chip ok">FTM</span>' : ""}<br>
+            <span class="mono small">${esc(r.bssids[0])}${r.bssids.length > 1 ? ` +${r.bssids.length - 1}` : ""}</span></span>
+          <span class="rs" style="color:${c}">${r.rssi}</span>
+          <span class="chip acc">Orten ›</span>
+        </button>`;
+      }).join("");
+      return `<div class="card ap-dev" data-dev="${esc(dv.key)}">
+        <div class="row between">
+          <div class="t1 grow">${esc(title)}</div>
+          ${dv.score ? `<span class="score">Treffer ${dv.score} %</span>` : ""}
         </div>
-        <div class="rs" style="color:${color}">${g.rssi}</div>
+        <div class="t2">Typenschild-MAC (vermutet): <span class="mono">${esc(dv.base)}</span></div>
+        <div class="t3">${esc(ssids.join(" · "))}${dv.radios.some((r) => r.txp !== null) ? ` · Sendeleistung ${Math.max(...dv.radios.map((r) => r.txp ?? -99))} dBm` : ""}</div>
+        <div class="bar"><i style="width:${Math.round(level01(dv.rssi, -95, -30) * 100)}%;background:${color}"></i></div>
+        <div class="radios">${rows}</div>
       </div>`;
     }).join("");
   },

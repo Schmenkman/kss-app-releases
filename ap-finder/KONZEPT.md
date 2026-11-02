@@ -25,8 +25,8 @@ Messgrößen:
 So arbeiten auch Profi-Messgeräte: Der NetAlly AirCheck G3 ortet APs mit
 eingebauten Antennen oder einer externen Richtantenne und gibt einen Ton aus,
 der beim Annähern schneller und höher wird ([NetAlly][netally-locate],
-[NetAlly KB][netally-kb]). Der hier beschriebene Eigenbau kostet ca. 60–100 €
-statt mehrerer tausend Euro.
+[NetAlly KB][netally-kb]). Der hier beschriebene Eigenbau kostet ca. 100–150 €
+statt mehrerer tausend Euro – Einkaufsliste mit Links: **[HARDWARE.md](HARDWARE.md)**.
 
 Das Handy allein reicht nicht. Android lässt Apps im Vordergrund nur **4 WLAN-Scans
 pro 2 Minuten** machen ([Android Developers][android-scan]). iOS bietet gar keine
@@ -40,14 +40,19 @@ was weitere Messwerte liefert.
 
 * BayernWLAN ist ein Verbund vieler Standorte. Vodafone ist Technologiepartner, außerdem
   strahlen z. B. die LRZ-APs im Münchner Wissenschaftsnetz BayernWLAN aus
-  ([mobiflip][mobiflip-bw], [LRZ][lrz-bw]). Einen einheitlichen AP-Hersteller
-  konnte ich nicht belegen – die Lösung ist deshalb **herstellerneutral**.
+  ([mobiflip][mobiflip-bw], [LRZ][lrz-bw]).
+* **Zu suchende Geräte (Auftrag):** Ruckus **R350, R500, R510, R550, R610,
+  R650** (innen) sowie **T300, T310c/s, T350c/se** (außen), SSID immer
+  **`@BayernWLAN`**. Die Lösung bleibt herstellerneutral, ist aber auf diese
+  Geräte abgestimmt – siehe Kapitel 5a.
 * Typische Montage: über Mineralfaser-Rasterdecken (62,5 × 62,5 cm). Diese
   Platten dämpfen Funk kaum, Metall-Kassettendecken, Kabeltrassen und
   Lüftungskanäle dagegen stark (Reflexionen!).
-* Die gesuchten Geräte senden auf 2,4 GHz **und** 5 GHz, meist mehrere SSIDs
-  pro Funkmodul (z. B. `@BayernWLAN`, `eduroam`, interne Netze) – jede SSID ist
-  eine eigene BSSID (Funk-MAC).
+* Die gesuchten Geräte senden auf 2,4 GHz **und** 5 GHz. Jede SSID je
+  Funkmodul ist eine eigene BSSID (Funk-MAC). Weil alle APs dieselbe SSID
+  `@BayernWLAN` haben, unterscheidet man sie nur über BSSID, Kanal und Pegel
+  (und ggf. den AP-Namen). Die MAC vom Typenschild ist deshalb der
+  wichtigste Schlüssel.
 
 ## 2. Physik in einer Minute
 
@@ -162,20 +167,14 @@ Einsatzzweck **nicht empfohlen**.
 
 ## 4. Empfohlene Lösung
 
-### 4.1 Einkaufsliste (Richtpreise, Stand 2026)
+### 4.1 Einkaufsliste
 
-| Teil | Empfehlung | ca. Preis |
-|---|---|---|
-| Funkmodul | **Seeed XIAO ESP32-C5** (USB-C, U.FL-Antennenbuchse, daumengroß) ([CNX][xiao-cnx], [Scargill][xiao-scargill]) – Alternative: DFRobot FireBeetle 2 ESP32-C5-**U** (Modul WROOM-1**U**, U.FL) ([Übersicht][c5-boards]) | 10–15 € |
-| Richtantenne | **ALFA APA-M25** Dual-Band-Panel, RP-SMA | 20–30 € |
-| Pigtail | U.FL (IPEX-1/MHF1) → **RP-SMA-Buchse** (Einbau), 10–15 cm, bis 6 GHz | 3–8 € |
-| Rundstrahler | Dual-Band-Antenne 2,4/5 GHz (RP-SMA-Stab oder U.FL-FPC) – das XIAO-Beipack ist laut Test nur 2,4 GHz | 5 € |
-| Dämpfungsglied | SMA-Dämpfungsglied **20 dB** (optional + 10 dB), DC–6 GHz, plus RP-SMA↔SMA-Adapter | 10–25 € |
-| Kabel | kurzes USB-C↔USB-C-Kabel (Handy muss USB-OTG können) | 5–10 € |
-| Halterung | Handyklemme mit 1/4"-Gewinde o. ä., am Panel befestigt (Klett/Kabelbinder) | 10 € |
+Komplette Liste mit Links, Kabelkette und Aufbau: **[HARDWARE.md](HARDWARE.md)**.
 
-**Achtung SMA vs. RP-SMA:** Die ALFA-Antenne hat RP-SMA (Stecker ohne Stift).
-Dämpfungsglieder gibt es meist nur als SMA → passende Adapter mitbestellen.
+Kurzfassung: Seeed XIAO ESP32-C5, ALFA APA-M25 (Dual-Band-Panel), Pigtail
+U.FL → SMA-Stecker, Adapter SMA-Buchse ↔ RP-SMA-Buchse (10 GHz),
+20-dB-Dämpfungsglied (SMA, bis 6 GHz), Dual-Band-Rundstrahler (Delock 88393),
+kurzes USB-C-Kabel, Handyhalter. Zusammen etwa 100–150 €.
 
 ### 4.2 Aufbau
 ```
@@ -242,6 +241,38 @@ Treffer. Der Kandidat mit der höchsten Quote ist der wahrscheinlichste; im
 Zweifel hilft der AP-Name aus dem Beacon. Später kann eine Zuordnungstabelle
 („diese MAC gehört zu diesen BSSIDs“) das je Hersteller verschärfen.
 
+## 5a. Ruckus-APs bei BayernWLAN
+
+* **BSSID-Schema:** Laut Ruckus-Support entsteht die BSSID aus der MAC des APs,
+  indem die **letzte Hex-Ziffer** ersetzt wird (z. B. AP `8c:0c:90:1f:a9:30` →
+  BSSIDs `8c:0c:90:1f:a9:3X`) ([Ruckus KBA 4312][ruckus-kba]). Die Basis-MAC
+  endet immer auf **0**, die erste 2,4-GHz-BSSID ist Basis **+ 8**
+  ([Ruckus-Community][ruckus-bssid]). Eine offizielle Formel für alle Modelle
+  und Firmware-Stände gibt es nicht. Bei vielen WLANs wurden zusätzlich
+  Varianten im **4. Byte** beobachtet (Schritte von 0x40).
+  **Die App wertet das so aus:** Gleicher 16er-Block in der letzten Stelle, das
+  4. Byte ohne seine obersten zwei Bits verglichen. Das ergibt 98 %, also
+  „sicher dasselbe Gerät“. Beide Funkmodule (2,4 und 5 GHz) erscheinen als
+  **ein Gerät** mit der vermuteten Typenschild-MAC (`…:x0`).
+* **Verbindliche Zuordnung:** Am AP liefert `get wlanlist` (CLI) die BSSIDs je
+  WLAN, im SmartZone-Controller steht sie unter den WLANs des APs.
+* **AP-Name im Beacon:** Ab **SmartZone 6.0** kann der AP-Name pro WLAN in
+  Beacons und Probe Responses mitgesendet werden (Hersteller-Element
+  `00:13:92`, Typ 3). Das ist aber **standardmäßig aus** (AP-CLI:
+  `set hostname_ad <wlan> 1`) ([WH Network][ruckus-apname]). Wenn der
+  Betreiber das für `@BayernWLAN` einschaltet, zeigt die App die Namen
+  direkt an. Die Firmware liest das Feld bereits aus.
+* **FTM (802.11mc):** Dass diese Ruckus-Modelle FTM als Responder anbieten,
+  ließ sich nicht belegen. Vermutlich geht die Laufzeitmessung also nicht.
+  Die App zeigt pro AP an, ob er FTM ankündigt.
+* **BeamFlex:** Die R-Serie richtet Daten an Clients gezielt aus. Datenframes
+  sind für die Ortung unbrauchbar, deshalb misst die App standardmäßig nur
+  Beacons und Probe-Antworten. Die Firmware meldet beide getrennt, damit
+  sich ein Unterschied im Feld erkennen lässt.
+* **Außen-APs:** T310s/T310n und T350se haben Sektorantennen (120° bzw. 30°)
+  ([CommScope T310][t310-ds], [Ruckus T350se][t350se]). Vor dem Gerät ist der
+  Pegel deutlich höher als dahinter. T300, T310c und T350c strahlen rundum.
+
 ## 6. Architektur
 
 ```
@@ -304,6 +335,11 @@ Protokoll: Textbefehle (Handy → ESP) und JSON-Zeilen (ESP → Handy), siehe
 * [xiao-cnx]: CNX Software – XIAO ESP32-C5: <https://www.cnx-software.com/2026/01/16/xiao-esp32-c5-a-tiny-usb-c-iot-board-with-dual-band-wifi-6-bluetooth-5-0-le-zigbee-and-thread-connectivity/>
 * [xiao-scargill]: Scargill – XIAO ESP32-C5 first look: <https://tech.scargill.net/seeed-studio-xiao-esp32-c5-first-look/>
 * [c5-boards]: ESP32-C5 Boards 2026: <https://esp32.co.uk/esp32-c5-versions-best-dev-boards-2026/>
+* [ruckus-kba]: Ruckus KBA 4312 – BSSID aus AP-MAC: <https://support.ruckuswireless.com/articles/000004312>
+* [ruckus-bssid]: Ruckus-Community – AP-MAC und BSSID: <https://community.ruckuswireless.com/discussion/comment/42578#Comment_42578>
+* [ruckus-apname]: WH Network – AP-Namen in Beacons (Ruckus SmartZone 6.0): <https://whnetwork.wordpress.com/2022/05/24/troubleshooting-with-ap-names-advertised-in-802-11-beacon-frames/>
+* [t310-ds]: CommScope – Ruckus T310 Datenblatt: <https://de.commscope.com/globalassets/digizuite/761778-p360-t310-external.pdf>
+* [t350se]: Ruckus – T350se: <https://support.ruckuswireless.com/products/192-ruckus-t350se>
 
 [netally-locate]: https://www.netally.com/user-guides/aircheckg3/Content/B_Testing-Applications/Wi-Fi_Analysis/Locating_Wi-Fi_Devices.htm
 [netally-kb]: https://www.netally.com/knowledgebase/locate-aps-and-wi-fi-clients-3/
@@ -325,3 +361,8 @@ Protokoll: Textbefehle (Handy → ESP) und JSON-Zeilen (ESP → Handy), siehe
 [xiao-cnx]: https://www.cnx-software.com/2026/01/16/xiao-esp32-c5-a-tiny-usb-c-iot-board-with-dual-band-wifi-6-bluetooth-5-0-le-zigbee-and-thread-connectivity/
 [xiao-scargill]: https://tech.scargill.net/seeed-studio-xiao-esp32-c5-first-look/
 [c5-boards]: https://esp32.co.uk/esp32-c5-versions-best-dev-boards-2026/
+[ruckus-kba]: https://support.ruckuswireless.com/articles/000004312
+[ruckus-bssid]: https://community.ruckuswireless.com/discussion/comment/42578#Comment_42578
+[ruckus-apname]: https://whnetwork.wordpress.com/2022/05/24/troubleshooting-with-ap-names-advertised-in-802-11-beacon-frames/
+[t310-ds]: https://de.commscope.com/globalassets/digizuite/761778-p360-t310-external.pdf
+[t350se]: https://support.ruckuswireless.com/products/192-ruckus-t350se

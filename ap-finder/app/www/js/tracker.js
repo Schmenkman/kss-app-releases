@@ -27,6 +27,8 @@ export class Tracker extends Emitter {
     this.history = [];
     this.probeTx = 0;
     this.probeErr = 0;
+    this.beaconAvg = null;  // Beacon-Pegel (geglättet, nur Anzeige)
+    this.probeAvg = null;   // Pegel der Probe-Antworten (geglättet, nur Anzeige)
     this.emit("update", this);
   }
 
@@ -41,23 +43,25 @@ export class Tracker extends Emitter {
 
   _onRssi(m) {
     const s = this.getSettings();
-    let raw = null;
-    let n = 0;
-    if (m.nb > 0 && m.rb !== null) {
-      raw = m.rb;
-      n = m.nb;
-    }
-    if (s.countData && m.nd > 0 && m.rd !== null) {
-      raw = raw === null ? m.rd : (raw * n + m.rd * m.nd) / (n + m.nd);
-      n += m.nd;
-    }
+    // Beacons immer; Probe-Antworten (Standard: ja) und Datenframes (Standard: nein) optional
+    const parts = [];
+    if (m.nb > 0 && m.rb !== null && m.rb !== undefined) parts.push([m.rb, m.nb]);
+    if (s.useProbeResp !== false && m.np > 0 && m.rp !== null && m.rp !== undefined) parts.push([m.rp, m.np]);
+    if (s.countData && m.nd > 0 && m.rd !== null && m.rd !== undefined) parts.push([m.rd, m.nd]);
+    const n = parts.reduce((a, [, k]) => a + k, 0);
+    const raw = n ? parts.reduce((a, [v, k]) => a + v * k, 0) / n : null;
+
+    const ema = (old, v) => (v === null || v === undefined ? old : old === null ? v : 0.8 * old + 0.2 * v);
+    this.beaconAvg = ema(this.beaconAvg, m.nb > 0 ? m.rb : null);
+    this.probeAvg = ema(this.probeAvg, m.np > 0 ? m.rp : null);
+
     const now = Date.now();
     this.rate = 0.8 * this.rate + 0.2 * (n * 10);
     this.probeTx = m.tx ?? 0;
     this.probeErr = m.te ?? 0;
     if (raw !== null) {
       this.raw = raw;
-      this.rawMax = Math.max(m.xb ?? -999, m.xd ?? -999);
+      this.rawMax = Math.max(m.xb ?? -999, m.xp ?? -999, m.xd ?? -999);
       this.value = this.kalman.update(raw, n);
       this.lastSample = now;
       if (this.peak === null || this.value > this.peak) this.peak = this.value;

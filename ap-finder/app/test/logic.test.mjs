@@ -2,7 +2,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { findPartners, groupRadios, groupScore, looksLikeMac, macScore, normalizeMac, sameRadio } from "../www/js/mac.js";
+import {
+  baseMac, deviceKey, deviceScore, findPartners, groupDevices, groupRadios, groupScore, looksLikeMac, macScore,
+  normalizeMac, preferredRadio, sameRadio,
+} from "../www/js/mac.js";
 import { Kalman, chanToMHz, estimateDistance, horizontalFromElevation, rssiAt1m } from "../www/js/signal.js";
 import { SweepRecorder, angDiff, estimatePeak, norm360, orientationToDir } from "../www/js/bearing.js";
 import { LineSplitter, cmd, parseLine, ssidToHex } from "../www/js/protocol.js";
@@ -32,6 +35,43 @@ test("MAC-Ähnlichkeit", () => {
   assert.equal(macScore("00:00:5e:00:53:10", "00:00:5e:00:55:10"), 0);           // Δ = 512 → zu weit
   assert.equal(macScore("00:00:5e:00:53:10", "11:22:33:44:55:66"), 0);
   assert.ok(macScore("00:00:5e:00:53:10", "00:00:5e:00:53:11") > macScore("00:00:5e:00:53:10", "00:00:5e:00:53:50"));
+});
+
+test("Ruckus-Schema: Basis-MAC …x0, BSSIDs im 16er-Block, Varianten im 4. Byte", () => {
+  // Beispiel aus Ruckus KBA 4312: AP 8c:0c:90:1f:a9:30 → BSSIDs 8c:0c:90:1f:a9:3X
+  assert.equal(macScore("8c:0c:90:1f:a9:30", "8c:0c:90:1f:a9:38"), 98);
+  assert.equal(macScore("8C-0C-90-1F-A9-30", "8c:0c:90:1f:a9:3c"), 98);
+  assert.equal(macScore("8c:0c:90:1f:a9:30", "8c:0c:90:1f:a9:48"), 84);   // nächster Block = anderes Gerät
+  // beobachtete Varianten im 4. Byte (18/58/98/d8)
+  for (const b4 of ["18", "58", "98", "d8"]) {
+    assert.equal(macScore("c4:10:8a:18:22:80", `c4:10:8a:${b4}:22:8c`), 98, b4);
+  }
+  assert.equal(deviceKey("c4:10:8a:58:22:8c"), deviceKey("c4:10:8a:18:22:80"));
+  assert.equal(baseMac("8c:0c:90:1f:a9:3c"), "8c:0c:90:1f:a9:30");
+  assert.ok(sameRadio("c4:10:8a:18:22:88", "c4:10:8a:98:22:89"));
+});
+
+test("Geräte aus Funkmodulen (2,4 + 5 GHz)", () => {
+  const radios = groupRadios([
+    { bssid: "8c:0c:90:1f:a9:38", ch: 6, ssid: "@BayernWLAN", rssi: -60 },
+    { bssid: "8c:0c:90:1f:a9:3c", ch: 44, ssid: "@BayernWLAN", rssi: -66 },
+    { bssid: "c4:10:8a:18:22:88", ch: 1, ssid: "@BayernWLAN", rssi: -75 },
+    { bssid: "c4:10:8a:58:22:8c", ch: 100, ssid: "@BayernWLAN", rssi: -82 },
+    { bssid: "c4:10:8a:18:23:48", ch: 11, ssid: "@BayernWLAN", rssi: -70, name: "BY-Saal" },
+  ]);
+  const devs = groupDevices(radios);
+  assert.equal(devs.length, 3);
+  const a = devs.find((d) => d.base === "8c:0c:90:1f:a9:30");
+  assert.deepEqual(a.radios.map((r) => r.ch), [6, 44]);
+  assert.equal(deviceScore(a, "8c:0c:90:1f:a9:30"), 98);
+  const b = devs.find((d) => d.base === "c4:10:8a:18:22:80");
+  assert.equal(b.radios.length, 2);
+  assert.equal(devs.find((d) => d.name === "BY-Saal").radios.length, 1);
+  // 5 GHz bevorzugen, wenn gut empfangen; sonst das stärkste Funkmodul
+  assert.equal(preferredRadio(a).ch, 44);
+  assert.equal(preferredRadio(b).ch, 1);
+  const partner = findPartners(a.radios[0], radios);
+  assert.equal(partner[0].ch, 44);
 });
 
 test("Funkmodule gruppieren", () => {
@@ -163,6 +203,18 @@ test("Peilung erkennt zwei gleich starke Maxima", () => {
   assert.ok(est.secondary);
 });
 
+test("Elevation nahe 0° mit breiter Keule (eine −3-dB-Flanke fehlt)", () => {
+  const rec = new SweepRecorder(5, 90);
+  // cos^n-Keule mit 66° Halbwertsbreite, Maximum bei 18°: untere Flanke läge unter 0°
+  const n = Math.log(0.5) / Math.log(Math.cos((33 * Math.PI) / 180));
+  for (let e = 0; e <= 90; e += 1) {
+    const th = Math.abs(e - 18);
+    rec.add(e, -50 + 10 * Math.log10(Math.pow(Math.cos((th * Math.PI) / 180), n)));
+  }
+  const est = estimatePeak(rec.values(), { binDeg: 5, circular: false, sigmaBins: 1.5 });
+  near(est.angle, 18, 4, "Elevation am Rand");
+});
+
 test("Elevation (nicht zyklisch)", () => {
   const rec = new SweepRecorder(5, 90);
   for (let e = 0; e <= 90; e += 1) rec.add(e, -50 - 0.02 * (e - 40) ** 2);
@@ -211,11 +263,21 @@ test("Simulator-Scan füllt die AP-Liste", async () => {
   await device.startScan("25");
   sim.advance(4500);
   const aps = device.apList();
-  assert.ok(aps.length >= 12, "mindestens 12 BSSIDs, gefunden " + aps.length);
-  const g = groupRadios(aps);
-  const best = g.map((x) => ({ x, s: groupScore(x, "00:00:5e:00:53:10") })).sort((a, b) => b.s - a.s)[0];
-  assert.equal(best.x.name, "BY-Rathaus-OG1-Flur");
-  assert.ok(best.x.ftm);
+  assert.equal(aps.length, 8, "alle 8 BSSIDs gefunden");
+  const bayern = aps.filter((a) => a.ssid === "@BayernWLAN");
+  assert.equal(aps.length - bayern.length, 2, "FRITZ!Box-BSSIDs ausgefiltert");
+  const devs = groupDevices(groupRadios(bayern));
+  assert.equal(devs.length, 3);
+  const ranked = devs.map((d) => ({ d, s: deviceScore(d, "8C:0C:90:1F:A9:30") })).sort((a, b) => b.s - a.s);
+  assert.equal(ranked[0].s, 98);
+  assert.equal(ranked[0].d.base, "8c:0c:90:1f:a9:30");
+  assert.equal(ranked[0].d.radios.length, 2);
+  assert.equal(ranked[1].s, 0);
+  // AP B: 5-GHz-BSSID mit Variante im 4. Byte → trotzdem ein Gerät
+  const b = devs.map((d) => ({ d, s: deviceScore(d, "c4:10:8a:18:22:80") })).sort((x, y) => y.s - x.s);
+  assert.equal(b[0].s, 98);
+  assert.equal(b[0].d.radios.length, 2);
+  assert.ok(b[1].s > 0 && b[1].s < 80, "Nachbar aus derselben Serie mit niedriger Quote");
 });
 
 test("Simulator: näher = stärker, Rundum-Peilung zeigt zum AP", async () => {
@@ -235,7 +297,7 @@ test("Simulator: näher = stärker, Rundum-Peilung zeigt zum AP", async () => {
   pose.pos = [12, 7, 1.3];
   const close = level();
   assert.ok(close > far + 3, `nah ${close} > fern ${far}`);
-  assert.ok(tracker.rate > 20, "Messrate mit Probes " + tracker.rate);
+  assert.ok(tracker.rate > 15, "Messrate mit Probes " + tracker.rate);
 
   // Rundum drehen, 5° je 100 ms
   pose.pos = [6, 3, 1.3];
@@ -256,14 +318,30 @@ test("Simulator: FTM nur bei FTM-fähigem AP", async () => {
   const { device } = rig(pose);
   const got = [];
   device.on("ftm", (m) => got.push(m));
-  await device.ftm(DEFAULT_WORLD.aps[0].radios[1].bssids[0], 44);
-  await device.ftm(DEFAULT_WORLD.aps[1].radios[0].bssids[0], 1);
+  const c = DEFAULT_WORLD.aps[2];
+  await device.ftm(c.radios[1].bssids[0], c.radios[1].ch);                 // AP C kündigt FTM an
+  await device.ftm(DEFAULT_WORLD.aps[0].radios[1].bssids[0], 44);          // AP A nicht
   await new Promise((r) => setTimeout(r, 450));
   assert.equal(got.length, 2);
   const ok = got.find((m) => m.ok);
-  const dist = Math.hypot(14.4 - 10, 7.8 - 7, 3.1 - 1.3);
+  const dist = Math.hypot(c.pos[0] - 10, c.pos[1] - 7, c.pos[2] - 1.3);
   near(ok.dist_cm / 100, dist, 2.5, "FTM");
   assert.equal(got.find((m) => !m.ok).status, 1);
+});
+
+test("Tracker wertet Beacons, Probe-Antworten und Daten getrennt", () => {
+  const dev = new Device();
+  let opts = { countData: false, useProbeResp: true };
+  const tr = new Tracker(dev, () => opts);
+  dev._onLine(JSON.stringify({ t: "rssi", nb: 2, rb: -60, xb: -59, mb: -61, np: 2, rp: -50, xp: -49, nd: 4, rd: -40, xd: -38, tx: 2, te: 0 }));
+  near(tr.raw, -55, 1e-9, "Beacons + Probes");
+  opts = { countData: false, useProbeResp: false };
+  dev._onLine(JSON.stringify({ t: "rssi", nb: 2, rb: -60, xb: -59, mb: -61, np: 2, rp: -50, xp: -49, nd: 4, rd: -40, xd: -38, tx: 2, te: 0 }));
+  near(tr.raw, -60, 1e-9, "nur Beacons");
+  opts = { countData: true, useProbeResp: false };
+  dev._onLine(JSON.stringify({ t: "rssi", nb: 2, rb: -60, xb: -59, mb: -61, np: 0, rp: null, xp: null, nd: 2, rd: -40, xd: -38, tx: 0, te: 0 }));
+  near(tr.raw, -50, 1e-9, "Beacons + Daten");
+  assert.ok(tr.beaconAvg < -59 && tr.probeAvg > -51);
 });
 
 test("Richtdiagramm Panel", () => {

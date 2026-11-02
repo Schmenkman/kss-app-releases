@@ -30,15 +30,19 @@ try {
   // Verbinden mit Simulator, Scan läuft automatisch
   await page.click("#btnConnect");
   await page.click("#connSim");
-  await page.waitForFunction(() => document.querySelectorAll("#devList [data-key]").length >= 6, null, { timeout: 15000 });
+  // Geräte (je AP eine Karte mit 2,4- und 5-GHz-Funkmodul); FRITZ!Box wird per SSID-Filter ausgeblendet
+  await page.waitForFunction(() => document.querySelectorAll("#devList [data-dev] [data-key]").length >= 6, null, { timeout: 15000 });
+  assert.equal(await page.locator("#devList [data-dev]").count(), 3);
+  assert.match(await page.textContent("#devInfo"), /ausgeblendet/);
   await page.screenshot({ path: outDir + "1-geraete.png", fullPage: true });
 
-  // MAC vom Typenschild → richtiger AP oben
-  await page.fill("#devQuery", "00-00-5E-00-53-10");
+  // MAC vom Typenschild (Ruckus-Basis-MAC) → richtiger AP oben, beide Funkmodule
+  await page.fill("#devQuery", "8C-0C-90-1F-A9-30");
   await page.waitForTimeout(300);
-  const first = await page.textContent("#devList [data-key] .t1");
-  assert.equal(first.trim(), "BY-Rathaus-OG1-Flur");
-  assert.match(await page.textContent("#devList [data-key] .score"), /Treffer 8\d %/);
+  const first = await page.textContent("#devList [data-dev] .t1");
+  assert.equal(first.trim(), "AP 8c:0c:90:1f:a9:30");
+  assert.match(await page.textContent("#devList [data-dev] .score"), /Treffer 98 %/);
+  assert.equal(await page.locator("#devList [data-dev]").first().locator("[data-key]").count(), 2);
   await page.screenshot({ path: outDir + "2-mac-suche.png", fullPage: true });
 
   // Ziel wählen → Suchen
@@ -54,9 +58,9 @@ try {
   await page.click("#srMark");
   assert.equal(await page.locator("#srMarks li.best").count(), 1);
 
-  // FTM (AP kündigt FTM an)
+  // FTM: Ruckus-AP A kündigt kein FTM an → sauber „nicht möglich“
   await page.click("#srFtm");
-  await page.waitForFunction(() => /m$/.test(document.querySelector("#srDistF")?.textContent || ""), null, { timeout: 5000 });
+  await page.waitForFunction(() => /nicht möglich/.test(document.querySelector("#srDistF")?.textContent || ""), null, { timeout: 5000 });
   await page.screenshot({ path: outDir + "3-suchen.png", fullPage: true });
 
   // Peilen: Rundum (simulierte Drehung)
