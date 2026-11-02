@@ -1,0 +1,10 @@
+{
+	"appId": "de.kss.apfinder",
+	"appName": "AP-Finder",
+	"webDir": "www",
+	"plugins": {
+		"CapacitorHttp": {
+			"enabled": false
+		}
+	}
+}

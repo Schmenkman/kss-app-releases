@@ -1,0 +1,273 @@
+// Unit-Tests der App-Logik (ohne Browser):  npm test
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import { findPartners, groupRadios, groupScore, looksLikeMac, macScore, normalizeMac, sameRadio } from "../www/js/mac.js";
+import { Kalman, chanToMHz, estimateDistance, horizontalFromElevation, rssiAt1m } from "../www/js/signal.js";
+import { SweepRecorder, angDiff, estimatePeak, norm360, orientationToDir } from "../www/js/bearing.js";
+import { LineSplitter, cmd, parseLine, ssidToHex } from "../www/js/protocol.js";
+import { DEFAULT_WORLD, Simulator, panelGainDb } from "../www/js/sim.js";
+import { Device } from "../www/js/device.js";
+import { Tracker } from "../www/js/tracker.js";
+
+const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg ?? ""} ${a} ≉ ${b} (±${tol})`);
+
+/* ---------------- MAC ---------------- */
+test("MAC normalisieren", () => {
+  assert.equal(normalizeMac("AA-BB-CC-DD-EE-FF"), "aa:bb:cc:dd:ee:ff");
+  assert.equal(normalizeMac("aabb.ccdd.eeff"), "aa:bb:cc:dd:ee:ff");
+  assert.equal(normalizeMac(" AABBCCDDEEFF "), "aa:bb:cc:dd:ee:ff");
+  assert.equal(normalizeMac("aa:bb:cc:dd:ee"), null);
+  assert.equal(normalizeMac("zz:bb:cc:dd:ee:ff"), null);
+  assert.ok(looksLikeMac("5e:00:53"));
+  assert.ok(!looksLikeMac("eduroam"));
+  assert.ok(!looksLikeMac("ab"));
+});
+
+test("MAC-Ähnlichkeit", () => {
+  assert.equal(macScore("00:00:5e:00:53:10", "00:00:5e:00:53:10"), 100);
+  assert.equal(macScore("a8:b1:c2:44:55:60", "aa:b1:c2:44:55:60"), 90);          // LAA-Variante
+  assert.equal(macScore("00:00:5e:00:53:10", "00:00:5e:00:53:20"), 84);          // fortlaufend, Δ = 16
+  assert.equal(macScore("a8:b1:c2:44:55:60", "aa:b1:c2:44:55:61"), 80);          // LAA + Δ = 1
+  assert.equal(macScore("00:00:5e:00:53:10", "00:00:5e:00:55:10"), 0);           // Δ = 512 → zu weit
+  assert.equal(macScore("00:00:5e:00:53:10", "11:22:33:44:55:66"), 0);
+  assert.ok(macScore("00:00:5e:00:53:10", "00:00:5e:00:53:11") > macScore("00:00:5e:00:53:10", "00:00:5e:00:53:50"));
+});
+
+test("Funkmodule gruppieren", () => {
+  const aps = [
+    { bssid: "00:00:5e:00:53:20", ch: 6, ssid: "@BayernWLAN", rssi: -60 },
+    { bssid: "00:00:5e:00:53:21", ch: 6, ssid: "eduroam", rssi: -58 },
+    { bssid: "00:00:5e:00:53:30", ch: 44, ssid: "@BayernWLAN", rssi: -65 },
+    { bssid: "aa:b1:c2:44:55:60", ch: 1, ssid: "@BayernWLAN", rssi: -70 },
+    { bssid: "ae:b1:c2:44:55:60", ch: 1, ssid: "Intern", rssi: -71 },
+    { bssid: "3c:d9:2b:01:02:01", ch: 6, ssid: "FRITZ!Box", rssi: -80 },
+  ];
+  const g = groupRadios(aps);
+  assert.equal(g.length, 4);
+  const a6 = g.find((x) => x.ch === 6 && x.bssids.includes("00:00:5e:00:53:20"));
+  assert.deepEqual(a6.bssids, ["00:00:5e:00:53:21", "00:00:5e:00:53:20"]); // stärkste zuerst
+  assert.equal(a6.rssi, -58);
+  const b1 = g.find((x) => x.ch === 1);
+  assert.equal(b1.bssids.length, 2);
+  assert.ok(sameRadio("aa:b1:c2:44:55:60", "ae:b1:c2:44:55:60"));
+  assert.equal(groupScore(a6, "00:00:5e:00:53:10"), 84);
+  const partners = findPartners(a6, g);
+  assert.equal(partners.length, 1);
+  assert.equal(partners[0].ch, 44);
+});
+
+test("Gruppierung über AP-Namen", () => {
+  const g = groupRadios([
+    { bssid: "00:11:22:33:44:01", ch: 36, name: "AP-1", rssi: -50 },
+    { bssid: "02:99:88:77:66:55", ch: 36, name: "AP-1", rssi: -52 },
+    { bssid: "00:11:22:33:45:99", ch: 36, name: "AP-2", rssi: -60 },
+  ]);
+  assert.equal(g.length, 2);
+  assert.equal(g[0].name, "AP-1");
+  assert.equal(g[0].bssids.length, 2);
+});
+
+/* ---------------- Signal ---------------- */
+test("Kalman glättet Rauschen", () => {
+  const k = new Kalman(0.8, 9);
+  let rnd = 1;
+  const noise = () => { rnd = (rnd * 16807) % 2147483647; return (rnd / 2147483647 - 0.5) * 12; };
+  let last;
+  for (let i = 0; i < 200; i++) last = k.update(-60 + noise(), 3);
+  near(last, -60, 2.5, "Kalman");
+  assert.equal(k.update(null), last);
+});
+
+test("Entfernung aus Pegel", () => {
+  assert.equal(chanToMHz(6), 2437);
+  assert.equal(chanToMHz(36), 5180);
+  const r1 = rssiAt1m(6, 17);
+  near(r1, 17 - 40.2, 0.1);
+  // 20 dB unter dem 1-m-Wert: Freiraum (n=2) → 10 m, n=3 → 4,6 m
+  const e = estimateDistance({ rssi: r1 - 20, ch: 6, txp: 17, nLo: 2, nHi: 3 });
+  near(e.max, 10, 0.01);
+  near(e.min, 4.64, 0.01);
+  assert.ok(e.typ > e.min && e.typ < e.max);
+  // Dämpfungsglied und Antennengewinn werden herausgerechnet
+  const a = estimateDistance({ rssi: r1 - 40, ch: 6, txp: 17, attenDb: 20, antGain: 0 });
+  near(a.max, 10, 0.01);
+  const b = estimateDistance({ rssi: r1 - 12, ch: 6, txp: 17, antGain: 8 });
+  near(b.max, 10, 0.01);
+  assert.equal(estimateDistance({ rssi: r1 + 3, ch: 6, txp: 17 }).max, 1);
+  assert.equal(estimateDistance({ rssi: null, ch: 6 }), null);
+});
+
+test("Entfernung aus Elevation", () => {
+  near(horizontalFromElevation(45, 3, 1.3), 1.7, 1e-9);
+  near(horizontalFromElevation(30, 3, 1.3), 1.7 / Math.tan(Math.PI / 6), 1e-9);
+  assert.equal(horizontalFromElevation(2, 3, 1.3), null);
+  assert.equal(horizontalFromElevation(45, 1, 1.3), null);
+});
+
+/* ---------------- Peilung ---------------- */
+test("Lage → Antennenrichtung", () => {
+  // flach, Oberkante nach Norden
+  let d = orientationToDir(0, 0, 0, "top");
+  near(d.az, 0, 1e-6); near(d.el, 0, 1e-6);
+  // flach, um 90° gegen den Uhrzeigersinn gedreht → Oberkante zeigt nach Westen
+  d = orientationToDir(90, 0, 0, "top");
+  near(d.az, 270, 1e-6);
+  // aufrecht, Rückseite nach Norden
+  d = orientationToDir(0, 90, 0, "back");
+  near(norm360(d.az + 0.0), 0, 1e-6); near(d.el, 0, 1e-6);
+  // nach hinten gekippt (beta 120°): Rückseite zeigt 30° nach oben
+  d = orientationToDir(0, 120, 0, "back");
+  near(d.el, 30, 1e-6);
+  // Oberkante senkrecht nach oben
+  d = orientationToDir(0, 90, 0, "top");
+  near(d.el, 90, 1e-6);
+  near(angDiff(10, 350), 20, 1e-9);
+  near(angDiff(350, 10), -20, 1e-9);
+});
+
+function synthPattern(trueDeg, { noise = 1.5, hpbw = 60, seed = 7 } = {}) {
+  let s = seed;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  const rec = new SweepRecorder(5, 360);
+  for (let a = 0; a < 360; a += 2) {
+    const th = Math.abs(angDiff(a, trueDeg));
+    const n = Math.log(0.5) / Math.log(Math.cos((hpbw / 2) * Math.PI / 180));
+    const g = th >= 90 ? -20 : Math.max(10 * Math.log10(Math.pow(Math.cos(th * Math.PI / 180), n) + 1e-9), -20);
+    rec.add(a, -55 + g + (rnd() - 0.5) * 2 * noise);
+  }
+  return rec;
+}
+
+test("Peilung findet die Richtung", () => {
+  for (const truth of [0, 37, 123, 250, 355]) {
+    const rec = synthPattern(truth);
+    assert.ok(rec.coverage() > 0.99);
+    const est = estimatePeak(rec.values(), { binDeg: 5, circular: true, sigmaBins: 2 });
+    near(angDiff(est.angle, truth), 0, 6, `Peilung ${truth}°:`);
+    assert.ok(est.contrast > 8);
+    assert.equal(est.quality, "gut");
+    assert.equal(est.secondary, null);
+  }
+});
+
+test("Peilung erkennt zwei gleich starke Maxima", () => {
+  const rec = new SweepRecorder(5, 360);
+  for (let a = 0; a < 360; a += 5) {
+    const g1 = Math.max(-20, -0.01 * angDiff(a, 60) ** 2);
+    const g2 = Math.max(-20, -0.01 * angDiff(a, 240) ** 2);
+    rec.add(a, -55 + Math.max(g1, g2));
+  }
+  const est = estimatePeak(rec.values(), { binDeg: 5 });
+  assert.equal(est.quality, "zweideutig");
+  assert.ok(est.secondary);
+});
+
+test("Elevation (nicht zyklisch)", () => {
+  const rec = new SweepRecorder(5, 90);
+  for (let e = 0; e <= 90; e += 1) rec.add(e, -50 - 0.02 * (e - 40) ** 2);
+  const est = estimatePeak(rec.values(), { binDeg: 5, circular: false, sigmaBins: 1.5 });
+  near(est.angle, 40, 4, "Elevation");
+});
+
+/* ---------------- Protokoll ---------------- */
+test("Zeilen zerlegen und JSON prüfen", () => {
+  const lines = [];
+  const sp = new LineSplitter((l) => lines.push(l));
+  sp.push('ESP-ROM:esp32c5\r\n{"t":"hel');
+  sp.push('lo","fw":"0.1.0"}\n{"t":"rssi","nb":3}\n{kaputt\n');
+  assert.equal(lines.length, 4);
+  assert.equal(parseLine(lines[0]), null);
+  assert.equal(parseLine(lines[1]).fw, "0.1.0");
+  assert.equal(parseLine(lines[2]).nb, 3);
+  assert.equal(parseLine(lines[3]), null);
+  assert.equal(parseLine('{"x":1}'), null);
+});
+
+test("Befehle", () => {
+  assert.equal(cmd.scan(110, "25"), "SCAN 110 25");
+  assert.equal(cmd.track({ ch: 36, probeHz: 10, bssids: ["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66"] }),
+    "TRACK 36 10 aa:bb:cc:dd:ee:ff,11:22:33:44:55:66");
+  assert.equal(cmd.track({ ch: 6, probeHz: 99, bssids: ["aa:bb:cc:dd:ee:ff"], ssid: "@BayernWLAN" }),
+    "TRACK 6 50 aa:bb:cc:dd:ee:ff 4042617965726e574c414e");
+  assert.equal(cmd.ftm(44, "aa:bb:cc:dd:ee:ff", 32), "FTM 44 aa:bb:cc:dd:ee:ff 32");
+  assert.equal(ssidToHex("Ä"), "c384");
+});
+
+/* ---------------- Simulator + Device + Tracker ---------------- */
+function rig(pose) {
+  const sim = new Simulator({ world: DEFAULT_WORLD, pose: () => pose, antenna: () => ({ type: "dir", attenDb: 0 }), seed: 3 });
+  const device = new Device();
+  device.transport = { send: async (l) => sim.command(l) };
+  device.state = "connected";
+  sim.onLine = (l) => device.splitter.push(l + "\n");
+  const tracker = new Tracker(device, () => ({ countData: false }));
+  return { sim, device, tracker };
+}
+
+test("Simulator-Scan füllt die AP-Liste", async () => {
+  const pose = { pos: [10, 7, 1.3], az: 80, el: 0 };
+  const { sim, device } = rig(pose);
+  await device.startScan("25");
+  sim.advance(4500);
+  const aps = device.apList();
+  assert.ok(aps.length >= 12, "mindestens 12 BSSIDs, gefunden " + aps.length);
+  const g = groupRadios(aps);
+  const best = g.map((x) => ({ x, s: groupScore(x, "00:00:5e:00:53:10") })).sort((a, b) => b.s - a.s)[0];
+  assert.equal(best.x.name, "BY-Rathaus-OG1-Flur");
+  assert.ok(best.x.ftm);
+});
+
+test("Simulator: näher = stärker, Rundum-Peilung zeigt zum AP", async () => {
+  const ap = DEFAULT_WORLD.aps[0];
+  const pose = { pos: [4, 4, 1.3], az: 0, el: 0 };
+  const { sim, device, tracker } = rig(pose);
+  await device.track({ ch: 6, bssids: ap.radios[0].bssids }, 10);
+
+  const level = () => {
+    // Antenne auf den AP richten und 2 s messen
+    pose.az = norm360(Math.atan2(ap.pos[0] - pose.pos[0], ap.pos[1] - pose.pos[1]) * 180 / Math.PI);
+    tracker.reset();
+    sim.advance(2000);
+    return tracker.value;
+  };
+  const far = level();
+  pose.pos = [12, 7, 1.3];
+  const close = level();
+  assert.ok(close > far + 3, `nah ${close} > fern ${far}`);
+  assert.ok(tracker.rate > 20, "Messrate mit Probes " + tracker.rate);
+
+  // Rundum drehen, 5° je 100 ms
+  pose.pos = [6, 3, 1.3];
+  const truth = norm360(Math.atan2(ap.pos[0] - 6, ap.pos[1] - 3) * 180 / Math.PI);
+  const rec = new SweepRecorder(5, 360);
+  tracker.reset();
+  for (let a = 0; a < 365; a += 5) {
+    pose.az = a;
+    sim.advance(100);
+    if (tracker.raw !== null) rec.add(a, tracker.raw);
+  }
+  const est = estimatePeak(rec.values(), { binDeg: 5 });
+  near(angDiff(est.angle, truth), 0, 15, "Peilung im Simulator:");
+});
+
+test("Simulator: FTM nur bei FTM-fähigem AP", async () => {
+  const pose = { pos: [10, 7, 1.3], az: 0, el: 0 };
+  const { device } = rig(pose);
+  const got = [];
+  device.on("ftm", (m) => got.push(m));
+  await device.ftm(DEFAULT_WORLD.aps[0].radios[1].bssids[0], 44);
+  await device.ftm(DEFAULT_WORLD.aps[1].radios[0].bssids[0], 1);
+  await new Promise((r) => setTimeout(r, 450));
+  assert.equal(got.length, 2);
+  const ok = got.find((m) => m.ok);
+  const dist = Math.hypot(14.4 - 10, 7.8 - 7, 3.1 - 1.3);
+  near(ok.dist_cm / 100, dist, 2.5, "FTM");
+  assert.equal(got.find((m) => !m.ok).status, 1);
+});
+
+test("Richtdiagramm Panel", () => {
+  near(panelGainDb(0, 5), 10, 1e-9);
+  near(panelGainDb(25, 5), 7, 0.05); // halbe Halbwertsbreite → −3 dB
+  assert.equal(panelGainDb(120, 2), -12);
+});

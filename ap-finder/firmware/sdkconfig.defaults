@@ -1,0 +1,19 @@
+# AP-Finder – Standardkonfiguration für ESP32-C5
+CONFIG_IDF_TARGET="esp32c5"
+
+# Flash/Partitionen: großer App-Bereich (WLAN-Treiber + FTM)
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# Konsole/Logs auf UART0 – der native USB-Port gehört dem JSON-Protokoll
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
+
+# WLAN: FTM (802.11mc) als Initiator, Laufzeit-Entfernungsmessung
+CONFIG_ESP_WIFI_FTM_ENABLE=y
+CONFIG_ESP_WIFI_FTM_INITIATOR_SUPPORT=y
+
+# Zeitbasis 1 ms für Kanalwechsel/Probe-Takt
+CONFIG_FREERTOS_HZ=1000

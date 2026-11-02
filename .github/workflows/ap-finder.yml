@@ -1,0 +1,76 @@
+# AP-Finder: Firmware (ESP32-C5) und Android-App bauen und testen.
+name: AP-Finder Build
+
+on:
+  push:
+    branches: ['main', 'claude/accesspoint-localization-esp32-xn55ae']
+    paths: ['ap-finder/**', '.github/workflows/ap-finder.yml']
+  pull_request:
+    paths: ['ap-finder/**', '.github/workflows/ap-finder.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    name: Firmware (ESP-IDF ${{ matrix.idf }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        idf: ['v6.0.3', 'v5.5.6']
+    container: espressif/idf:${{ matrix.idf }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host-Unit-Tests (Parser/Protokoll)
+        run: make -C ap-finder/firmware/test CC=gcc CFLAGS="-std=c11 -O1 -g -Wall -Wextra -Werror"
+      - name: Build
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd ap-finder/firmware
+          idf.py set-target esp32c5
+          idf.py build
+          cd build
+          python -m esptool --chip esp32c5 merge_bin -o "ap-finder-esp32c5-${{ matrix.idf }}.bin" @flash_args
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-esp32c5-${{ matrix.idf }}
+          path: |
+            ap-finder/firmware/build/ap-finder-esp32c5-*.bin
+            ap-finder/firmware/build/ap_finder.bin
+            ap-finder/firmware/build/bootloader/bootloader.bin
+            ap-finder/firmware/build/partition_table/partition-table.bin
+            ap-finder/firmware/build/flash_args
+
+  app:
+    name: App (Tests + Android-APK)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ap-finder/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ap-finder/app/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm test
+      - name: Capacitor sync
+        run: npx cap sync android
+      - name: APK bauen (Debug-Signatur)
+        working-directory: ap-finder/app/android
+        run: ./gradlew --no-daemon assembleDebug
+      - name: APK umbenennen
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk ap-finder-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ap-finder-apk
+          path: ap-finder/app/ap-finder-debug.apk

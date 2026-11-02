@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0f1720" />
+<title>AP-Finder</title>
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+
+  <header class="hdr">
+    <div class="hdr-in">
+      <div class="logo" aria-hidden="true">📡</div>
+      <div class="hdr-txt">
+        <div class="h-title">AP-Finder</div>
+        <div class="h-sub" id="hdrSub">nicht verbunden</div>
+      </div>
+      <span class="dot" id="hdrDot" aria-hidden="true"></span>
+      <button id="btnConnect" class="btn btn-sm" type="button">Verbinden</button>
+    </div>
+    <div class="target-bar" id="targetBar" hidden></div>
+  </header>
+
+  <main>
+    <section data-view="devices" hidden></section>
+    <section data-view="search" hidden></section>
+    <section data-view="bearing" hidden></section>
+    <section data-view="settings" hidden></section>
+  </main>
+
+  <nav class="tabbar">
+    <a href="#/devices" data-tab="devices"><span class="ti">📋</span>Geräte</a>
+    <a href="#/search" data-tab="search"><span class="ti">🔊</span>Suchen</a>
+    <a href="#/bearing" data-tab="bearing"><span class="ti">🧭</span>Peilen</a>
+    <a href="#/settings" data-tab="settings"><span class="ti">⚙️</span>Einstell.</a>
+  </nav>
+
+  <!-- Verbindung wählen -->
+  <div id="connectModal" class="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-title">Messkopf verbinden</div>
+      <p class="modal-sub">ESP32-C5 per USB-C am Handy anstecken (USB-OTG).</p>
+      <div class="stack">
+        <button id="connUsb" class="btn btn-primary" type="button">USB (Android-App)</button>
+        <button id="connSerial" class="btn" type="button">Web Serial (Chrome am PC)</button>
+        <button id="connSim" class="btn" type="button">Simulator (ohne Hardware)</button>
+        <button id="connCancel" class="btn btn-ghost" type="button">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Update -->
+  <div id="updModal" class="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-title">Update verfügbar</div>
+      <p class="modal-sub" id="updVer"></p>
+      <div id="updNotes" class="small"></div>
+      <div class="row gap">
+        <button id="updInstall" class="btn btn-primary" type="button">Herunterladen</button>
+        <button id="updLater" class="btn btn-ghost" type="button">Später</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
