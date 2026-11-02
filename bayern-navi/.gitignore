@@ -1,0 +1,17 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+captures/
+
+# Signier-Material gehoert NIE ins (oeffentliche) Repo. Wer es hat, kann Updates fuer die
+# App signieren. Erzeugen mit: python tools/make_keystore.py  -> dann als GitHub-Secret.
+signing/
+*.p12
+*.jks
+*.keystore
+*.base64
+secrets.env

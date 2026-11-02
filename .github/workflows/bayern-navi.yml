@@ -1,0 +1,119 @@
+name: Bayern Navi – APK bauen
+
+# Baut bei jedem Push, der bayern-navi/ betrifft, eine signierte APK und stellt sie als
+# GitHub-Release "navi-v<version>" bereit (gleiches Muster wie DokuBW: Download-Link im Release).
+# Die App prueft auf Updates ueber bayern-navi/version.json im main-Branch.
+on:
+  push:
+    branches: [ main, 'claude/bayern-navigation-app-*' ]
+    paths: [ 'bayern-navi/**', '.github/workflows/bayern-navi.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bayern-navi-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: bayern-navi
+    steps:
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      - name: Java 17 einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Gradle einrichten
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Tests der Navigationslogik
+        # Schnell und ohne Geraet: Routen-Parser, Stau-/Blitzer-Zuordnung, Ansagetexte, Tankstellen-Sortierung …
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :app:testReleaseUnitTest
+
+      - name: Signier-Schluessel bereitstellen
+        # Eigener Schluessel aus den Secrets (einmalig: tools/make_keystore.py + tools/setup_github.ps1).
+        # Ohne Secrets: temporaerer Test-Schluessel – die APK laeuft, aber Updates brauchen dann
+        # eine Neuinstallation. Der Schluessel liegt NIE im Repo.
+        env:
+          KS_B64: ${{ secrets.NAVI_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.NAVI_STORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.NAVI_KEY_ALIAS }}
+          KS_KEYPW: ${{ secrets.NAVI_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PW" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/navi.p12"
+            {
+              echo "NAVI_KEYSTORE=$RUNNER_TEMP/navi.p12"
+              echo "NAVI_STORE_PASSWORD=$KS_PW"
+              echo "NAVI_KEY_ALIAS=${KS_ALIAS:-navi}"
+              echo "NAVI_KEY_PASSWORD=${KS_KEYPW:-$KS_PW}"
+              echo "NAVI_TEMP_KEY=0"
+            } >> "$GITHUB_ENV"
+            echo "Eigener Schluessel aus den Secrets."
+          else
+            PW=$(openssl rand -hex 16)
+            echo "::add-mask::$PW"
+            keytool -genkeypair -keystore "$RUNNER_TEMP/navi-temp.p12" -storetype PKCS12 -alias navi \
+              -keyalg RSA -keysize 2048 -validity 10950 -storepass "$PW" -keypass "$PW" \
+              -dname "CN=Bayern Navi Test, O=privat, C=DE" >/dev/null 2>&1
+            {
+              echo "NAVI_KEYSTORE=$RUNNER_TEMP/navi-temp.p12"
+              echo "NAVI_STORE_PASSWORD=$PW"
+              echo "NAVI_KEY_ALIAS=navi"
+              echo "NAVI_KEY_PASSWORD=$PW"
+              echo "NAVI_TEMP_KEY=1"
+            } >> "$GITHUB_ENV"
+            echo "::warning::Kein Signier-Secret – Test-Schluessel. Siehe bayern-navi/README.md (Einmalige Einrichtung)."
+          fi
+
+      - name: Release-APK bauen
+        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
+
+      - name: APK als Artefakt bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: bayern-navi-apk
+          path: bayern-navi/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Als GitHub-Release veroeffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          VER=$(python3 -c "import json;print(json.load(open('version.json'))['version'])")
+          TAG="navi-v$VER"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/bayern-navi.apk"
+          python3 - > "$RUNNER_TEMP/notes.md" <<'PY'
+          import json
+          v = json.load(open('version.json'))
+          print("\n".join("- " + n for n in v.get("notes", [])))
+          print()
+          print("Installation: bayern-navi.apk auf dem Handy herunterladen und öffnen. Android Auto: siehe bayern-navi/README.md.")
+          PY
+          if [ "$NAVI_TEMP_KEY" = "1" ]; then
+            echo "" >> "$RUNNER_TEMP/notes.md"
+            echo "⚠️ Testbuild mit temporärem Signier-Schlüssel: Vor dem Installieren einer neueren Testversion die alte deinstallieren. Mit eigenem Schlüssel (README → Einmalige Einrichtung) entfällt das." >> "$RUNNER_TEMP/notes.md"
+          fi
+          echo "" >> "$RUNNER_TEMP/notes.md"
+          echo "Gebaut aus ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}" >> "$RUNNER_TEMP/notes.md"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$RUNNER_TEMP/bayern-navi.apk" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$RUNNER_TEMP/bayern-navi.apk" --repo "$GITHUB_REPOSITORY" \
+              --title "Bayern Navi $VER" --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA" --latest=false
+          fi
+          echo "Download: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/bayern-navi.apk" >> "$GITHUB_STEP_SUMMARY"

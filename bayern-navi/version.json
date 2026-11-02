@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0",
+  "notes": [
+    "Erste Version: Navigation für Bayern mit Sprachansagen und Android Auto",
+    "Blitzer, Baustellen, Stau und Sperrungen nur auf der eigenen Route – mit Warnung",
+    "Stau fließt in die Routenwahl ein, Alternativrouten und Option 'Stau umfahren'",
+    "Eigene Abschnitte meiden (z. B. ein Stück Autobahn), Luftbild Bayern, Tempolimit + aktuelle Geschwindigkeit",
+    "Tankstellen mit Preisen (Diesel/Super) und UTA-Akzeptanz, Zwischenstopp ohne neue Zieleingabe"
+  ],
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/navi-v0.1.0/bayern-navi.apk"
+}

@@ -1,0 +1,6 @@
+# Im Repo immer LF (die CI-Skripte laufen als bash).
+* text=auto eol=lf
+*.jar binary
+*.p12 binary
+*.png binary
+*.apk binary
