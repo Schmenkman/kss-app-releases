@@ -43,6 +43,11 @@ class NaviApp : Application() {
         services = Services(this, prefs)
         voice = Voice(this)
         engine = NavEngine(this, prefs, services, voice)
+        engine.onRouteActivated = { r ->
+            de.sascha.bayernnavi.ui.OfflineRoute.prefetch(
+                this, r, if (engine.isNight()) de.sascha.bayernnavi.ui.MapController.STYLE_NIGHT else de.sascha.bayernnavi.ui.MapController.STYLE_DAY
+            )
+        }
     }
 
     companion object {

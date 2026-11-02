@@ -25,6 +25,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URLEncoder
@@ -156,10 +158,14 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
     // ---------------------------------------------------------------------------------------
 
     @Volatile private var cameraCache: List<Hazard>? = null
+    private val cameraLock = Mutex()
 
     fun camerasCached(): List<Hazard> = cameraCache ?: emptyList()
 
-    suspend fun cameras(forceRefresh: Boolean = false): List<Hazard> = withContext(Dispatchers.IO) {
+    /** Mehrere gleichzeitige Aufrufer warten auf denselben Download (Mutex). */
+    suspend fun cameras(forceRefresh: Boolean = false): List<Hazard> = cameraLock.withLock { loadCameras(forceRefresh) }
+
+    private suspend fun loadCameras(forceRefresh: Boolean): List<Hazard> = withContext(Dispatchers.IO) {
         val file = File(ctx.filesDir, "cameras_by.json")
         val fresh = file.exists() && System.currentTimeMillis() - file.lastModified() < 7 * DAY
         if (!forceRefresh) {

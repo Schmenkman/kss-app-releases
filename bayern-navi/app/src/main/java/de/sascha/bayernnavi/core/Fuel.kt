@@ -15,11 +15,11 @@ import java.util.Locale
  * Die Markenliste ist in den Einstellungen aenderbar.
  */
 object Uta {
+    /** Nur Marken, fuer die UTA-Akzeptanz in Deutschland belegt bzw. sehr wahrscheinlich ist. */
     val DEFAULT_BRANDS: List<String> = listOf(
         "Aral", "BP", "Shell", "Esso", "TotalEnergies", "Total", "JET", "Agip", "Eni", "Avia", "OMV",
         "Orlen", "Star", "HEM", "Tamoil", "Westfalen", "Q1", "Team", "Sprint", "RAN", "Calpam",
-        "Classic", "Hoyer", "Turmöl", "bft", "Raiffeisen", "OIL!", "Score", "Nordoel", "Gulf",
-        "BayWa", "Allguth", "Jet Tankstelle", "AVIA Xpress", "Tankpool24", "Pinoil", "Markant",
+        "Classic", "Hoyer", "Turmöl", "bft", "Raiffeisen", "OIL!", "Score", "Gulf", "BayWa",
     )
 
     fun normalize(s: String): String = s.lowercase(Locale.GERMANY)

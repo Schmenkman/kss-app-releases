@@ -42,6 +42,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -151,7 +152,12 @@ class NavEngine(
         private set
 
     private var tracker: RouteTracker? = null
-    private val spokenStages = HashMap<Int, MutableSet<AnnouncePlan.Stage>>()
+    /** Schon gesprochene Ansagestufen je Manoever – Schluessel ist der Ort, nicht der Index,
+     *  damit eine aufgefrischte/neu berechnete Route dieselbe Kreuzung nicht nochmal ansagt. */
+    private val spokenStages = HashMap<String, MutableSet<AnnouncePlan.Stage>>()
+
+    private fun maneuverKey(m: de.sascha.bayernnavi.core.Maneuver): String =
+        "${m.kind}@${(m.point.lat * 20000).roundToInt()},${(m.point.lon * 20000).roundToInt()}"
     private val warned = HashSet<String>()
     private var lastReroute = 0L
     private var lastRerouteVoice = 0L
@@ -172,10 +178,24 @@ class NavEngine(
 
     init {
         voice.muted = prefs.voiceMuted
-        // Blitzer-Daten im Hintergrund laden (Datei-Cache, woechentlich erneuert).
+        // Blitzer-Daten im Hintergrund laden (Datei-Cache, woechentlich erneuert). Kommen sie erst
+        // nach der Routenberechnung an, werden die angezeigten Routen nachtraeglich ergaenzt.
         scope.launch {
-            if (prefs.camerasEnabled) services.cameras()
+            if (prefs.camerasEnabled) {
+                val had = services.camerasCached().isNotEmpty()
+                services.cameras()
+                if (!had && services.camerasCached().isNotEmpty()) reannotateShown()
+            }
         }
+    }
+
+    private suspend fun reannotateShown() {
+        when (mode) {
+            Mode.NAVIGATING -> activeRoute?.let { annotate(listOf(it)) }
+            Mode.PREVIEW -> if (!loading && routes.isNotEmpty()) annotate(routes)
+            else -> return
+        }
+        changed()
     }
 
     // ---------------------------------------------------------------------------------------
@@ -409,16 +429,20 @@ class NavEngine(
     private suspend fun annotate(list: List<Route>): List<Route> {
         if (list.isEmpty()) return list
         val roads = list.flatMap { it.roadRefs }.toSet()
+        // Nicht ewig auf langsame Dienste warten: lieber Route ohne einzelne Meldungen zeigen;
+        // die Verkehrspruefung alle 3 Minuten holt sie nach.
         val events = try {
-            services.autobahnEvents(roads)
+            withTimeoutOrNull(12_000) { services.autobahnEvents(roads) } ?: emptyList()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             emptyList()
         }
         val cams = if (prefs.camerasEnabled) {
-            val outside = list.firstOrNull()?.let { r -> if (r.geometry.points.any { !Bavaria.contains(it) }) services.camerasOutsideBavaria(r) else emptyList() } ?: emptyList()
-            services.cameras() + outside
+            val outside = list.firstOrNull()?.let { r ->
+                if (r.geometry.points.any { !Bavaria.contains(it) }) withTimeoutOrNull(10_000) { services.camerasOutsideBavaria(r) } ?: emptyList() else emptyList()
+            } ?: emptyList()
+            (withTimeoutOrNull(8_000) { services.cameras() } ?: services.camerasCached()) + outside
         } else emptyList()
         for (r in list) {
             val matched = HazardMatcher.matchAll(r, events + cams)
@@ -514,9 +538,13 @@ class NavEngine(
             r.hazards.joinToString(";") { "${it.hazard.type}@${it.startAlong.roundToInt()}" })
     }
 
+    /** Wird aufgerufen, sobald eine Route aktiv wird (z. B. Karte entlang der Route offline laden). */
+    var onRouteActivated: ((Route) -> Unit)? = null
+
     fun startNavigation(index: Int = selectedIndex) {
         val r = routes.getOrNull(index) ?: return
         logRoute(r)
+        onRouteActivated?.invoke(r)
         routeJob?.cancel()
         activeRoute = r
         routes = listOf(r)
@@ -607,7 +635,8 @@ class NavEngine(
         if (idx < 0) return
         val m = route.maneuvers[idx]
         val stage = AnnouncePlan.stageFor(st.distToNext, sp, isMotorwayHere(route, st.along, sp)) ?: return
-        val done = spokenStages.getOrPut(idx) { HashSet() }
+        if (spokenStages.size > 500) spokenStages.clear()
+        val done = spokenStages.getOrPut(maneuverKey(m)) { HashSet() }
         if (stage in done) return
         if (stage == AnnouncePlan.Stage.FAR && done.isNotEmpty()) return
         if (stage == AnnouncePlan.Stage.NEAR && AnnouncePlan.Stage.NOW in done) return
@@ -618,7 +647,7 @@ class NavEngine(
             text += " Danach geht es automatisch weiter zum Ziel."
             fuelArrivalSpoken = true
         }
-        if (stage != AnnouncePlan.Stage.FAR && st.afterIdx >= 0) {
+        if (stage != AnnouncePlan.Stage.FAR && st.afterIdx >= 0 && !m.kind.isArrival && m.kind != de.sascha.bayernnavi.core.ManeuverKind.WAYPOINT) {
             val after = route.maneuvers[st.afterIdx]
             if (after.along - m.along < 250) text += " " + Instructions.thenText(after)
         }
@@ -653,8 +682,7 @@ class NavEngine(
         arrived = true
         nearestHazard = null
         val last = route.maneuvers.lastOrNull()
-        val idx = route.maneuvers.size - 1
-        if (last != null && spokenStages[idx]?.contains(AnnouncePlan.Stage.NOW) != true) voice.say(Instructions.voice(last, null))
+        if (last != null && spokenStages[maneuverKey(last)]?.contains(AnnouncePlan.Stage.NOW) != true) voice.say(Instructions.voice(last, null))
         trafficJob?.cancel()
         changed()
         scope.launch {
@@ -693,11 +721,11 @@ class NavEngine(
 
     private fun replaceActive(r: Route) {
         logRoute(r)
+        onRouteActivated?.invoke(r)
         activeRoute = r
         routes = listOf(r)
         selectedIndex = 0
         tracker = RouteTracker(r)
-        spokenStages.clear()
         speedLimitCoveredTo = 0.0
         fetchSpeedLimits(r, 0.0)
         changed()
@@ -764,24 +792,25 @@ class NavEngine(
         val st = state ?: return
         val dest = destination ?: return
         val pos = position ?: return
-        // 1. Meldungen auf der aktuellen Route auffrischen (Valhalla: Autobahn-API)
+        // 1. Meldungen auf der aktuellen Route auffrischen (Valhalla: Autobahn-API, Blitzer)
         if (r.source == RouteSource.VALHALLA) {
             annotate(listOf(r))
             changed()
         }
-        if (!prefs.trafficReroute && !manual) return
-        // 2. Gibt es jetzt etwas Schnelleres?
-        val remaining = r.remainingSec(st.along)
         val pts = listOfNotNull(pos, fuelStop?.pos, dest.pos)
+        // TomTom liefert frischen Verkehr nur ueber eine neue Berechnung – also auch ohne
+        // "schnellere Route anbieten" neu rechnen, damit Stau-Anzeige und Ankunftszeit aktuell bleiben.
+        if (!prefs.trafficReroute && !manual && r.source != RouteSource.TOMTOM) return
         val cands = annotate(services.routes(pts, heading, if (fuelStop == null) 1 else 0))
-        val best = cands.firstOrNull() ?: return
-        if (mode != Mode.NAVIGATING || activeRoute !== r) return
-        if (sameRoute(best, r, st.along)) {
-            // gleicher Weg mit frischen Verkehrsdaten (TomTom) -> still uebernehmen
-            if (best.source == RouteSource.TOMTOM) replaceActive(best)
-            if (manual) {
-                voice.say("Die aktuelle Route ist weiterhin die schnellste.")
-            }
+        if (cands.isEmpty() || mode != Mode.NAVIGATING || activeRoute !== r) return
+        // Ist die bisherige Route unter den Ergebnissen? Dann deren frische Daten uebernehmen.
+        val same = cands.firstOrNull { sameRoute(it, r, st.along) }
+        if (same != null && same.source == RouteSource.TOMTOM) replaceActive(same)
+        val remaining = same?.durationSec ?: r.remainingSec(st.along)
+        if (!prefs.trafficReroute && !manual) return
+        val best = cands.minByOrNull { it.durationSec } ?: return
+        if (best === same || sameRoute(best, r, st.along)) {
+            if (manual) voice.say("Die aktuelle Route ist weiterhin die schnellste.")
             return
         }
         val saving = remaining - best.durationSec

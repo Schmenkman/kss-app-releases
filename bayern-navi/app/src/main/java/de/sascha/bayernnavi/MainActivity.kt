@@ -79,6 +79,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     private lateinit var btnMute: ImageView
     private lateinit var btnRecenter: ImageView
     private lateinit var btnJam: ImageView
+    private lateinit var btnFuel: ImageView
+    private lateinit var btnAvoid: ImageView
     private lateinit var speed: SpeedWidget
     private lateinit var bottom: FrameLayout
     private lateinit var routePanel: RoutePanel
@@ -175,20 +177,24 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         rightCol.addView(btnLayers)
         btnMute = Ui.iconButton(this, Icons.glyph(Icons.Glyph.VOLUME_ON, dp(26), Ui.TEXT), Color.WHITE, desc = "Ton") { engine.toggleMuted() }
         rightCol.addView(btnMute)
-        rightCol.addView(Ui.iconButton(this, Icons.glyph(Icons.Glyph.FUEL, dp(26), Ui.TEXT), Color.WHITE, desc = "Tanken") { openFuel() })
+        btnFuel = Ui.iconButton(this, Icons.glyph(Icons.Glyph.FUEL, dp(26), Ui.TEXT), Color.WHITE, desc = "Tanken") { openFuel() }
+        rightCol.addView(btnFuel)
         btnJam = Ui.iconButton(this, Icons.glyph(Icons.Glyph.JAM_AVOID, dp(26), Ui.TEXT), Color.WHITE, desc = "Stau umfahren") {
             engine.avoidJamsNow()
             toast("Suche Umfahrung …")
         }
         rightCol.addView(btnJam)
-        rightCol.addView(Ui.iconButton(this, Icons.glyph(Icons.Glyph.AVOID, dp(26), Ui.TEXT), Color.WHITE, desc = "Gemiedene Abschnitte") { avoid.show() })
+        btnAvoid = Ui.iconButton(this, Icons.glyph(Icons.Glyph.AVOID, dp(26), Ui.TEXT), Color.WHITE, desc = "Gemiedene Abschnitte") { avoid.show() }
+        rightCol.addView(btnAvoid)
         btnRecenter = Ui.iconButton(this, Icons.glyph(Icons.Glyph.RECENTER, dp(26), Color.WHITE), Ui.BLUE, desc = "Zentrieren") {
             mapCtl?.recenter()
             updateRecenter()
         }
         rightCol.addView(btnRecenter)
-        root.addView(rightCol, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.CENTER_VERTICAL).apply {
-            setMargins(0, dp(40), dp(10), 0)
+        // Knopfspalte oben rechts, direkt unter Suchleiste bzw. Abbiege-Banner (Abstand wird
+        // in updateMapPadding nachgefuehrt), damit sie nie die Routen-/Fahrtleiste unten verdeckt.
+        root.addView(rightCol, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.TOP).apply {
+            setMargins(0, dp(80), dp(10), 0)
         })
 
         // ---- unten: Tempo, Strassenname, Routen-/Navigationsleiste ----
@@ -243,7 +249,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         map.uiSettings.isLogoEnabled = false
         map.uiSettings.isAttributionEnabled = true
         map.uiSettings.setAttributionMargins(dp(8), 0, 0, dp(8))
-        map.uiSettings.setCompassMargins(0, dp(150), dp(14), 0)
+        map.uiSettings.compassGravity = Gravity.TOP or Gravity.START
+        map.uiSettings.setCompassMargins(dp(14), dp(170), 0, 0)
         val start = engine.position ?: prefs.lastPosition
         val c = start ?: Bavaria.CENTER
         map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(c.lat, c.lon), if (start != null) 15.0 else 7.0))
@@ -277,6 +284,13 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     }
 
     private fun updateMapPadding() {
+        val wantTop = topCol.bottom + dp(4)
+        (rightCol.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+            if (lp.topMargin != wantTop && topCol.height > 0) {
+                lp.topMargin = wantTop
+                rightCol.layoutParams = lp
+            }
+        }
         val ctl = mapCtl ?: return
         val topH = if (topCol.visibility == View.VISIBLE) topCol.height + dp(10) else 0
         val bottomH = bottom.height + dp(10)
@@ -305,7 +319,11 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         maneuver.view.visibility = if (mode == NavEngine.Mode.NAVIGATING) View.VISIBLE else View.GONE
         routePanel.view.visibility = if (mode == NavEngine.Mode.PREVIEW) View.VISIBLE else View.GONE
         navBar.view.visibility = if (mode == NavEngine.Mode.NAVIGATING) View.VISIBLE else View.GONE
-        btnJam.visibility = if (mode != NavEngine.Mode.IDLE) View.VISIBLE else View.GONE
+        // In der Vorschau hat die Routenleiste eigene Knoepfe (Stau umfahren, Tanken) – rechts nur das Noetigste.
+        btnJam.visibility = if (mode == NavEngine.Mode.NAVIGATING) View.VISIBLE else View.GONE
+        btnMute.visibility = if (mode == NavEngine.Mode.PREVIEW) View.GONE else View.VISIBLE
+        btnAvoid.visibility = if (mode == NavEngine.Mode.NAVIGATING) View.GONE else View.VISIBLE
+        btnFuel.visibility = if (mode == NavEngine.Mode.PREVIEW) View.GONE else View.VISIBLE
         if (mode == NavEngine.Mode.PREVIEW) routePanel.render(e)
         if (mode == NavEngine.Mode.NAVIGATING) navBar.render(e)
         val br = e.betterRoute

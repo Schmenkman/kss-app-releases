@@ -25,10 +25,25 @@ object CarUtil {
 
     fun icon(b: Bitmap): CarIcon = CarIcon.Builder(IconCompat.createWithBitmap(b)).build()
 
+    // Symbole werden einmal gezeichnet und wiederverwendet: die Navigationsvorlage wird
+    // etwa einmal pro Sekunde neu an Android Auto geschickt.
+    private val glyphCache = HashMap<Icons.Glyph, Bitmap>()
+    private val maneuverCache = LinkedHashMap<String, Bitmap>()
+
     fun glyph(g: Icons.Glyph, tint: CarColor? = null): CarIcon {
-        val b = CarIcon.Builder(IconCompat.createWithBitmap(Icons.glyph(g, 96, Color.WHITE)))
+        val bmp = glyphCache.getOrPut(g) { Icons.glyph(g, 64, Color.WHITE) }
+        val b = CarIcon.Builder(IconCompat.createWithBitmap(bmp))
         if (tint != null) b.setTint(tint)
         return b.build()
+    }
+
+    fun maneuverIcon(m: Maneuver): CarIcon {
+        val key = "${m.kind}/${m.roundaboutExit}/${m.turnAngle?.let { (it / 15).toInt() }}"
+        val bmp = maneuverCache[key] ?: Icons.maneuver(m.kind, 96, Color.WHITE, m.roundaboutExit, m.turnAngle).also {
+            maneuverCache[key] = it
+            if (maneuverCache.size > 40) maneuverCache.remove(maneuverCache.keys.first())
+        }
+        return icon(bmp)
     }
 
     fun action(g: Icons.Glyph, title: String? = null, tint: CarColor? = null, onClick: () -> Unit): Action {
@@ -92,8 +107,7 @@ object CarUtil {
 
     fun step(m: Maneuver, fuelStopName: String? = null): Step {
         val type = carManeuverType(m)
-        val mb = CarManeuver.Builder(type)
-            .setIcon(icon(Icons.maneuver(m.kind, 128, Color.WHITE, m.roundaboutExit, m.turnAngle)))
+        val mb = CarManeuver.Builder(type).setIcon(maneuverIcon(m))
         if (type == CarManeuver.TYPE_ROUNDABOUT_ENTER_AND_EXIT_CCW) mb.setRoundaboutExitNumber(m.roundaboutExit)
         val cue = if (m.kind == ManeuverKind.WAYPOINT && fuelStopName != null) "Tankstelle: $fuelStopName" else Instructions.text(m)
         val sb = Step.Builder(cue).setManeuver(mb.build())

@@ -63,12 +63,14 @@ object Instructions {
     private fun onto(m: Maneuver, prefix: String = " auf "): String =
         m.street?.takeIf { it.isNotBlank() }?.let { prefix + it } ?: ""
 
-    private fun toward(m: Maneuver): String {
-        val parts = ArrayList<String>()
-        m.signBranch?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
-        val t = m.signToward?.takeIf { it.isNotBlank() }?.let { "Richtung $it" }
-        val b = if (parts.isNotEmpty()) " " + parts.joinToString(" ") else ""
-        return b + (t?.let { " $it" } ?: "")
+    /** " auf A 9 Richtung Nürnberg" – Wegweiser bevorzugt, sonst (optional) der Strassenname. */
+    private fun signTarget(m: Maneuver, ontoFallback: Boolean): String {
+        val sb = StringBuilder()
+        val branch = m.signBranch?.takeIf { it.isNotBlank() }
+        if (branch != null) sb.append(" auf ").append(branch)
+        else if (ontoFallback && !m.street.isNullOrBlank()) sb.append(" auf ").append(m.street)
+        m.signToward?.takeIf { it.isNotBlank() }?.let { sb.append(" Richtung ").append(it) }
+        return sb.toString()
     }
 
     /** Kurztext fuer Banner und Android Auto. */
@@ -78,7 +80,7 @@ object Instructions {
         ManeuverKind.ARRIVE_LEFT -> "Ziel erreicht – links"
         ManeuverKind.ARRIVE_RIGHT -> "Ziel erreicht – rechts"
         ManeuverKind.WAYPOINT -> "Zwischenziel erreicht"
-        ManeuverKind.STRAIGHT -> "Geradeaus weiter" + (if (m.signToward != null || m.signBranch != null) toward(m) else onto(m))
+        ManeuverKind.STRAIGHT -> "Geradeaus weiter" + signTarget(m, true)
         ManeuverKind.CONTINUE -> "Weiter" + onto(m)
         ManeuverKind.NAME_CHANGE -> "Weiter" + onto(m)
         ManeuverKind.SLIGHT_RIGHT -> "Leicht rechts abbiegen" + onto(m)
@@ -88,24 +90,19 @@ object Instructions {
         ManeuverKind.LEFT -> "Links abbiegen" + onto(m)
         ManeuverKind.SHARP_LEFT -> "Scharf links abbiegen" + onto(m)
         ManeuverKind.UTURN -> "Wenden" + onto(m)
-        ManeuverKind.KEEP_RIGHT -> "Rechts halten" + keepTarget(m)
-        ManeuverKind.KEEP_LEFT -> "Links halten" + keepTarget(m)
+        ManeuverKind.KEEP_RIGHT -> "Rechts halten" + signTarget(m, true)
+        ManeuverKind.KEEP_LEFT -> "Links halten" + signTarget(m, true)
         ManeuverKind.RAMP_RIGHT -> "Rechts auf die Auffahrt" + rampTarget(m)
         ManeuverKind.RAMP_LEFT -> "Links auf die Auffahrt" + rampTarget(m)
         ManeuverKind.RAMP_STRAIGHT -> "Geradeaus auf die Auffahrt" + rampTarget(m)
-        ManeuverKind.EXIT_RIGHT -> "Ausfahrt" + exitLabel(m) + " nehmen" + toward(m)
-        ManeuverKind.EXIT_LEFT -> "Ausfahrt" + exitLabel(m) + " links nehmen" + toward(m)
+        ManeuverKind.EXIT_RIGHT -> "Ausfahrt" + exitLabel(m) + " nehmen" + signTarget(m, false)
+        ManeuverKind.EXIT_LEFT -> "Ausfahrt" + exitLabel(m) + " links nehmen" + signTarget(m, false)
         ManeuverKind.MERGE, ManeuverKind.MERGE_LEFT, ManeuverKind.MERGE_RIGHT -> "Einfädeln" + onto(m)
         ManeuverKind.ROUNDABOUT ->
             if (m.roundaboutExit > 0) "Im Kreisverkehr ${m.roundaboutExit}. Ausfahrt" + onto(m)
             else "In den Kreisverkehr" + onto(m)
         ManeuverKind.ROUNDABOUT_EXIT -> "Kreisverkehr verlassen" + onto(m)
         ManeuverKind.FERRY -> "Fähre nehmen" + onto(m)
-    }
-
-    private fun keepTarget(m: Maneuver): String {
-        val t = toward(m)
-        return if (t.isNotBlank()) t else onto(m)
     }
 
     private fun rampTarget(m: Maneuver): String {
