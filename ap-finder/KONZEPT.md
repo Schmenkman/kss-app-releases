@@ -25,7 +25,7 @@ Messgrößen:
 So arbeiten auch Profi-Messgeräte: Der NetAlly AirCheck G3 ortet APs mit
 eingebauten Antennen oder einer externen Richtantenne und gibt einen Ton aus,
 der beim Annähern schneller und höher wird ([NetAlly][netally-locate],
-[NetAlly KB][netally-kb]). Der hier beschriebene Eigenbau kostet ca. 100–150 €
+[NetAlly KB][netally-kb]). Der hier beschriebene Eigenbau kostet ca. 85–125 €
 statt mehrerer tausend Euro – Einkaufsliste mit Links: **[HARDWARE.md](HARDWARE.md)**.
 
 Das Handy allein reicht nicht. Android lässt Apps im Vordergrund nur **4 WLAN-Scans
@@ -171,10 +171,12 @@ Einsatzzweck **nicht empfohlen**.
 
 Komplette Liste mit Links, Kabelkette und Aufbau: **[HARDWARE.md](HARDWARE.md)**.
 
-Kurzfassung: Seeed XIAO ESP32-C5, ALFA APA-M25 (Dual-Band-Panel), Pigtail
-U.FL → SMA-Stecker, Adapter SMA-Buchse ↔ RP-SMA-Buchse (10 GHz),
-20-dB-Dämpfungsglied (SMA, bis 6 GHz), Dual-Band-Rundstrahler (Delock 88393),
-kurzes USB-C-Kabel, Handyhalter. Zusammen etwa 100–150 €.
+Kurzfassung (alles von Shops in Deutschland): Seeed XIAO ESP32-C5 und
+Adapter SMA-Buchse ↔ RP-SMA-Buchse (10 GHz) bei Berrybase, ALFA APA-M25
+(Dual-Band-Panel) bei einem deutschen Händler, Pigtail U.FL → SMA-Stecker
+und 20-dB-Dämpfungsglied (SMA, bis 6 GHz) bei WiMo, Dual-Band-Rundstrahler
+(Delock) bei Berrybase, kurzes USB-C-Kabel, Handyhalter Kaiser 6015.
+Zusammen etwa 85–125 € plus Versand.
 
 ### 4.2 Aufbau
 ```
