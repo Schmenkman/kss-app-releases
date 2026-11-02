@@ -1,0 +1,198 @@
+name: KSS-Maps – APK bauen
+
+# Baut bei jedem Push, der kss-maps/ betrifft, eine signierte APK und stellt sie als
+# GitHub-Release "kssmaps-v<version>" bereit (gleiches Muster wie DokuBW: Download-Link im Release).
+# Die App prueft auf Updates ueber kss-maps/version.json im main-Branch.
+on:
+  push:
+    branches: [ main, 'claude/bayern-navigation-app-*' ]
+    paths: [ 'kss-maps/**', '.github/workflows/kss-maps.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kss-maps-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    defaults:
+      run:
+        working-directory: kss-maps
+    steps:
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      - name: Java 17 einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Gradle einrichten
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Tests der Navigationslogik
+        # Schnell und ohne Geraet: Routen-Parser, Stau-/Blitzer-Zuordnung, Ansagetexte, Tankstellen-Sortierung …
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :app:testReleaseUnitTest
+
+      - name: Signier-Schluessel bereitstellen
+        # Eigener Schluessel aus den Secrets (einmalig: tools/make_keystore.py + tools/setup_github.ps1).
+        # Ohne Secrets: temporaerer Test-Schluessel – die APK laeuft, aber Updates brauchen dann
+        # eine Neuinstallation. Der Schluessel liegt NIE im Repo.
+        env:
+          KS_B64: ${{ secrets.KSSMAPS_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.KSSMAPS_STORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KSSMAPS_KEY_ALIAS }}
+          KS_KEYPW: ${{ secrets.KSSMAPS_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PW" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/kssmaps.p12"
+            {
+              echo "KSSMAPS_KEYSTORE=$RUNNER_TEMP/kssmaps.p12"
+              echo "KSSMAPS_STORE_PASSWORD=$KS_PW"
+              echo "KSSMAPS_KEY_ALIAS=${KS_ALIAS:-kssmaps}"
+              echo "KSSMAPS_KEY_PASSWORD=${KS_KEYPW:-$KS_PW}"
+              echo "KSSMAPS_TEMP_KEY=0"
+            } >> "$GITHUB_ENV"
+            echo "Eigener Schluessel aus den Secrets."
+          else
+            PW=$(openssl rand -hex 16)
+            echo "::add-mask::$PW"
+            keytool -genkeypair -keystore "$RUNNER_TEMP/kssmaps-temp.p12" -storetype PKCS12 -alias kssmaps \
+              -keyalg RSA -keysize 2048 -validity 10950 -storepass "$PW" -keypass "$PW" \
+              -dname "CN=KSS-Maps Test, O=privat, C=DE" >/dev/null 2>&1
+            {
+              echo "KSSMAPS_KEYSTORE=$RUNNER_TEMP/kssmaps-temp.p12"
+              echo "KSSMAPS_STORE_PASSWORD=$PW"
+              echo "KSSMAPS_KEY_ALIAS=kssmaps"
+              echo "KSSMAPS_KEY_PASSWORD=$PW"
+              echo "KSSMAPS_TEMP_KEY=1"
+            } >> "$GITHUB_ENV"
+            echo "::warning::Kein Signier-Secret – Test-Schluessel. Siehe kss-maps/README.md (Einmalige Einrichtung)."
+          fi
+
+      - name: Release-APK bauen
+        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
+
+      - name: APK als Artefakt bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: kss-maps-apk
+          path: kss-maps/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Als GitHub-Release veroeffentlichen
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          set -e
+          R="$GITHUB_REPOSITORY"
+          VER=$(python3 -c "import json;print(json.load(open('version.json'))['version'])")
+          TAG="kssmaps-v$VER"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/kss-maps.apk"
+          python3 - > "$RUNNER_TEMP/notes.md" <<'PY'
+          import json
+          v = json.load(open('version.json'))
+          print("\n".join("- " + n for n in v.get("notes", [])))
+          print()
+          print("**Installation:** `kss-maps.apk` auf dem Handy antippen → herunterladen → öffnen → installieren.")
+          print("Android Auto: einmalig 'Unbekannte Quellen' freischalten (siehe kss-maps/README.md).")
+          PY
+          if [ "$KSSMAPS_TEMP_KEY" = "1" ]; then
+            echo "" >> "$RUNNER_TEMP/notes.md"
+            echo "⚠️ Signiert mit temporärem Schlüssel: Vor dem Installieren einer neueren Version die alte deinstallieren, bis der eigene Schlüssel eingerichtet ist (README → Einmalige Einrichtung)." >> "$RUNNER_TEMP/notes.md"
+          fi
+          echo "" >> "$RUNNER_TEMP/notes.md"
+          echo "Gebaut aus ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}" >> "$RUNNER_TEMP/notes.md"
+          if gh release view "$TAG" --repo "$R" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$RUNNER_TEMP/kss-maps.apk" --clobber --repo "$R"
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --repo "$R"
+          else
+            # Tag am gebauten Commit; falls GitHub das ablehnt (Workflow-Aenderungen), am Hauptbranch.
+            gh release create "$TAG" "$RUNNER_TEMP/kss-maps.apk" --repo "$R" --title "KSS-Maps $VER" \
+                --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA" --latest=false \
+              || gh release create "$TAG" "$RUNNER_TEMP/kss-maps.apk" --repo "$R" --title "KSS-Maps $VER" \
+                --notes-file "$RUNNER_TEMP/notes.md" --target "$(gh api "repos/$R" --jq .default_branch)" --latest=false
+          fi
+          # Testfahrt-Anhaenge entfernen, wenn dieser Lauf keine Testfahrt ist (fertiges Release bleibt sauber).
+          case "$COMMIT_MSG" in
+            *"[testfahrt]"*) ;;
+            *) for a in $(gh release view "$TAG" --repo "$R" --json assets --jq '.assets[].name' | grep '^testfahrt_' || true); do
+                 gh release delete-asset "$TAG" "$a" --yes --repo "$R" || true
+               done ;;
+          esac
+          # Alte Releases unter dem frueheren Arbeitsnamen aufraeumen
+          for old in navi-v0.1.0 navi-testfahrt; do
+            gh release delete "$old" --yes --cleanup-tag --repo "$R" >/dev/null 2>&1 || true
+          done
+          echo "Download: https://github.com/${R}/releases/download/${TAG}/kss-maps.apk" >> "$GITHUB_STEP_SUMMARY"
+
+  # Automatische Testfahrt im Emulator: nur auf Anforderung (Commit-Nachricht mit "[testfahrt]"
+  # oder manuell gestartet). Screenshots und Protokoll haengen danach als "testfahrt_*" am
+  # Release (der naechste normale Build entfernt sie wieder).
+  testfahrt:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[testfahrt]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      - name: Java 17 einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Gradle einrichten
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: KVM freischalten
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Test-APK bauen (alle ABIs)
+        working-directory: kss-maps
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleDebug -PallAbis=true
+
+      - name: Testfahrt im Emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash kss-maps/tools/smoketest.sh
+
+      - name: Ergebnisse an das Release haengen
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          if [ ! -d smoke ]; then echo "keine Ergebnisse"; exit 0; fi
+          ls -la smoke
+          mkdir -p upload
+          for f in smoke/*; do cp "$f" "upload/testfahrt_$(basename "$f")"; done
+          # Grosses Volllog nicht hochladen, nur die gefilterte Fassung
+          rm -f upload/testfahrt_logcat.txt
+          gh release upload "$TAG" upload/* --clobber --repo "$GITHUB_REPOSITORY"
