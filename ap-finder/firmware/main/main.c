@@ -769,8 +769,12 @@ static void wifi_init(void)
     }
     ESP_ERROR_CHECK(esp_wifi_get_mac(WIFI_IF_STA, s_own_mac));
 
+    /* Alle Frame-Kategorien außer FCS-Fehlern: Der C5 ordnet auf 5 GHz Frames
+     * teils der falschen Kategorie zu – eine Typ-Filterung im Treiber könnte
+     * Beacons verwerfen. Der Callback wertet den Header selbst aus und
+     * verwirft Control-Frames sofort. */
     wifi_promiscuous_filter_t filt = {
-        .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA,
+        .filter_mask = WIFI_PROMIS_FILTER_MASK_ALL & ~WIFI_PROMIS_FILTER_MASK_FCSFAIL,
     };
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous_filter(&filt));
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(&promisc_cb));

@@ -13,9 +13,15 @@
 
 static void set_err(char *err, size_t errlen, const char *msg)
 {
-    if (err && errlen) {
-        snprintf(err, errlen, "%s", msg);
+    if (!err || !errlen) {
+        return;
     }
+    size_t n = strlen(msg);
+    if (n >= errlen) {
+        n = errlen - 1;
+    }
+    memcpy(err, msg, n);
+    err[n] = '\0';
 }
 
 static bool ieq(const char *a, const char *b)
@@ -194,7 +200,7 @@ bool apf_cmd_parse(const char *line, apf_cmd_t *out, char *err, size_t errlen)
     char buf[LINE_MAX_LEN + 1];
     memcpy(buf, line, len + 1);
 
-    char *tok[MAX_TOKENS];
+    char *tok[MAX_TOKENS] = {0};
     int nt = 0;
     char *p = buf;
     while (*p && nt < MAX_TOKENS) {
