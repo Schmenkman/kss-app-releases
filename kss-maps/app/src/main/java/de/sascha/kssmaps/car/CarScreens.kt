@@ -397,7 +397,7 @@ class CarFuelScreen(carContext: CarContext) : EngineScreen(carContext) {
                 .addAction(CarUtil.textAction("Erneut") { load(); invalidate() }).build()
         }
         val b = PlaceListNavigationTemplate.Builder()
-            .setTitle("Tanken · ${fuel.label}" + if (e.prefs.utaOnly) " · UTA" else "")
+            .setTitle("Tanken · ${fuel.label}" + (if (e.prefs.utaOnly) " · UTA" else "") + (if (e.services.fuelWithoutPrices && items != null) " · ohne Preise" else ""))
             .setHeaderAction(Action.BACK)
         val list = items
         if (list == null) {
@@ -418,7 +418,7 @@ class CarFuelScreen(carContext: CarContext) : EngineScreen(carContext) {
                 }
                 il.addItem(
                     Row.Builder()
-                        .setTitle("${i + 1}. ${Tankerkoenig.formatPrice(s.price(fuel))} · ${s.displayName()}")
+                        .setTitle(s.price(fuel)?.let { "${i + 1}. ${Tankerkoenig.formatPrice(it)} · ${s.displayName()}" } ?: "${i + 1}. ${s.displayName()}")
                         .addText("$where · $uta")
                         .setOnClickListener { choose(rs) }
                         .build()

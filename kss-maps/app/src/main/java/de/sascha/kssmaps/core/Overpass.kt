@@ -313,6 +313,43 @@ object Overpass {
     }
 
     /** OSM-Tankstellen mit payment:uta -> (Position, akzeptiert?). */
+    /** Tankstellen aus OpenStreetMap in Rechtecken – Rueckfallebene ohne Tankerkoenig-Schluessel (ohne Preise). */
+    fun fuelQuery(boxes: List<BBox>): String {
+        val sb = StringBuilder("[out:json][timeout:25];(")
+        for (b in boxes) {
+            val bb = String.format(Locale.ROOT, "(%.5f,%.5f,%.5f,%.5f)", b.minLat, b.minLon, b.maxLat, b.maxLon)
+            sb.append("node[\"amenity\"=\"fuel\"]").append(bb).append(';')
+            sb.append("way[\"amenity\"=\"fuel\"]").append(bb).append(';')
+        }
+        sb.append(");out center tags;")
+        return sb.toString()
+    }
+
+    /** Tankstellen (ohne Preise) mit dem OSM-Tag payment:uta (true/false/null). */
+    fun parseFuel(json: String): List<Pair<FuelStation, Boolean?>> = parseElements(json).mapNotNull { e ->
+        val p = e.point ?: return@mapNotNull null
+        val t = e.tags
+        val access = t["access"]?.lowercase(Locale.ROOT)
+        if (access == "private" || access == "no" || t["disused"] == "yes") return@mapNotNull null
+        val uta = when (t["payment:uta"]?.lowercase(Locale.ROOT)) {
+            "yes" -> true
+            "no" -> false
+            else -> null
+        }
+        FuelStation(
+            id = "osm-${e.type}-${e.id}",
+            name = t["name"] ?: "",
+            brand = t["brand"] ?: t["operator"] ?: "",
+            street = t["addr:street"] ?: "",
+            houseNumber = t["addr:housenumber"] ?: "",
+            postCode = t["addr:postcode"] ?: "",
+            place = t["addr:city"] ?: t["addr:place"] ?: "",
+            lat = p.lat, lon = p.lon,
+            diesel = null, e5 = null, e10 = null,
+            isOpen = true,
+        ) to uta
+    }
+
     fun parseUta(json: String): List<Pair<LatLon, Boolean>> = parseElements(json).mapNotNull { e ->
         val p = e.point ?: return@mapNotNull null
         val v = e.tags["payment:uta"]?.lowercase(Locale.ROOT) ?: return@mapNotNull null

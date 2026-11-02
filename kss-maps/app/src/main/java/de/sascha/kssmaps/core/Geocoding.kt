@@ -63,7 +63,44 @@ object Geocoding {
                 )
             )
         }
+        return dedupe(out)
+    }
+
+    /**
+     * Gleicher Ort mehrfach (z. B. Bahnhof als Punkt, Flaeche und Gebaeude): nur den ersten
+     * behalten – gleicher Name in weniger als 400 m bzw. gleiche Anzeige.
+     */
+    fun dedupe(list: List<Place>): List<Place> {
+        val out = ArrayList<Place>()
+        for (p in list) {
+            val dup = out.any { o ->
+                (o.name == p.name && o.address == p.address) ||
+                    (o.name.equals(p.name, ignoreCase = true) && Geo.distance(o.pos, p.pos) < 400.0)
+            }
+            if (!dup) out.add(p)
+        }
         return out
+    }
+
+    private fun norm(s: String): String = s.lowercase(Locale.GERMANY)
+        .replace("ß", "ss").replace("strasse", "str").replace("str.", "str")
+        .replace(Regex("[^a-z0-9äöü]+"), " ").trim()
+
+    /**
+     * Wer eine Adresse sucht (Strasse + Hausnummer), bekommt die Adresse als Titel – nicht den
+     * Namen eines Geschaefts, das zufaellig dort ist ("Marienplatz 7" statt "ASAM").
+     */
+    fun preferAddress(query: String, list: List<Place>): List<Place> {
+        val q = " " + norm(query) + " "
+        return list.map { p ->
+            val st = p.street ?: return@map p
+            val hn = p.houseNumber ?: return@map p
+            val addr = "$st $hn"
+            if (p.name == addr) return@map p
+            if (!q.contains(" " + norm(st) + " ") || !q.contains(" " + norm(hn) + " ")) return@map p
+            val cityLine = listOfNotNull(p.postcode, p.city).joinToString(" ")
+            p.copy(name = addr, address = listOf(p.name, cityLine).filter { it.isNotBlank() }.joinToString(", "))
+        }
     }
 
     fun parseNominatim(json: String): List<Place> {

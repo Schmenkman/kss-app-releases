@@ -541,4 +541,47 @@ class CoreTest {
         assertEquals(1, Overpass.corridorBoxes(listOf(LatLon(48.0, 11.0)), 25_000.0, 100.0).size)
         assertTrue(Overpass.corridorBoxes(emptyList()).isEmpty())
     }
+
+    @Test
+    fun searchResultsAreDedupedAndAddressFirst() {
+        val a = Place("München Hauptbahnhof", "Arnulfstraße, 80335 München", 48.1402, 11.5600)
+        val b = Place("München Hauptbahnhof", "Paul-Heyse-Unterführung, 80335 München", 48.1410, 11.5590)
+        val c = Place("München Hauptbahnhof (tief)", "Arnulfstraße, 80335 München", 48.1404, 11.5605)
+        val d = a.copy(lat = 48.1403)
+        assertEquals(listOf(a, c), Geocoding.dedupe(listOf(a, b, c, d)))
+
+        val poi = Place("ASAM", "Marienplatz 7, 85354 Freising", 48.4, 11.74, street = "Marienplatz", houseNumber = "7", postcode = "85354", city = "Freising")
+        val r = Geocoding.preferAddress("Marienplatz 7, 85354 Freising", listOf(poi)).single()
+        assertEquals("Marienplatz 7", r.name)
+        assertEquals("ASAM, 85354 Freising", r.address)
+        assertEquals("7", r.houseNumber)
+        // Suche nach dem Namen: Name bleibt Titel
+        assertEquals("ASAM", Geocoding.preferAddress("Asam Freising", listOf(poi)).single().name)
+        // Andere Hausnummer in der Suche: unveraendert
+        assertEquals("ASAM", Geocoding.preferAddress("Marienplatz 17 Freising", listOf(poi)).single().name)
+    }
+
+    @Test
+    fun parsesOsmFuelStationsWithoutPrices() {
+        val json = """{"elements":[
+          {"type":"node","id":1,"lat":48.1,"lon":11.5,"tags":{"amenity":"fuel","brand":"Aral","name":"Aral Tankstelle","addr:street":"Leopoldstraße","addr:housenumber":"10","addr:postcode":"80802","addr:city":"München","payment:uta":"yes"}},
+          {"type":"way","id":2,"center":{"lat":48.2,"lon":11.6},"tags":{"amenity":"fuel","operator":"Freie Tankstelle"}},
+          {"type":"node","id":3,"lat":48.3,"lon":11.7,"tags":{"amenity":"fuel","access":"private","name":"Betriebstankstelle"}}
+        ]}"""
+        val l = Overpass.parseFuel(json)
+        assertEquals(2, l.size)
+        val (aral, utaTag) = l[0]
+        assertEquals("osm-node-1", aral.id)
+        assertEquals("Aral", aral.displayName())
+        assertEquals("Leopoldstraße 10, 80802 München", aral.addressLine())
+        assertNull(aral.diesel)
+        assertEquals(true, utaTag)
+        assertEquals(48.2, l[1].first.lat, 1e-9)
+        assertNull(l[1].second)
+        val q = Overpass.fuelQuery(listOf(BBox(48.0, 11.0, 48.1, 11.1)))
+        assertTrue(q.contains("node[\"amenity\"=\"fuel\"](48.00000,11.00000,48.10000,11.10000)") && q.endsWith("out center tags;"))
+        // Rangfolge ohne Preise: auf dem Weg zuerst, dann die naehere
+        val ranked = FuelRanking.rank(l.map { it.first }, null, 0.0, LatLon(48.1, 11.5), FuelType.DIESEL, false)
+        assertEquals("osm-node-1", ranked.first().station.id)
+    }
 }

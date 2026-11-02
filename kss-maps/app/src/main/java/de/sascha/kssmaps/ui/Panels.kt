@@ -293,6 +293,11 @@ class FuelPanel(host: PanelHost) : Panel(host, fullScreen = false) {
             content.addView(info(if (e.prefs.utaOnly) "Keine geöffnete UTA-Tankstelle gefunden. Tipp: 'nur UTA' ausschalten." else "Keine geöffnete Tankstelle gefunden."))
             return
         }
+        val noPrices = e.services.fuelWithoutPrices
+        if (noPrices) {
+            content.addView(info("Ohne Preise: Für Diesel- und Super-Preise einmalig den kostenlosen Tankerkönig-Schlüssel eintragen.", Ui.ORANGE))
+            content.addView(Ui.button(ctx, "Schlüssel eintragen", Ui.BLUE) { hide(); host.openSettings() }, Ui.linLp().margins(ctx, b = 6))
+        }
         var shownHeaderOther = false
         val onWayCount = results.count { it.onTheWay }
         if (onWayCount > 0) content.addView(Ui.text(ctx, "Auf dem Weg zum Ziel ($onWayCount)", 14f, Ui.GREEN_DARK, bold = true).apply { setPadding(Ui.dp(ctx, 6), Ui.dp(ctx, 6), 0, Ui.dp(ctx, 2)) })
@@ -303,7 +308,10 @@ class FuelPanel(host: PanelHost) : Panel(host, fullScreen = false) {
             }
             content.addView(stationRow(i, rs, fuel))
         }
-        content.addView(info("Preise: Markttransparenzstelle für Kraftstoffe via Tankerkönig (CC BY 4.0). UTA-Angabe: Marke/OSM bzw. deine eigene Korrektur (lange drücken)."))
+        content.addView(info(
+            if (noPrices) "Tankstellen: © OpenStreetMap-Mitwirkende (ohne Preise). UTA-Angabe: Marke/OSM bzw. deine eigene Korrektur (lange drücken)."
+            else "Preise: Markttransparenzstelle für Kraftstoffe via Tankerkönig (CC BY 4.0). UTA-Angabe: Marke/OSM bzw. deine eigene Korrektur (lange drücken)."
+        ))
     }
 
     private fun stationRow(i: Int, rs: RankedStation, fuel: FuelType): View {

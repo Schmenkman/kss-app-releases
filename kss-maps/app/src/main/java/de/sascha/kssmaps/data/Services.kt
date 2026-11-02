@@ -22,8 +22,11 @@ import de.sascha.kssmaps.core.Tankerkoenig
 import de.sascha.kssmaps.core.TomTom
 import de.sascha.kssmaps.core.Uta
 import de.sascha.kssmaps.core.Valhalla
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
@@ -54,11 +57,11 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
         }
         try {
             val r = Geocoding.parsePhoton(Http.get(Geocoding.photonSearchUrl(q, bias), 10_000))
-            if (r.isNotEmpty()) return@withContext r
+            if (r.isNotEmpty()) return@withContext Geocoding.preferAddress(q, r)
         } catch (e: Exception) {
             Log.w(TAG, "Photon: ${e.message}")
         }
-        Geocoding.parseNominatim(Http.get(Geocoding.nominatimSearchUrl(q), 12_000))
+        Geocoding.preferAddress(q, Geocoding.dedupe(Geocoding.parseNominatim(Http.get(Geocoding.nominatimSearchUrl(q), 12_000))))
     }
 
     suspend fun reverse(p: LatLon): Place? = withContext(Dispatchers.IO) {
@@ -364,18 +367,61 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
 
     @Volatile private var utaOsm: List<Pair<LatLon, Boolean>>? = null
 
+    /** Fuer Downloads, auf die niemand warten soll. */
+    private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var utaLoading = false
+
+    /** OSM-Tags payment:uta in Bayern. Laedt im Hintergrund – die Tankstellensuche wartet nie darauf. */
     private fun utaFromOsm(): List<Pair<LatLon, Boolean>> {
         utaOsm?.let { return it }
         val file = File(ctx.filesDir, "uta_osm.json")
-        try {
-            if (!file.exists() || System.currentTimeMillis() - file.lastModified() > 14 * DAY) {
-                file.writeText(overpass(Overpass.utaQuery(), 90_000))
+        val stale = !file.exists() || System.currentTimeMillis() - file.lastModified() > 14 * DAY
+        if (stale && !utaLoading) {
+            utaLoading = true
+            io.launch {
+                try {
+                    val txt = overpass(Overpass.utaQuery(), 90_000)
+                    val l = Overpass.parseUta(txt)
+                    file.writeText(txt)
+                    utaOsm = l
+                } catch (e: Exception) {
+                    Log.w(TAG, "UTA-Tags: ${e.message}")
+                } finally {
+                    utaLoading = false
+                }
             }
-            val l = Overpass.parseUta(file.readText())
-            utaOsm = l
-            return l
+        }
+        if (!file.exists()) return emptyList()
+        return try {
+            Overpass.parseUta(file.readText()).also { if (!stale) utaOsm = it }
         } catch (e: Exception) {
-            return emptyList()
+            emptyList()
+        }
+    }
+
+    /** true, wenn die letzte Tankstellensuche ohne Preise lief (kein Tankerkoenig-Schluessel). */
+    @Volatile var fuelWithoutPrices = false
+        private set
+
+    /** Ohne Schluessel: Tankstellen aus OpenStreetMap entlang der Route bzw. im Umkreis (ohne Preise). */
+    private fun osmFuelStations(route: Route?, along: Double, here: LatLon): List<FuelStation> {
+        val g = route?.geometry
+        val boxes = if (g != null && g.length - along > 3000) {
+            val ahead = prefs.fuelCorridorKm * 1000.0
+            val pts = g.points.filterIndexed { i, _ -> g.cum[i] >= along - 300 && g.cum[i] <= along + ahead }
+            Overpass.corridorBoxes(Geo.simplify(pts, 30.0), 15_000.0, 1500.0).take(12)
+        } else listOf(BBox(here.lat, here.lon, here.lat, here.lon).expanded(8000.0))
+        val json = try {
+            overpass(Overpass.fuelQuery(boxes), 30_000)
+        } catch (e: Exception) {
+            Log.w(TAG, "Tankstellen (OSM): ${e.message}")
+            throw MissingKey()
+        }
+        val osm = utaFromOsm()
+        val brands = prefs.utaBrands
+        return Overpass.parseFuel(json).map { (st, tag) ->
+            val t = tag ?: osm.filter { Geo.distance(it.first, st.pos) < 60.0 }.minByOrNull { Geo.distance(it.first, st.pos) }?.second
+            st.copy(uta = Uta.status(st.brand, st.name, brands, t, prefs.utaOverride(st.id)))
         }
     }
 
@@ -384,7 +430,8 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
     /** Tankstellen entlang der Route (Korridor) bzw. im Umkreis, mit UTA-Status. */
     suspend fun fuelStations(route: Route?, along: Double, here: LatLon): List<FuelStation> = withContext(Dispatchers.IO) {
         val key = prefs.tankerkoenigKey
-        if (key.isBlank()) throw MissingKey()
+        fuelWithoutPrices = key.isBlank()
+        if (key.isBlank()) return@withContext osmFuelStations(route, along, here)
         val samples = if (route != null && route.geometry.length - along > 3000) {
             Tankerkoenig.corridorSamples(route.geometry, along, prefs.fuelCorridorKm * 1000.0, 9000.0)
         } else listOf(here)
