@@ -78,6 +78,9 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
 
     /** Karte folgt der Position (aus, sobald man selbst schiebt). */
     var following = true
+    /** Zeitpunkt der letzten Kamera-Bewegung durch Programm (Uebersicht, Punkt zeigen, Zoom). */
+    var lastManualMove = 0L
+        private set
     /** Zusaetzlicher Rand (px) fuer Bedienelemente: links, oben, rechts, unten. */
     var uiPadding = doubleArrayOf(0.0, 0.0, 0.0, 0.0)
     var viewHeightPx = 0
@@ -568,6 +571,7 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
             return
         }
         following = false
+        lastManualMove = System.currentTimeMillis()
         val m = px(40)
         val update = CameraUpdateFactory.newLatLngBounds(
             bounds, (uiPadding[0] + m).toInt(), (uiPadding[1] + m).toInt(), (uiPadding[2] + m).toInt(), (uiPadding[3] + m).toInt()
@@ -581,10 +585,12 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
 
     fun showPoint(p: LatLon, zoom: Double = 17.0) {
         following = false
+        lastManualMove = System.currentTimeMillis()
         map.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder().target(LatLng(p.lat, p.lon)).zoom(zoom).bearing(0.0).tilt(0.0).build()), 800)
     }
 
     fun zoomBy(delta: Double) {
+        lastManualMove = System.currentTimeMillis()
         map.animateCamera(CameraUpdateFactory.zoomBy(delta), 300)
     }
 

@@ -163,9 +163,11 @@ class NavEngine(
     private var speedLimitRoute: Route? = null
     private val freeTrace = ArrayList<LatLon>()
     private var lastFreeTrace = 0L
+    private var lastFreeTracePos: LatLon? = null
     private var overspeedSince = 0L
     private var lastOverspeedBeep = 0L
     private var pendingRouteCalc = false
+    private var fuelArrivalSpoken = false
     private var lastSavedPos = 0L
 
     init {
@@ -375,6 +377,10 @@ class NavEngine(
                     labelRoutes(list)
                     routes = list
                     selectedIndex = 0
+                    Log.i(TAG, "ROUTES " + list.joinToString(" | ") { r ->
+                        "${r.label}: ${r.source} ${(r.distanceM / 1000).roundToInt()} km ${(r.durationSec / 60).roundToInt()} min " +
+                            "Stau=${r.hazards.count { it.hazard.type.isTraffic }} Blitzer=${r.count(HazardType.SPEED_CAMERA)} Baustellen=${r.count(HazardType.ROADWORKS)} via=${r.via}"
+                    })
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -496,8 +502,21 @@ class NavEngine(
     // Navigation
     // ---------------------------------------------------------------------------------------
 
+    private val debuggable = (ctx.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    /** Test-Builds: aktive Route ins Log (in Stuecken, Logzeilen sind begrenzt) – fuer die simulierte Testfahrt. */
+    private fun logRoute(r: Route) {
+        if (!debuggable) return
+        val enc = de.sascha.bayernnavi.core.Geo.encodePolyline(r.geometry.points, 6)
+        val chunks = enc.chunked(3000)
+        chunks.forEachIndexed { i, c -> Log.i(TAG, "ROUTE_CHUNK ${i + 1}/${chunks.size} $c") }
+        Log.i(TAG, "ROUTE_INFO src=${r.source} len=${r.distanceM.roundToInt()} sec=${r.durationSec.roundToInt()} hazards=${r.hazards.size} " +
+            r.hazards.joinToString(";") { "${it.hazard.type}@${it.startAlong.roundToInt()}" })
+    }
+
     fun startNavigation(index: Int = selectedIndex) {
         val r = routes.getOrNull(index) ?: return
+        logRoute(r)
         routeJob?.cancel()
         activeRoute = r
         routes = listOf(r)
@@ -565,9 +584,8 @@ class NavEngine(
         val fs = fuelStop
         if (fs != null && (st.legIndex > 0 || Geo.distance(p, fs.pos) < 35.0)) {
             fuelStop = null
-            if (spokenStages.values.none { AnnouncePlan.Stage.NOW in it && false }) {
-                voice.say("Sie haben die Tankstelle erreicht. Danach geht es automatisch weiter zum Ziel.")
-            }
+            if (!fuelArrivalSpoken) voice.say("Sie haben die Tankstelle erreicht. Danach geht es automatisch weiter zum Ziel.")
+            fuelArrivalSpoken = false
             changed()
         }
         if (st.offRoute && !rerouting && SystemClock.elapsedRealtime() - lastReroute > 8_000) {
@@ -596,6 +614,10 @@ class NavEngine(
         done.add(stage)
         val isFuel = m.kind == de.sascha.bayernnavi.core.ManeuverKind.WAYPOINT && fuelStop != null
         var text = if (stage == AnnouncePlan.Stage.NOW) Instructions.voice(m, null, isFuel) else Instructions.voice(m, st.distToNext, isFuel)
+        if (isFuel && stage == AnnouncePlan.Stage.NOW) {
+            text += " Danach geht es automatisch weiter zum Ziel."
+            fuelArrivalSpoken = true
+        }
         if (stage != AnnouncePlan.Stage.FAR && st.afterIdx >= 0) {
             val after = route.maneuvers[st.afterIdx]
             if (after.along - m.along < 250) text += " " + Instructions.thenText(after)
@@ -670,6 +692,7 @@ class NavEngine(
     }
 
     private fun replaceActive(r: Route) {
+        logRoute(r)
         activeRoute = r
         routes = listOf(r)
         selectedIndex = 0
@@ -836,13 +859,16 @@ class NavEngine(
             freeTrace.add(p)
             while (freeTrace.size > 10) freeTrace.removeAt(0)
         }
-        if (sp > 2.0 && now - lastFreeTrace > 12_000 && freeTrace.size >= 3) {
+        // Schonend fuer den oeffentlichen Server: hoechstens alle 20 s und erst nach 200 m Fahrt.
+        val movedEnough = lastFreeTracePos?.let { Geo.distance(it, p) > 200.0 } ?: true
+        if (sp > 2.0 && now - lastFreeTrace > 20_000 && movedEnough && freeTrace.size >= 3) {
             lastFreeTrace = now
+            lastFreeTracePos = p
             val pts = freeTrace.toList()
             scope.launch {
                 val r = services.matchTrace(pts) ?: return@launch
                 speedLimit = r.limits.lastOrNull()?.kmh?.takeIf { it != 0 }
-                currentRoad = r.lastNames.firstOrNull { Bavaria.BBOX.contains(p) || true }
+                currentRoad = r.lastNames.firstOrNull()
                 listeners.forEach { it.onLocationChanged() }
             }
         }
@@ -898,6 +924,7 @@ class NavEngine(
             return
         }
         fuelStop = s
+        fuelArrivalSpoken = false
         if (mode == Mode.NAVIGATING) {
             voice.say("Tankstelle ${s.displayName()} wird angefahren, danach geht es weiter zum Ziel.")
             lastReroute = 0L

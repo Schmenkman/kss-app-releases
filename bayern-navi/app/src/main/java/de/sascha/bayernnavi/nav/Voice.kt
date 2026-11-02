@@ -77,6 +77,7 @@ class Voice(ctx: Context) : TextToSpeech.OnInitListener {
 
     /** urgent = laufende Ansage abbrechen (z. B. "Jetzt rechts abbiegen"). */
     fun say(text: String, urgent: Boolean = false) {
+        android.util.Log.i("BayernNavi", "SAY${if (muted) " (stumm)" else ""}: $text")
         if (muted || text.isBlank()) return
         val t = tts
         if (!ready || t == null) {

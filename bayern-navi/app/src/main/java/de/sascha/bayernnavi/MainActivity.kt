@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -92,6 +93,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     private val panels = ArrayList<Panel>()
 
     private var lastMode: NavEngine.Mode? = null
+    private var lastGesture = 0L
     private var lastRoutesKey = 0
     private var lastMessage: String? = null
 
@@ -133,7 +135,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         searchBar.addView(searchText, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         searchBar.setOnClickListener { openSearch() }
         searchText.setOnClickListener { openSearch() }
-        searchBar.addView(Ui.iconButton(this, Icons.glyph(Icons.Glyph.SETTINGS, dp(24), Ui.TEXT2), Color.WHITE, 46) { openSettings() }.apply {
+        searchBar.addView(Ui.iconButton(this, Icons.glyph(Icons.Glyph.SETTINGS, dp(24), Ui.TEXT2), Color.WHITE, 46, "Einstellungen") { openSettings() }.apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = 0
             elevation = 0f
         })
@@ -169,18 +171,18 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
 
         // ---- rechts: Knoepfe ----
         rightCol = Ui.vbox(this)
-        btnLayers = Ui.iconButton(this, Icons.glyph(Icons.Glyph.LAYERS, dp(26), Ui.TEXT), Color.WHITE) { toggleSatellite() }
+        btnLayers = Ui.iconButton(this, Icons.glyph(Icons.Glyph.LAYERS, dp(26), Ui.TEXT), Color.WHITE, desc = "Luftbild") { toggleSatellite() }
         rightCol.addView(btnLayers)
-        btnMute = Ui.iconButton(this, Icons.glyph(Icons.Glyph.VOLUME_ON, dp(26), Ui.TEXT), Color.WHITE) { engine.toggleMuted() }
+        btnMute = Ui.iconButton(this, Icons.glyph(Icons.Glyph.VOLUME_ON, dp(26), Ui.TEXT), Color.WHITE, desc = "Ton") { engine.toggleMuted() }
         rightCol.addView(btnMute)
-        rightCol.addView(Ui.iconButton(this, Icons.glyph(Icons.Glyph.FUEL, dp(26), Ui.TEXT), Color.WHITE) { openFuel() })
-        btnJam = Ui.iconButton(this, Icons.glyph(Icons.Glyph.JAM_AVOID, dp(26), Ui.TEXT), Color.WHITE) {
+        rightCol.addView(Ui.iconButton(this, Icons.glyph(Icons.Glyph.FUEL, dp(26), Ui.TEXT), Color.WHITE, desc = "Tanken") { openFuel() })
+        btnJam = Ui.iconButton(this, Icons.glyph(Icons.Glyph.JAM_AVOID, dp(26), Ui.TEXT), Color.WHITE, desc = "Stau umfahren") {
             engine.avoidJamsNow()
             toast("Suche Umfahrung …")
         }
         rightCol.addView(btnJam)
-        rightCol.addView(Ui.iconButton(this, Icons.glyph(Icons.Glyph.AVOID, dp(26), Ui.TEXT), Color.WHITE) { avoid.show() })
-        btnRecenter = Ui.iconButton(this, Icons.glyph(Icons.Glyph.RECENTER, dp(26), Color.WHITE), Ui.BLUE) {
+        rightCol.addView(Ui.iconButton(this, Icons.glyph(Icons.Glyph.AVOID, dp(26), Ui.TEXT), Color.WHITE, desc = "Gemiedene Abschnitte") { avoid.show() })
+        btnRecenter = Ui.iconButton(this, Icons.glyph(Icons.Glyph.RECENTER, dp(26), Color.WHITE), Ui.BLUE, desc = "Zentrieren") {
             mapCtl?.recenter()
             updateRecenter()
         }
@@ -265,6 +267,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         map.addOnCameraMoveStartedListener { reason ->
             if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) {
                 ctl.following = false
+                lastGesture = System.currentTimeMillis()
                 updateRecenter()
             }
         }
@@ -330,7 +333,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             ctl.updateBuilding()
             ctl.updateAvoid()
             ctl.updatePosition()
-            val routesKey = System.identityHashCode(e.routes) + e.selectedIndex * 31 + e.routes.size
+            // Auswahl einer anderen Route soll die Kamera nicht bewegen – nur neue Routen.
+            val routesKey = System.identityHashCode(e.routes) + e.routes.size
             if (mode != lastMode || forceCamera || (mode == NavEngine.Mode.PREVIEW && routesKey != lastRoutesKey)) {
                 when (mode) {
                     NavEngine.Mode.PREVIEW -> if (e.routes.isNotEmpty()) {
@@ -382,6 +386,10 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         ctl.updatePosition()
         if (e.mode == NavEngine.Mode.NAVIGATING) ctl.updateRoutes()
         if (nh != null || cam != null || e.mode == NavEngine.Mode.NAVIGATING) ctl.updatePoints()
+        // Beim Navigieren nach 12 s ohne Fingerbewegung automatisch wieder mitfahren.
+        if (!ctl.following && e.mode == NavEngine.Mode.NAVIGATING && System.currentTimeMillis() - maxOf(lastGesture, ctl.lastManualMove) > 12_000 && panels.none { it.isShown }) {
+            ctl.following = true
+        }
         if (ctl.following && (e.mode == NavEngine.Mode.NAVIGATING || e.mode == NavEngine.Mode.IDLE)) ctl.follow()
         updateRecenter()
     }
@@ -498,7 +506,26 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     }
 
     private fun handleIntent(i: Intent?) {
-        val data: Uri = i?.data ?: return
+        if (i == null) return
+        // Nur in Test-Builds (debuggable): Steuerung fuer die automatische Testfahrt in der CI.
+        val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (debuggable) {
+            if (i.getBooleanExtra("test_start_navigation", false)) {
+                engine.scope.launch {
+                    repeat(90) {
+                        if (engine.mode == NavEngine.Mode.PREVIEW && engine.routes.isNotEmpty() && !engine.loading) {
+                            startNavigation()
+                            return@launch
+                        }
+                        kotlinx.coroutines.delay(1000)
+                    }
+                }
+            }
+            if (i.getBooleanExtra("test_toggle_satellite", false)) toggleSatellite()
+            if (i.getBooleanExtra("test_open_fuel", false)) openFuel()
+            if (i.getBooleanExtra("test_close_panels", false)) closePanels()
+        }
+        val data: Uri = i.data ?: return
         when (data.scheme) {
             "geo" -> {
                 val (p, q) = Geocoding.parseGeoUri(data.toString())

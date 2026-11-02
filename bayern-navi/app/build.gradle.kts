@@ -26,7 +26,8 @@ android {
         versionName = appVersion
         ndk {
             // Nur echte Handys – halbiert die APK-Groesse (MapLibre bringt native Bibliotheken mit).
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            // -PallAbis=true (Emulator-Test in der CI) baut zusaetzlich x86/x86_64.
+            if (!project.hasProperty("allAbis")) abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 

@@ -69,9 +69,10 @@ object Ui {
             setOnClickListener(onClick)
         }
 
-    fun iconButton(ctx: Context, icon: Bitmap, bgColor: Int = Color.WHITE, sizeDp: Int = 50, onClick: (View) -> Unit): ImageView =
+    fun iconButton(ctx: Context, icon: Bitmap, bgColor: Int = Color.WHITE, sizeDp: Int = 50, desc: String? = null, onClick: (View) -> Unit): ImageView =
         ImageView(ctx).apply {
             setImageBitmap(icon)
+            contentDescription = desc
             val p = dp(ctx, 12)
             setPadding(p, p, p, p)
             scaleType = ImageView.ScaleType.FIT_CENTER

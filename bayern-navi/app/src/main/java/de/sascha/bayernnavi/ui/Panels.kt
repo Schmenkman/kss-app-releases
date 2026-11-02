@@ -52,6 +52,11 @@ abstract class Panel(protected val host: PanelHost, fullScreen: Boolean) {
     protected val titleView = Ui.text(ctx, "", 20f, Ui.TEXT, bold = true)
     protected val content: LinearLayout = Ui.vbox(ctx)
     protected val scroll = ScrollView(ctx)
+    /**
+     * Platz zwischen Kopfzeile und Liste. Unterklassen fuellen ihn in IHREM init-Block –
+     * nicht hier per offener Methode: die liefe vor der Initialisierung der Unterklasse.
+     */
+    protected val extras: LinearLayout = Ui.vbox(ctx)
 
     init {
         view.visibility = View.GONE
@@ -71,17 +76,15 @@ abstract class Panel(protected val host: PanelHost, fullScreen: Boolean) {
         card.setPadding(Ui.dp(ctx, 16), Ui.dp(ctx, 14), Ui.dp(ctx, 16), Ui.dp(ctx, 8))
         val head = Ui.hbox(ctx)
         head.addView(titleView, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        head.addView(Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.CLOSE, Ui.dp(ctx, 22), Ui.TEXT), Ui.LIGHT, 42) { hide() }.apply {
+        head.addView(Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.CLOSE, Ui.dp(ctx, 22), Ui.TEXT), Ui.LIGHT, 42, "Schließen") { hide() }.apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = 0
             elevation = 0f
         })
         card.addView(head)
-        headerExtras(card)
+        card.addView(extras)
         scroll.addView(content)
         card.addView(scroll, Ui.linLp(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).margins(ctx, t = 8))
     }
-
-    protected open fun headerExtras(card: LinearLayout) {}
 
     val isShown: Boolean get() = view.visibility == View.VISIBLE
 
@@ -123,9 +126,6 @@ class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
 
     init {
         titleView.text = "Wohin?"
-    }
-
-    override fun headerExtras(card: LinearLayout) {
         input.hint = "Adresse, Ort oder Firma"
         input.setSingleLine(true)
         input.imeOptions = EditorInfo.IME_ACTION_SEARCH
@@ -144,7 +144,7 @@ class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
                 true
             } else false
         }
-        card.addView(input, Ui.linLp().margins(ctx, t = 10))
+        extras.addView(input, Ui.linLp().margins(ctx, t = 10))
     }
 
     override fun show() {
@@ -221,10 +221,7 @@ class FuelPanel(host: PanelHost) : Panel(host, fullScreen = false) {
 
     init {
         titleView.text = "Tankstellen"
-    }
-
-    override fun headerExtras(card: LinearLayout) {
-        card.addView(chips, Ui.linLp().margins(ctx, t = 6))
+        extras.addView(chips, Ui.linLp().margins(ctx, t = 6))
     }
 
     private fun renderChips() {
