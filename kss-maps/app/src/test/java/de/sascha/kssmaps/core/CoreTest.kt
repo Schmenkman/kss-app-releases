@@ -523,4 +523,22 @@ class CoreTest {
         assertEquals(HazardType.DISTANCE_CHECK, temp.toHazard().type)
         assertEquals(90.0, temp.toHazard().directionDeg!!, 1e-9)
     }
+
+    @Test
+    fun corridorBoxesCoverTheWholeRoute() {
+        // 100 km gerade nach Osten, ein Punkt alle ~500 m
+        val pts = (0..200).map { LatLon(48.1, 11.0 + it * 0.00672) }
+        val boxes = Overpass.corridorBoxes(pts, 25_000.0, 250.0)
+        assertTrue("${boxes.size} Rechtecke", boxes.size in 4..5)
+        for (p in pts) assertTrue("Punkt $p nicht abgedeckt", boxes.any { it.contains(p) })
+        // Rand: 250 m seitlich liegt noch drin, 600 m nicht mehr
+        assertTrue(boxes.any { it.contains(LatLon(48.1 + 200 / 111_320.0, 11.3)) })
+        assertFalse(boxes.any { it.contains(LatLon(48.1 + 600 / 111_320.0, 11.3)) })
+        val q = Overpass.enforcementBoxesQuery(boxes)
+        assertTrue(q.startsWith("[out:json]"))
+        assertEquals(boxes.size, Regex("node\\[\"highway\"=\"speed_camera\"\\]").findAll(q).count())
+        assertTrue(q.contains("out body geom;") && q.endsWith("out tags geom;"))
+        assertEquals(1, Overpass.corridorBoxes(listOf(LatLon(48.0, 11.0)), 25_000.0, 100.0).size)
+        assertTrue(Overpass.corridorBoxes(emptyList()).isEmpty())
+    }
 }

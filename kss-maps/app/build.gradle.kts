@@ -80,6 +80,13 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+    }
+
+    // Android-Auto-Tests (Robolectric) nur mit -PcarTests – so kann ein Fehler dort den
+    // normalen Build nicht aufhalten.
+    if (project.hasProperty("carTests")) {
+        sourceSets.getByName("test").java.srcDir("src/carTest/java")
     }
 
     lint {
@@ -104,4 +111,16 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    // Android-Auto-Vorlagen ohne Geraet pruefen (Robolectric + Car-App-Testbibliothek)
+    testImplementation("androidx.car.app:app-testing:1.4.0")
+    testImplementation("org.robolectric:robolectric:4.12.2")
+    testImplementation("androidx.test:core:1.6.1")
+}
+
+// Fehlgeschlagene Tests mit vollstaendigem Stacktrace im CI-Log zeigen.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }

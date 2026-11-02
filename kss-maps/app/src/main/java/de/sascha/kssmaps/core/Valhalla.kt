@@ -197,6 +197,14 @@ object Valhalla {
             r.branch?.let { b -> b.split("/").forEach { part -> Autobahn.roadId(part.trim())?.let { refs.add(it) } } }
         }
         timeProfile.add(poly.length to t)
+        // Auffahrten ohne Wegweiser: Ziel aus dem naechsten Manoever ("Links auf die Auffahrt A 9")
+        for (i in 0 until maneuvers.size - 1) {
+            val m = maneuvers[i]
+            if (m.kind != ManeuverKind.RAMP_LEFT && m.kind != ManeuverKind.RAMP_RIGHT && m.kind != ManeuverKind.RAMP_STRAIGHT) continue
+            if (m.signBranch != null || m.signToward != null) continue
+            val nextRef = maneuvers.subList(i + 1, minOf(maneuvers.size, i + 3)).mapNotNull { it.street }.firstOrNull { isRef(it) || it.startsWith("A ") }
+            if (nextRef != null) maneuvers[i] = m.copy(signBranch = nextRef)
+        }
         val summary = trip.optJSONObject("summary")
         val dist = (summary?.optDouble("length", Double.NaN)?.takeIf { !it.isNaN() }?.times(1000.0)) ?: poly.length
         return Route(

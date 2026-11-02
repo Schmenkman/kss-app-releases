@@ -39,6 +39,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -83,6 +87,49 @@ class NavEngine(
     }
 
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** Hintergrund fuer Netzabfragen, auf die nur begrenzt gewartet wird. */
+    private val bg = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * Wartet hoechstens [ms] auf [block]. withTimeoutOrNull allein reicht nicht: blockierende
+     * HTTP-Aufrufe reagieren nicht auf Abbruch, die Route wuerde minutenlang "berechnet".
+     * Deshalb laeuft [block] in einem eigenen Bereich weiter (fuellt die Caches), und
+     * [onLate] bekommt ein verspaetetes Ergebnis.
+     */
+    private suspend fun <T> upTo(ms: Long, onLate: ((T) -> Unit)? = null, block: suspend () -> T): T? {
+        val d = bg.async { block() }
+        val r = try {
+            withTimeoutOrNull(ms) { d.await() }
+        } catch (e: CancellationException) {
+            if (!currentCoroutineContext().isActive) throw e
+            null
+        } catch (e: Exception) {
+            null
+        }
+        if (r == null && onLate != null && !d.isCompleted) {
+            scope.launch {
+                val v = try {
+                    d.await()
+                } catch (e: Exception) {
+                    return@launch
+                }
+                onLate(v)
+            }
+        }
+        return r
+    }
+
+    private var lateJob: Job? = null
+
+    /** Spaet eingetroffene Blitzer-Daten in die angezeigten Routen uebernehmen (gebuendelt). */
+    private fun lateEnforcement() {
+        if (lateJob?.isActive == true) return
+        lateJob = scope.launch {
+            delay(400)
+            reannotateShown()
+        }
+    }
     private val listeners = CopyOnWriteArrayList<Listener>()
 
     fun addListener(l: Listener) {
@@ -183,8 +230,14 @@ class NavEngine(
         scope.launch {
             if (prefs.camerasEnabled) {
                 val had = services.camerasCached().isNotEmpty()
-                services.cameras()
-                if (!had && services.camerasCached().isNotEmpty()) reannotateShown()
+                try {
+                    services.cameras()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Blitzer laden: ${e.message}")
+                }
+                if (!had && services.camerasCached().isNotEmpty()) lateEnforcement()
             }
         }
     }
@@ -433,30 +486,33 @@ class NavEngine(
     private suspend fun annotate(list: List<Route>): List<Route> {
         if (list.isEmpty()) return list
         val roads = list.flatMap { it.roadRefs }.toSet()
-        // Nicht ewig auf langsame Dienste warten: lieber Route ohne einzelne Meldungen zeigen;
-        // die Verkehrspruefung alle 3 Minuten holt sie nach.
-        val events = try {
-            withTimeoutOrNull(12_000) { services.autobahnEvents(roads) } ?: emptyList()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            emptyList()
+        // Nicht ewig auf langsame Dienste warten: lieber Route ohne einzelne Meldungen zeigen.
+        // Spaete Blitzer-Daten werden nachgetragen, Verkehr holt die Pruefung alle 3 Minuten.
+        // Autobahn-Meldungen und Blitzer laufen parallel.
+        val (events, cams) = coroutineScope {
+            val ev = async { upTo(10_000) { services.autobahnEvents(roads) } ?: emptyList() }
+            val cm = async { if (prefs.camerasEnabled) enforcementFor(list) else emptyList() }
+            ev.await() to cm.await()
         }
-        val cams = if (prefs.camerasEnabled) {
-            val cached = withTimeoutOrNull(8_000) { services.cameras() } ?: services.camerasCached()
-            // Korridor-Abfrage entlang der Routen, wenn der Bayern-Cache fehlt oder die Route Bayern verlaesst
-            val needCorridor = cached.isEmpty() || list.any { r -> r.geometry.points.any { !Bavaria.contains(it) } }
-            val corridor = if (needCorridor) {
-                list.take(3).flatMap { r -> withTimeoutOrNull(15_000) { services.enforcementAlong(r) } ?: emptyList() }
-            } else emptyList()
-            (cached + corridor).distinctBy { it.id } + reportHazards()
-        } else emptyList()
         for (r in list) {
             val matched = HazardMatcher.dedupe(HazardMatcher.matchAll(r, events + cams))
             r.hazards = merge(r, matched)
             r.extraDelays = HazardMatcher.extraDelays(r, r.hazards)
         }
         return list.sortedBy { it.durationSec }
+    }
+
+    /** Blitzer/Abstandsmessungen fuer die Routen: Bayern-Bestand, bei Bedarf Abfrage entlang der Route. */
+    private suspend fun enforcementFor(list: List<Route>): List<Hazard> {
+        val late: (List<Hazard>) -> Unit = { if (it.isNotEmpty()) lateEnforcement() }
+        val cached = upTo(5_000, late) { services.cameras() } ?: services.camerasCached()
+        // Abfrage entlang der Routen, wenn der Bayern-Bestand fehlt oder die Route Bayern verlaesst
+        val needCorridor = cached.isEmpty() || list.any { r -> r.geometry.points.any { !Bavaria.contains(it) } }
+        val corridor = if (needCorridor) coroutineScope {
+            list.take(3).map { r -> async { upTo(12_000, late) { services.enforcementAlong(r) } ?: emptyList() } }
+                .awaitAll().flatten()
+        } else emptyList()
+        return (cached + corridor).distinctBy { it.id } + reportHazards()
     }
 
     /** TomTom-Verkehr hat Vorrang; Autobahn-Meldungen nur ergaenzen, wenn dort noch nichts gemeldet ist. */
@@ -521,10 +577,22 @@ class NavEngine(
     private fun loadBuilding(place: Place) {
         buildingJob?.cancel()
         buildingJob = scope.launch {
-            val b = services.building(place)
-            if (destination == place) {
-                building = b
-                changed()
+            // Overpass ist oft ausgelastet: bis zu 3 Versuche (die Karte hat zusaetzlich eine Rueckfallebene).
+            for (attempt in 0 until 3) {
+                try {
+                    val b = services.building(place)
+                    if (destination != place) return@launch
+                    if (b != null) {
+                        building = b
+                        changed()
+                    }
+                    return@launch
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Gebäude (Versuch ${attempt + 1}): ${e.message}")
+                }
+                delay(20_000L * (attempt + 1))
             }
         }
     }
@@ -1108,6 +1176,26 @@ class NavEngine(
     /** Ankunftszeit "14:35". */
     fun etaText(remainingSec: Double): String =
         SimpleDateFormat("HH:mm", Locale.GERMANY).format(Date(System.currentTimeMillis() + (remainingSec * 1000).toLong()))
+
+    /** Nur fuer Tests (z. B. Android-Auto-Vorlagen ohne Netz und GPS pruefen). */
+    internal fun testSetState(
+        mode: Mode,
+        destination: Place?,
+        routes: List<Route>,
+        active: Route? = null,
+        state: RouteTracker.State? = null,
+        arrived: Boolean = false,
+    ) {
+        this.mode = mode
+        this.destination = destination
+        this.routes = routes
+        this.selectedIndex = 0
+        this.activeRoute = active
+        this.state = state
+        this.arrived = arrived
+        this.loading = false
+        changed()
+    }
 
     fun clearMessage() {
         message = null

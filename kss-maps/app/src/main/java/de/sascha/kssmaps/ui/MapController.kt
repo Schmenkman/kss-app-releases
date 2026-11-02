@@ -102,7 +102,9 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
     private fun night(): Boolean = nightOverride?.invoke() ?: engine.isNight()
 
     fun applyStyle(force: Boolean = false) {
-        val url = if (night()) STYLE_NIGHT else STYLE_DAY
+        // Im Luftbild immer den hellen Stil: dessen weisse Strassen und Beschriftungen mit Rand
+        // liegen gut lesbar auf dem Foto (der Nachtstil zeichnet schwarze Strassen darauf).
+        val url = if (night() && prefs.mapMode != 1) STYLE_NIGHT else STYLE_DAY
         if (!force && url == styleUrl && style != null) {
             updateSatellite()
             updateTrafficOverlay()
@@ -225,18 +227,30 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         ), labels)
 
         // --- Zielgebaeude: kraeftig magenta, auch in 3D ---
-        addBelow(st, FillLayer("nav-bld-fill", SRC_BUILDING).withProperties(
-            PropertyFactory.fillColor("#E91E63"), PropertyFactory.fillOpacity(0.85f),
-        ), labels)
-        addBelow(st, FillExtrusionLayer("nav-bld-3d", SRC_BUILDING).withProperties(
-            PropertyFactory.fillExtrusionColor("#E91E63"),
-            PropertyFactory.fillExtrusionHeight(Expression.get("h")),
-            PropertyFactory.fillExtrusionBase(0f),
-            PropertyFactory.fillExtrusionOpacity(0.9f),
-        ), labels)
-        addBelow(st, LineLayer("nav-bld-line", SRC_BUILDING).withProperties(
-            PropertyFactory.lineColor("#FFFFFF"), PropertyFactory.lineWidth(3f),
-        ), labels)
+        // UEBER den Gebaeude-Ebenen des Grundstils, sonst verdecken dessen (3D-)Gebaeude die
+        // Markierung (nachts sah man nur den Umriss). Die 3D-Variante etwas hoeher als das Original.
+        val bld = listOf(
+            FillExtrusionLayer("nav-bld-3d", SRC_BUILDING).withProperties(
+                PropertyFactory.fillExtrusionColor("#E91E63"),
+                PropertyFactory.fillExtrusionHeight(Expression.get("h")),
+                PropertyFactory.fillExtrusionBase(0f),
+                PropertyFactory.fillExtrusionOpacity(0.9f),
+            ),
+            FillLayer("nav-bld-fill", SRC_BUILDING).withProperties(
+                PropertyFactory.fillColor("#E91E63"), PropertyFactory.fillOpacity(0.9f),
+            ),
+            LineLayer("nav-bld-line", SRC_BUILDING).withProperties(
+                PropertyFactory.lineColor("#FFFFFF"), PropertyFactory.lineWidth(3f),
+            ),
+        )
+        val baseBuildings = st.layers.lastOrNull { l ->
+            !l.id.startsWith("nav-") && ((l is FillLayer && l.sourceLayer == "building") || (l is FillExtrusionLayer && l.sourceLayer == "building"))
+        }?.id
+        var above = baseBuildings
+        for (l in bld) {
+            if (above != null && st.getLayer(above) != null) st.addLayerAbove(l, above) else addBelow(st, l, labels)
+            above = l.id
+        }
 
         // --- Punkte: Meldungen, Tankstellen, Sperrpunkte, Ziel ---
         st.addLayer(SymbolLayer("nav-points", SRC_POINTS)
@@ -450,10 +464,10 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         val dest = engine.destination
         if (dest != null) {
             feats.add(Feature.fromGeometry(pt(dest.pos)).also { it.addStringProperty("k", "pin") })
-            val b = engine.building
+            val b = destinationRing()
             val hn = dest.houseNumber
             if (b != null && !hn.isNullOrBlank()) {
-                feats.add(Feature.fromGeometry(pt(b.label)).also {
+                feats.add(Feature.fromGeometry(pt(b.second)).also {
                     it.addStringProperty("k", "hn")
                     it.addStringProperty("t", hn)
                 })
@@ -471,18 +485,77 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         it.addNumberProperty("z", z)
     }
 
+    // Rueckfallebene, falls die Overpass-Abfrage nichts liefert (z. B. Server ueberlastet):
+    // Gebaeudeumriss direkt aus den Vektorkacheln der Karte, sobald das Ziel im Bild ist.
+    private var mapBuildingRing: List<LatLon>? = null
+    private var mapBuildingFor: de.sascha.kssmaps.core.Place? = null
+
+    /** Gebaeude fuer die Markierung: Overpass-Ergebnis, sonst das aus der Karte. */
+    private fun destinationRing(): Pair<List<LatLon>, LatLon>? {
+        val dest = engine.destination ?: return null
+        engine.building?.let { return it.ring to it.label }
+        val r = mapBuildingRing
+        if (r != null && mapBuildingFor == dest) return r to Geo.ringCentroid(r)
+        return null
+    }
+
+    /** Auf Kamera-Stillstand aufrufen: sucht das Zielgebaeude in den gerenderten Gebaeude-Ebenen. */
+    fun tryBuildingFromMap() {
+        val st = style ?: return
+        val dest = engine.destination ?: return
+        if (engine.building != null || (mapBuildingFor == dest && mapBuildingRing != null)) return
+        if (map.cameraPosition.zoom < 15.0) return
+        val sp = map.projection.toScreenLocation(LatLng(dest.lat, dest.lon))
+        if (sp.x < 0 || sp.y < 0 || sp.x > map.width || sp.y > map.height) return
+        val layerIds = st.layers.filter { l ->
+            !l.id.startsWith("nav-") && ((l is FillLayer && l.sourceLayer == "building") || (l is FillExtrusionLayer && l.sourceLayer == "building"))
+        }.map { it.id }
+        if (layerIds.isEmpty()) return
+        val r = px(40).toFloat()
+        val feats = try {
+            map.queryRenderedFeatures(android.graphics.RectF(sp.x - r, sp.y - r, sp.x + r, sp.y + r), *layerIds.toTypedArray())
+        } catch (e: Exception) {
+            return
+        }
+        var best: List<LatLon>? = null
+        var bestD = Double.MAX_VALUE
+        for (f in feats) {
+            val polys: List<Polygon> = when (val g = f.geometry()) {
+                is Polygon -> listOf(g)
+                is org.maplibre.geojson.MultiPolygon -> g.polygons()
+                else -> emptyList()
+            }
+            for (poly in polys) {
+                val ring = poly.coordinates().firstOrNull() ?: continue
+                if (ring.size < 4) continue
+                val ll = ring.map { LatLon(it.latitude(), it.longitude()) }
+                val d = Geo.distanceToRing(dest.pos, ll)
+                if (d < bestD) {
+                    bestD = d
+                    best = ll
+                }
+            }
+        }
+        if (best != null && bestD <= 25.0) {
+            mapBuildingRing = best
+            mapBuildingFor = dest
+            updateBuilding()
+            updatePoints()
+        }
+    }
+
     fun updateBuilding() {
         val st = style ?: return
         val src = st.getSourceAs<GeoJsonSource>(SRC_BUILDING) ?: return
-        val b = engine.building
-        if (b == null || engine.destination == null) {
+        val d = destinationRing()
+        if (d == null) {
             src.setGeoJson(FeatureCollection.fromFeatures(emptyList<Feature>()))
             return
         }
-        val ring = b.ring.map { pt(it) }.toMutableList()
+        val ring = d.first.map { pt(it) }.toMutableList()
         if (ring.first() != ring.last()) ring.add(ring.first())
         val f = Feature.fromGeometry(Polygon.fromLngLats(listOf(ring)))
-        f.addNumberProperty("h", ((b.levels ?: 2) * 3.2 + 3.0).toFloat())
+        f.addNumberProperty("h", ((engine.building?.levels ?: 3) * 3.5 + 6.0).toFloat())
         src.setGeoJson(FeatureCollection.fromFeature(f))
     }
 

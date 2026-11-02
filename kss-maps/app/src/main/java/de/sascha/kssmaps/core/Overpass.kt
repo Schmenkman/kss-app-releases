@@ -31,6 +31,45 @@ object Overpass {
             "(way[\"mindistance\"]$bb;way[\"mindistance:hgv\"]$bb;);out tags geom;"
     }
 
+    /**
+     * Rechtecke entlang eines Linienzugs, je hoechstens [segmentM] Meter Strecke, um [padM]
+     * erweitert. Rechteck-Abfragen sind auf den Overpass-Servern viel schneller als "around"
+     * um einen langen Linienzug; was nicht an der Route liegt, sortiert der HazardMatcher aus.
+     */
+    fun corridorBoxes(points: List<LatLon>, segmentM: Double = 25_000.0, padM: Double = 250.0): List<BBox> {
+        if (points.isEmpty()) return emptyList()
+        val out = ArrayList<BBox>()
+        var seg = ArrayList<LatLon>()
+        seg.add(points[0])
+        var len = 0.0
+        for (i in 1 until points.size) {
+            val p = points[i]
+            len += Geo.distance(points[i - 1], p)
+            seg.add(p)
+            if (len >= segmentM && i < points.size - 1) {
+                BBox.of(seg)?.let { out.add(it.expanded(padM)) }
+                seg = ArrayList()
+                seg.add(p)
+                len = 0.0
+            }
+        }
+        if (seg.size >= 1) BBox.of(seg)?.let { out.add(it.expanded(padM)) }
+        return out
+    }
+
+    /** Wie [enforcementBBoxQuery], aber fuer mehrere Rechtecke in einer Abfrage. */
+    fun enforcementBoxesQuery(boxes: List<BBox>): String {
+        val bbs = boxes.map { b -> String.format(Locale.ROOT, "(%.5f,%.5f,%.5f,%.5f)", b.minLat, b.minLon, b.maxLat, b.maxLon) }
+        val sb = StringBuilder("[out:json][timeout:60];(")
+        for (bb in bbs) sb.append("node[\"highway\"=\"speed_camera\"]").append(bb).append(';')
+        sb.append(");out body;(")
+        for (bb in bbs) sb.append("relation[\"type\"=\"enforcement\"]").append(bb).append(';')
+        sb.append(");out body geom;(")
+        for (bb in bbs) sb.append("way[\"mindistance\"]").append(bb).append(";way[\"mindistance:hgv\"]").append(bb).append(';')
+        sb.append(");out tags geom;")
+        return sb.toString()
+    }
+
     fun buildingsQuery(p: LatLon): String = String.format(
         Locale.ROOT,
         "[out:json][timeout:25];(way[\"building\"](around:70,%1\$.6f,%2\$.6f);" +

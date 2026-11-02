@@ -361,8 +361,8 @@ class CarRoutePreviewScreen(carContext: CarContext) : EngineScreen(carContext) {
 // =============================================================================================
 
 class CarFuelScreen(carContext: CarContext) : EngineScreen(carContext) {
-    private var items: List<RankedStation>? = null
-    private var error: String? = null
+    internal var items: List<RankedStation>? = null
+    internal var error: String? = null
     private var job: Job? = null
 
     init {

@@ -15,3 +15,7 @@ signing/
 *.keystore
 *.base64
 secrets.env
+
+# Startbestand Blitzer (wird im CI frisch aus OpenStreetMap geladen)
+app/src/main/assets/enforcement/
+__pycache__/

@@ -39,7 +39,7 @@ class NaviSession : Session(), NavEngine.Listener {
     private var lastTrip = 0L
 
     override fun onCreateScreen(intent: Intent): Screen {
-        renderer = CarMapRenderer(carContext)
+        renderer = CarMapRenderer(carContext) { carContext.isDarkMode }
         carContext.getCarService(AppManager::class.java).setSurfaceCallback(renderer)
         setupNavigationManager()
         engine.addListener(this)
@@ -133,6 +133,15 @@ class NaviSession : Session(), NavEngine.Listener {
         val r = engine.activeRoute ?: return
         val st = engine.state ?: return
         try {
+            nm.updateTrip(buildTrip(r, st))
+        } catch (e: Exception) {
+            Log.w("KSSMaps", "updateTrip: ${e.message}")
+        }
+    }
+
+    /** Fahrtinfo fuer Kombiinstrument / Head-up-Display (eigene Funktion, damit testbar). */
+    internal fun buildTrip(r: de.sascha.kssmaps.core.Route, st: de.sascha.kssmaps.core.RouteTracker.State): Trip {
+        run {
             val tb = Trip.Builder()
             if (engine.rerouting) {
                 // Beim Neuberechnen nur "laedt" melden – Schritte und Ziel duerfen dann nicht gesetzt sein.
@@ -148,9 +157,7 @@ class NaviSession : Session(), NavEngine.Listener {
                 if (d != null) tb.addDestination(Destination.Builder().setName(d.name).setAddress(d.address.ifBlank { d.name }).build(), est)
                 r.maneuvers.lastOrNull { it.along <= st.along + 1 }?.street?.let { tb.setCurrentRoad(it) }
             }
-            nm.updateTrip(tb.build())
-        } catch (e: Exception) {
-            Log.w("KSSMaps", "updateTrip: ${e.message}")
+            return tb.build()
         }
     }
 }

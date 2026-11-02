@@ -179,39 +179,74 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
         )
     }
 
+    /** Startbestand aus der App (beim Bauen geladen), falls noch nichts heruntergeladen wurde. */
+    @Volatile private var seed: List<Hazard>? = null
+
+    private fun seedHazards(): List<Hazard> {
+        seed?.let { return it }
+        val list = try {
+            ctx.assets.open("enforcement/bayern.json").bufferedReader().use { Overpass.parseEnforcement(it.readText()) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        seed = list
+        return list
+    }
+
+    /** Geparste Kacheln im Speicher (Datei-Zeitstempel -> Objekte), damit nicht jedes Mal neu gelesen wird. */
+    private val tileMem = arrayOfNulls<Pair<Long, List<Hazard>>>(4)
+
+    private fun readTile(i: Int, f: File): List<Hazard>? {
+        if (!f.exists()) return null
+        val lm = f.lastModified()
+        tileMem[i]?.let { if (it.first == lm) return it.second }
+        return try {
+            Overpass.parseEnforcement(f.readText()).also { tileMem[i] = lm to it }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Vorhandener Bestand ohne Download: Dateien, fehlende Kacheln aus dem Startbestand. */
+    private fun assemble(dir: File, tiles: List<BBox>): List<Hazard> {
+        val out = ArrayList<Hazard>()
+        for ((i, b) in tiles.withIndex()) {
+            val got = readTile(i, File(dir, "tile$i.json")) ?: seedHazards().filter { b.contains(it.point) }
+            out.addAll(got)
+        }
+        return out.distinctBy { it.id }
+    }
+
     private suspend fun loadCameras(forceRefresh: Boolean): List<Hazard> = withContext(Dispatchers.IO) {
         val dir = File(ctx.filesDir, "enforcement").also { it.mkdirs() }
         val now = System.currentTimeMillis()
-        val cached = cameraCache
         val tiles = bavariaTiles()
+        // Sofort den vorhandenen Bestand bereitstellen – der Download unten kann dauern.
+        if (cameraCache == null) {
+            val have = assemble(dir, tiles)
+            if (have.isNotEmpty()) cameraCache = have
+        }
+        val cached = cameraCache
         val allFresh = tiles.indices.all { i -> File(dir, "tile$i.json").let { it.exists() && now - it.lastModified() < 7 * DAY } }
         if (!forceRefresh && cached != null && allFresh) return@withContext cached
-        val out = ArrayList<Hazard>()
+        val anyTry = tiles.indices.any { i -> forceRefresh || now - tileFailedAt[i] > 15 * 60_000 }
+        if (!forceRefresh && cached != null && !anyTry) return@withContext cached
         for ((i, b) in tiles.withIndex()) {
             val f = File(dir, "tile$i.json")
             val fresh = f.exists() && now - f.lastModified() < 7 * DAY
             val mayTry = forceRefresh || now - tileFailedAt[i] > 15 * 60_000
-            var got: List<Hazard>? = null
             if ((!fresh || forceRefresh) && mayTry) {
                 try {
-                    val json = overpass(Overpass.enforcementBBoxQuery(b), 100_000)
-                    got = Overpass.parseEnforcement(json)
+                    val json = overpass(Overpass.enforcementBBoxQuery(b), 60_000)
+                    Overpass.parseEnforcement(json) // nur gueltige Antworten speichern
                     f.writeText(json)
                 } catch (e: Exception) {
                     tileFailedAt[i] = now
                     Log.w(TAG, "Blitzer-Kachel $i: ${e.message}")
                 }
             }
-            if (got == null && f.exists()) {
-                got = try {
-                    Overpass.parseEnforcement(f.readText())
-                } catch (e: Exception) {
-                    null
-                }
-            }
-            if (got != null) out.addAll(got)
         }
-        val result = out.distinctBy { it.id }
+        val result = assemble(dir, tiles)
         if (result.isNotEmpty() || cached == null) cameraCache = result
         Log.i(TAG, "Verkehrsueberwachung: ${result.size} Objekte (Blitzer ${result.count { it.type == HazardType.SPEED_CAMERA }}, Abstand ${result.count { it.type == HazardType.DISTANCE_CHECK }})")
         cameraCache ?: emptyList()
@@ -228,21 +263,14 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
         if (pts.size < 2) return@withContext emptyList()
         val key = pts.first().fmt() + pts.last().fmt() + pts.size
         synchronized(corridorCache) { corridorCache[key]?.let { return@withContext it } }
-        val out = ArrayList<Hazard>()
-        for (chunk in pts.chunked(220).take(8)) {
-            if (chunk.size < 2) continue
-            val coords = chunk.joinToString(",") { String.format(java.util.Locale.ROOT, "%.5f,%.5f", it.lat, it.lon) }
-            val q = "[out:json][timeout:60];(node[\"highway\"=\"speed_camera\"](around:45,$coords);" +
-                "relation[\"type\"=\"enforcement\"](around:45,$coords););out body geom;" +
-                "(way[\"mindistance\"](around:30,$coords);way[\"mindistance:hgv\"](around:30,$coords););out tags geom;"
-            try {
-                out.addAll(Overpass.parseEnforcement(overpass(q, 70_000)))
-            } catch (e: Exception) {
-                Log.w(TAG, "Blitzer entlang Route: ${e.message}")
-                break
-            }
+        // Bestand aus dem Bayern-Cache/Startbestand, der in den Rechtecken liegt, gleich mitnehmen
+        val boxes = Overpass.corridorBoxes(pts).take(40)
+        val res = try {
+            Overpass.parseEnforcement(overpass(Overpass.enforcementBoxesQuery(boxes), 45_000)).distinctBy { it.id }
+        } catch (e: Exception) {
+            Log.w(TAG, "Blitzer entlang Route: ${e.message}")
+            return@withContext seedHazards().filter { h -> boxes.any { it.contains(h.point) } }
         }
-        val res = out.distinctBy { it.id }
         synchronized(corridorCache) {
             corridorCache[key] = res
             while (corridorCache.size > 6) corridorCache.remove(corridorCache.keys.first())
@@ -324,14 +352,10 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
     // Zielgebaeude
     // ---------------------------------------------------------------------------------------
 
+    /** null = kein passendes Gebaeude; Netzwerkfehler werden geworfen (Aufrufer versucht es erneut). */
     suspend fun building(place: Place): BuildingFinder.Result? = withContext(Dispatchers.IO) {
-        try {
-            val els = Overpass.parseElements(overpass(Overpass.buildingsQuery(place.pos), 45_000))
-            BuildingFinder.find(place.pos, place.houseNumber, place.street, els)
-        } catch (e: Exception) {
-            Log.w(TAG, "Gebäude: ${e.message}")
-            null
-        }
+        val els = Overpass.parseElements(overpass(Overpass.buildingsQuery(place.pos), 45_000))
+        BuildingFinder.find(place.pos, place.houseNumber, place.street, els)
     }
 
     // ---------------------------------------------------------------------------------------

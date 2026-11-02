@@ -44,6 +44,12 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace :app:testReleaseUnitTest
 
+      - name: Tests der Android-Auto-Bildschirme
+        # Baut jede Android-Auto-Vorlage in allen Zustaenden (Robolectric). Ein Fehler hier wird im
+        # Log gemeldet, haelt das APK aber nicht auf.
+        continue-on-error: true
+        run: ./gradlew --no-daemon :app:testReleaseUnitTest -PcarTests --tests 'de.sascha.kssmaps.car.*'
+
       - name: Signier-Schluessel bereitstellen
         # Eigener Schluessel aus den Secrets (einmalig: tools/make_keystore.py + tools/setup_github.ps1).
         # Ohne Secrets: temporaerer Test-Schluessel – die APK laeuft, aber Updates brauchen dann
@@ -79,6 +85,22 @@ jobs:
             } >> "$GITHUB_ENV"
             echo "::warning::Kein Signier-Secret – Test-Schluessel. Siehe kss-maps/README.md (Einmalige Einrichtung)."
           fi
+
+      - name: Blitzer-Startbestand laden (OpenStreetMap)
+        # Feste Blitzer + Abstandsmessungen fuer Bayern direkt in die APK – sofort ab dem ersten
+        # Start verfuegbar. Klappt der Download nicht, laedt die App sie selbst nach.
+        continue-on-error: true
+        timeout-minutes: 8
+        run: python3 tools/fetch_enforcement.py app/src/main/assets/enforcement
+
+      - name: Startbestand fuer die Testfahrt weitergeben
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: kss-maps-blitzer-startbestand
+          path: kss-maps/app/src/main/assets/enforcement/
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Release-APK bauen
         run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
@@ -165,6 +187,13 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+
+      - name: Blitzer-Startbestand vom Build uebernehmen
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: kss-maps-blitzer-startbestand
+          path: kss-maps/app/src/main/assets/enforcement
 
       - name: Test-APK bauen (alle ABIs)
         working-directory: kss-maps

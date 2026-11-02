@@ -2,15 +2,18 @@ package de.sascha.kssmaps
 
 import android.app.Application
 import android.util.Log
+import de.sascha.kssmaps.core.Route
 import de.sascha.kssmaps.data.Http
 import de.sascha.kssmaps.data.Prefs
 import de.sascha.kssmaps.data.Services
 import de.sascha.kssmaps.nav.NavEngine
 import de.sascha.kssmaps.nav.Voice
+import de.sascha.kssmaps.ui.MapController
+import de.sascha.kssmaps.ui.OfflineRoute
 import org.maplibre.android.MapLibre
 import org.maplibre.android.offline.OfflineManager
 
-class NaviApp : Application() {
+open class NaviApp : Application() {
     lateinit var prefs: Prefs
         private set
     lateinit var services: Services
@@ -29,6 +32,16 @@ class NaviApp : Application() {
             "?"
         }
         Http.userAgent = "KSS-Maps/$versionName (Android; private Navigations-App)"
+        initMaps()
+        prefs = Prefs(this)
+        services = Services(this, prefs)
+        voice = Voice(this)
+        engine = NavEngine(this, prefs, services, voice)
+        engine.onRouteActivated = { r -> prefetchRoute(r) }
+    }
+
+    /** Karten-Bibliothek starten (native). In Tests ohne Geraet ueberschrieben. */
+    protected open fun initMaps() {
         MapLibre.getInstance(this)
         try {
             // Grosser Kachel-Cache: oft gefahrene Gegenden laden dann auch bei schlechtem Netz.
@@ -39,15 +52,11 @@ class NaviApp : Application() {
         } catch (e: Exception) {
             Log.w("KSSMaps", "Cache: ${e.message}")
         }
-        prefs = Prefs(this)
-        services = Services(this, prefs)
-        voice = Voice(this)
-        engine = NavEngine(this, prefs, services, voice)
-        engine.onRouteActivated = { r ->
-            de.sascha.kssmaps.ui.OfflineRoute.prefetch(
-                this, r, if (engine.isNight()) de.sascha.kssmaps.ui.MapController.STYLE_NIGHT else de.sascha.kssmaps.ui.MapController.STYLE_DAY
-            )
-        }
+    }
+
+    /** Karte entlang der aktiven Route offline vorhalten. */
+    protected open fun prefetchRoute(r: Route) {
+        OfflineRoute.prefetch(this, r, if (engine.isNight()) MapController.STYLE_NIGHT else MapController.STYLE_DAY)
     }
 
     companion object {

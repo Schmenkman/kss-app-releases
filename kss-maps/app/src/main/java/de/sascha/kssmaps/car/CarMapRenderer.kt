@@ -13,7 +13,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import androidx.car.app.CarContext
 import androidx.car.app.SurfaceCallback
 import androidx.car.app.SurfaceContainer
 import de.sascha.kssmaps.NaviApp
@@ -34,7 +33,11 @@ import kotlin.math.ln
  * auf dieser Flaeche, darauf eine Presentation mit derselben MapLibre-Karte wie am Handy
  * plus Tempo-/Tempolimit-Anzeige und Warnbanner.
  */
-class CarMapRenderer(private val carContext: CarContext) : SurfaceCallback, NavEngine.Listener {
+class CarMapRenderer(
+    private val context: Context,
+    /** Nachtmodus des Autos (CarContext.isDarkMode). */
+    private val darkMode: () -> Boolean,
+) : SurfaceCallback, NavEngine.Listener {
 
     private val engine: NavEngine get() = NaviApp.instance.engine
     private var virtualDisplay: VirtualDisplay? = null
@@ -57,13 +60,13 @@ class CarMapRenderer(private val carContext: CarContext) : SurfaceCallback, NavE
         height = surfaceContainer.height
         if (width <= 0 || height <= 0) return
         try {
-            val dm = carContext.getSystemService(DisplayManager::class.java)
+            val dm = context.getSystemService(DisplayManager::class.java)
             val vd = dm.createVirtualDisplay(
                 "KSSMapsCar", width, height, surfaceContainer.dpi, surface,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY
             )
             virtualDisplay = vd
-            val pres = Presentation(carContext, vd.display)
+            val pres = Presentation(context, vd.display)
             pres.window?.setBackgroundDrawable(ColorDrawable(Color.BLACK))
             val ctx: Context = pres.context
             val opts = MapLibreMapOptions.createFromAttributes(ctx)
@@ -91,9 +94,13 @@ class CarMapRenderer(private val carContext: CarContext) : SurfaceCallback, NavE
                 map.uiSettings.setAllGesturesEnabled(false)
                 map.uiSettings.isCompassEnabled = false
                 val c = MapController(ctx, map, forCar = true)
-                c.nightOverride = { carContext.isDarkMode }
+                c.nightOverride = darkMode
                 ctl = c
                 c.onStyleLoaded = { refreshAll(forceCamera = true) }
+                map.addOnCameraIdleListener {
+                    c.updateSatellite()
+                    c.tryBuildingFromMap()
+                }
                 applyPadding()
                 val p = engine.position ?: engine.prefs.lastPosition
                 if (p != null) map.moveCamera(CameraUpdateFactory.newLatLngZoom(org.maplibre.android.geometry.LatLng(p.lat, p.lon), 15.0))
@@ -188,6 +195,8 @@ class CarMapRenderer(private val carContext: CarContext) : SurfaceCallback, NavE
 
     fun refreshAll(forceCamera: Boolean) {
         val c = ctl ?: return
+        if (c.style == null) return
+        c.applyStyle() // Luftbild am Handy umgeschaltet / Tag-Nacht – laedt nur bei Aenderung neu
         if (c.style == null) return
         c.updateRoutes(force = true)
         c.updatePoints()

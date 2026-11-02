@@ -11,6 +11,22 @@ mkdir -p "$OUT"
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; echo "Screenshot $1"; }
 geo() { adb emu geo fix "$1" "$2" >/dev/null; }   # Laenge, Breite
 act() { adb shell "am start -n $PKG/.MainActivity $*" >/dev/null; }
+# Wartet, bis MUSTER mindestens N-mal im Protokoll steht (hoechstens S Sekunden)
+wait_log() {
+  local pat="$1" n="$2" max="$3" i=0 c
+  while [ "$i" -lt "$max" ]; do
+    c=$(grep -c -E "$pat" "$OUT/logcat.txt" 2>/dev/null); c=${c:-0}
+    if [ "$c" -ge "$n" ]; then echo "OK: '$pat' x$c nach ${i}s"; return 0; fi
+    sleep 2; i=$((i + 2))
+  done
+  echo "ZEITUEBERSCHREITUNG: '$pat' (${max}s)"; return 1
+}
+# Android-Auto-Karte (unsichtbare Flaeche wie im Auto) als Bild sichern
+car_shot() {
+  act --es test_car_capture "$1"; sleep 3
+  adb exec-out run-as $PKG cat "files/car_$1.png" > "$OUT/$2.png" 2>/dev/null
+  if [ -s "$OUT/$2.png" ]; then echo "Auto-Bild $2"; else rm -f "$OUT/$2.png"; echo "Auto-Bild $2 fehlt"; fi
+}
 
 adb install -r -g "$APK" || { echo "Installation fehlgeschlagen"; exit 1; }
 
@@ -42,8 +58,13 @@ shot 01_start
 
 # Ziel wie aus einer anderen App (geo:-Link) -> Suche, Routen, Vorschau
 adb shell "am start -a android.intent.action.VIEW -d 'geo:0,0?q=Marienplatz%207%2C%2085354%20Freising' -n $PKG/.MainActivity" >/dev/null
-sleep 40
+wait_log "ROUTES " 1 150
+sleep 6
 shot 02_vorschau
+# Android-Auto-Kartenflaeche starten (zeigt jetzt die Routenvorschau)
+act --ez test_car_start true
+sleep 15
+car_shot vorschau auto_01_vorschau
 act --ez test_toggle_satellite true
 sleep 15
 shot 03_luftbild
@@ -54,7 +75,8 @@ sleep 4
 AV=$(python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --tag PREVIEW_CHUNK --point-at 14000 | tail -1)
 echo "Sperrpunkt: $AV"
 act --es test_avoid "'$AV'"
-sleep 35
+wait_log "ROUTES " 2 150
+sleep 6
 shot 03b_abschnitt_gesperrt
 
 # "Los" tippen (Fallback: Test-Intent)
@@ -68,10 +90,12 @@ sleep 3
 
 # Fahrt: erste 9 km mit 90 km/h
 python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from 0 --to 9000 --speed 25 --shot-every 50 --prefix 05_fahrt
+car_shot fahrt auto_02_fahrt
 # Sprung kurz vors Ziel (prueft nebenbei die Neuberechnung) und langsam ankommen
 python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from-end 1200 --to-end 0 --speed 9 --shot-every 35 --prefix 06_ankunft
 sleep 25
 shot 07_ziel_markiert
+car_shot ziel auto_03_ziel
 
 # Tankstellen-Panel (ohne Tankerkoenig-Schluessel: Hinweis erwartet)
 act --ez test_open_fuel true
