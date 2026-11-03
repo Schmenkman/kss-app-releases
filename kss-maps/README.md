@@ -116,6 +116,21 @@ tools/smoketest.sh  Testfahrt im Emulator (CI, Commit-Nachricht mit „[testfahr
 tools/fetch_enforcement.py  Startbestand Blitzer/Abstandsmessungen und Tankstellenliste für die APK (CI)
 ```
 
+## Automatische Prüfungen
+
+- **Logik-Tests** (JVM): Routen-Parser, Blitzer-/Stau-Abgleich, Ansagetexte, Tankstellen-Sortierung,
+  Suche, Gebäude-Erkennung – bei jedem Build.
+- **Android-Auto-Tests** (Robolectric): jede Vorlage (Karte/Navigation, Routenauswahl, Suche, letzte
+  Ziele, Tanken, „Mehr“, Hinweise) in allen Zuständen – Android Auto wirft bei falsch gebauten
+  Vorlagen Ausnahmen, die hier auffallen statt im Auto.
+- **Testfahrt im Emulator** (Commit-Nachricht mit `[testfahrt]`): Erststart-Hinweise, Ziel per
+  geo-Link, Routen mit Blitzern/Baustellen, Luftbild, gesperrter Abschnitt, Navigation München →
+  Freising mit Ansagen, Blitzerwarnung (Ansage + Banner), Ankunft mit markiertem Zielhaus,
+  Tankstellen, Suche – plus Bilder der Android-Auto-Karte. Ergebnisse hängen als `testfahrt_*` am
+  Release, der nächste normale Build entfernt sie. Der Emulator nutzt die ANGLE-Grafik
+  (`-gpu swangle_indirect`); mit der älteren SwiftShader-Emulation fehlen Kartensymbole und
+  Beschriftungen – nur im Emulator, nicht auf echten Geräten.
+
 ## Build & Release
 
 `.github/workflows/kss-maps.yml`: Tests → signierte APK → GitHub-Release
