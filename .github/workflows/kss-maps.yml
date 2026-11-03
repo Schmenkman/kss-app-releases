@@ -86,14 +86,6 @@ jobs:
             echo "::warning::Kein Signier-Secret – Test-Schluessel. Siehe kss-maps/README.md (Einmalige Einrichtung)."
           fi
 
-      - name: Blitzer-Startbestand laden (OpenStreetMap)
-        # Feste Blitzer + Abstandsmessungen fuer Bayern direkt in die APK – sofort ab dem ersten
-        # Start verfuegbar. Bei ueberlasteten Servern in 4 Teilen. Klappt es nicht, laedt die App
-        # die Daten beim ersten Start selbst.
-        continue-on-error: true
-        timeout-minutes: 20
-        run: python3 tools/fetch_enforcement.py app/src/main/assets/enforcement blitzer
-
       - name: Tankstellenliste laden (OpenStreetMap)
         # Alle Tankstellen Bayerns mit UTA-Tag: Liste ohne Tankerkoenig-Schluessel, UTA-Abgleich.
         continue-on-error: true
@@ -202,7 +194,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Blitzer-Startbestand vom Build uebernehmen
+      - name: Datenbestand (Tankstellen) vom Build uebernehmen
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:

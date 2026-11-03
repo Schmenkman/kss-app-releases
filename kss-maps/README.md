@@ -9,14 +9,14 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 |---|---|
 | Karte wie Google Maps, Bayern reicht | Vektorkarte (OpenFreeMap/OSM), Tag/Nacht automatisch nach Sonnenstand |
 | Satellitenbilder | **Luftbild-Knopf**: in Bayern die amtlichen Luftbilder (DOP 40 cm, Open Data der Bayerischen Vermessungsverwaltung), außerhalb Esri-Satellit; Straßen und Namen bleiben darüber sichtbar |
-| Blitzer, Abstandsmessungen, Baustellen, Stau, „sonstige Sachen“ – nur auf der Route | Feste Blitzer, Rotlicht- und Abschnittskontrollen, **Abstandsmessungen** und Mindestabstand-Strecken (OpenStreetMap, ganz Bayern – ein aktueller Bestand ist schon in der App, danach wöchentlich aktualisiert und zusätzlich je Route abgefragt), Stau/Baustellen/Sperrungen/Gefahren (Autobahn GmbH, mit TomTom-Schlüssel auf **allen** Straßen). Es wird nur angezeigt und gewarnt, was **auf der gefahrenen Strecke** liegt (Abgleich auf ~25–45 m, Gegenfahrbahn und Parallelstraßen werden aussortiert). Ohne Ziel: Blitzer voraus in Fahrtrichtung |
-| Mobile Blitzer / Abstandsmessungen | Aktuelle mobile Blitzer gibt es nur als Live-Meldungen in Community-Apps wie Blitzer.de – ohne offene Schnittstelle für andere Apps. Roter Kamera-Knopf (Handy) bzw. „Mehr“ (Android Auto): gesehenen Blitzer oder Abstandsmessung an der aktuellen Position merken – 4 Stunden oder dauerhaft (bekannter Messplatz). Wird danach wie alle anderen auf der Route gewarnt |
-| Warnen | Sprachwarnung + farbiges Banner („Blitzer in 600 m“, „Stau in 3 km, etwa 12 Minuten Verzögerung“), in Android Auto zusätzlich als Hinweis-Karte |
+| Baustellen, Stau, Sperrungen, Gefahren – nur auf der Route | Stau/Baustellen/Sperrungen/Gefahren (Autobahn GmbH, mit TomTom-Schlüssel auf **allen** Straßen). Es wird nur angezeigt und gewarnt, was **auf der gefahrenen Strecke** liegt (Gegenfahrbahn und Parallelstraßen werden aussortiert) |
+| Blitzer / Abstandsmessungen | **Bewusst nicht enthalten** – dafür läuft Blitzer.de Pro parallel (Live-Meldungen der Community) |
+| Warnen | Sprachwarnung + farbiges Banner („Stau in 3 km, etwa 12 Minuten Verzögerung“, „Baustelle in 800 m“), in Android Auto zusätzlich als Hinweis-Karte |
 | Tempolimit anzeigen | Tempolimit-Schild aus OSM-Daten entlang der Route (ohne Route: per Kartenabgleich der letzten GPS-Punkte) |
 | Aktuelle Geschwindigkeit | groß unten links, rot (und optional ein Ton) bei Überschreitung |
 | Hausnummer am Ziel deutlich markieren | Das Gebäude der Zieladresse wird **magenta eingefärbt** (auch in 3D), die Hausnummer steht groß darauf – auch in Android Auto |
-| Alles in Android Auto | Kartenfläche mit Route, Stau-Färbung, Blitzern/Abstandsmessungen, Zielgebäude, Tempo + Tempolimit, Warnbanner; Abbiegehinweise, Ankunftszeit, Suche (Sprache/Tastatur im Stand), letzte Ziele, Routenwahl, Tanken, „Mehr“ (Melden, Stau umfahren, Verkehr prüfen, Ton) |
-| Stau in Routenberechnung und Alternativen | Bis zu 3 Routen, jede mit Fahrzeit **inkl. Stau**, Anzahl Staus/Baustellen/Blitzer. Ohne TomTom: Stauzeiten der Autobahn GmbH werden eingerechnet, plus automatische „Stau-optimierte“ Variante. Mit TomTom: Live-Verkehr direkt im Routing |
+| Alles in Android Auto | Kartenfläche mit Route, Stau-Färbung, Baustellen, Zielgebäude, Tempo + Tempolimit, Warnbanner; Abbiegehinweise, Ankunftszeit, Suche (Sprache/Tastatur im Stand), letzte Ziele, Routenwahl, Tanken, „Mehr“ (Stau umfahren, Verkehr prüfen, Ton) |
+| Stau in Routenberechnung und Alternativen | Bis zu 3 Routen, jede mit Fahrzeit **inkl. Stau**, Anzahl Staus/Baustellen. Ohne TomTom: Stauzeiten der Autobahn GmbH werden eingerechnet, plus automatische „Stau-optimierte“ Variante. Mit TomTom: Live-Verkehr direkt im Routing |
 | Route ohne Stau wählen | Route mit Etikett „Ohne Stau“ und Knopf **„Stau umfahren“** (sperrt alle Staus/Sperrungen der Route und rechnet neu). Unterwegs prüft die App alle 3 Minuten und bietet schnellere Routen an |
 | Gewisse Abschnitte nicht fahren (nicht pauschal) | **Lange auf eine Straße drücken → „Abschnitt meiden“.** Gesperrt wird nur dieses Stück (bei Autobahnen beide Fahrbahnen), dargestellt als rote Strichlinie. Liste mit Ein/Aus-Schalter und Löschen über den ⛔-Knopf. Autobahnen/Maut/Fähren komplett meiden gibt es zusätzlich in den Einstellungen |
 | Letzte 20 Adressen | Verlauf in der Suche (Handy) und „Letzte Ziele“ (Android Auto); lange drücken = entfernen |
@@ -65,14 +65,11 @@ installieren die APK so, dass Android den Play Store als Installer einträgt:
 Play-Console-Konto (einmalig 25 $, Identitätsprüfung), App als *interner Test* hochladen,
 eigenes Google-Konto als Tester eintragen und KSS-Maps aus dem Play Store installieren.
 
-## Hinweis Blitzer
+## Blitzer
 
-In Deutschland darf der **Fahrer** während der Fahrt keine Blitzerwarner benutzen
-(§ 23 Abs. 1c StVO, 75 € und 1 Punkt). Blitzer- und Abstandswarnung sind eingeschaltet;
-beim ersten Start erscheint einmalig dieser Hinweis, abschalten geht in den Einstellungen.
-Aktuelle mobile Blitzer kommen bei Blitzer.de & Co. aus deren Community (Millionen Nutzer,
-redaktionell geprüft); diese Daten sind nicht für andere Apps freigegeben – daher die eigene
-Melden-Funktion. Wer Live-Meldungen möchte, lässt Blitzer.de parallel laufen.
+Blitzer-, Abstands- und Überwachungswarnungen sind **bewusst nicht** in KSS-Maps – dafür läuft
+Blitzer.de Pro parallel. (Hinweis: Dem Fahrer ist die Nutzung von Blitzerwarnern während der
+Fahrt verboten, § 23 Abs. 1c StVO.)
 
 ## Einmalige Einrichtung des Signier-Schlüssels (für Updates)
 
@@ -101,7 +98,6 @@ dem Installieren einer neueren Testversion muss die alte deinstalliert werden.
 | Routing ohne Schlüssel | Valhalla, öffentliche FOSSGIS-Instanz (OSM) | – |
 | Routing + Live-Verkehr | TomTom Routing API, Traffic Flow Tiles | TomTom (optional) |
 | Stau/Baustellen/Sperrungen Autobahn | verkehr.autobahn.de (Autobahn GmbH des Bundes) | – |
-| Blitzer, Rotlicht, Abschnittskontrolle, Abstandsmessung, Mindestabstand | OpenStreetMap über Overpass-API (`highway=speed_camera`, `type=enforcement`, `mindistance`) | – |
 | Tempolimits | OSM-Daten über Valhalla `trace_attributes` | – |
 | Adresssuche | Photon (komoot), Nominatim | – |
 | Zielgebäude | OSM-Gebäude über Overpass-API | – |
@@ -130,7 +126,7 @@ app/src/carTest/  Tests aller Android-Auto-Vorlagen (Robolectric, `-PcarTests`)
 tools/smoketest.sh  Testfahrt im Emulator (CI, Commit-Nachricht mit „[testfahrt]“): Route,
                   Luftbild, gesperrter Abschnitt, Fahrt mit Ansagen, Ankunft, Tanken, Suche –
                   plus Bilder der Android-Auto-Karte (auf unsichtbarer Fläche gezeichnet)
-tools/fetch_enforcement.py  Startbestand Blitzer/Abstandsmessungen und Tankstellenliste für die APK (CI)
+tools/fetch_enforcement.py  Tankstellenliste für die APK (CI)
 ```
 
 ## Automatische Prüfungen
@@ -141,8 +137,8 @@ tools/fetch_enforcement.py  Startbestand Blitzer/Abstandsmessungen und Tankstell
   Ziele, Tanken, „Mehr“, Hinweise) in allen Zuständen – Android Auto wirft bei falsch gebauten
   Vorlagen Ausnahmen, die hier auffallen statt im Auto.
 - **Testfahrt im Emulator** (Commit-Nachricht mit `[testfahrt]`): Erststart-Hinweise, Ziel per
-  geo-Link, Routen mit Blitzern/Baustellen, Luftbild, gesperrter Abschnitt, Navigation München →
-  Freising mit Ansagen, Blitzerwarnung (Ansage + Banner), Ankunft mit markiertem Zielhaus,
+  geo-Link, Routen mit Baustellen, Luftbild, gesperrter Abschnitt, Navigation München →
+  Freising mit Ansagen, Ankunft mit markiertem Zielhaus,
   Tankstellen, Suche – plus Bilder der Android-Auto-Karte. Ergebnisse hängen als `testfahrt_*` am
   Release, der nächste normale Build entfernt sie. Der Emulator nutzt die ANGLE-Grafik
   (`-gpu swangle_indirect`); mit der älteren SwiftShader-Emulation fehlen Kartensymbole und

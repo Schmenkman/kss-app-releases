@@ -34,9 +34,15 @@ class Prefs(ctx: Context) {
     var voiceMuted: Boolean
         get() = bool("muted", false)
         set(v) = putBool("muted", v)
+    /**
+     * Blitzer-, Abstands- und Ueberwachungswarnungen sind aus KSS-Maps entfernt – dafuer laeuft
+     * Blitzer.de Pro parallel. Fest "aus"; alle Blitzer-Funktionen der App haengen an diesem Wert.
+     */
     var camerasEnabled: Boolean
-        get() = bool("cameras", true)
-        set(v) = putBool("cameras", v)
+        get() = false
+        set(value) {
+            // bewusst ignoriert
+        }
     var camerasAsked: Boolean
         get() = bool("cameras_asked", false)
         set(v) = putBool("cameras_asked", v)

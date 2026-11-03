@@ -606,23 +606,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     }
 
     private fun firstRunDialogs() {
-        if (!prefs.camerasAsked) {
-            // Blitzer + Abstandsmessungen sind eingeschaltet (ausdruecklich gewuenscht) – nur ein einmaliger Hinweis.
-            AlertDialog.Builder(this).setTitle("Blitzer & Abstandsmessungen")
-                .setMessage(
-                    "KSS-Maps warnt vor festen Blitzern, Rotlicht- und Abschnittskontrollen, Abstandsmessungen " +
-                        "(OpenStreetMap) und vor deinen eigenen Meldungen – nur auf deiner Route.\n\n" +
-                        "Einen gesehenen mobilen Blitzer oder eine Abstandsmessung merkst du dir mit dem roten " +
-                        "Kamera-Knopf – dann warnt KSS-Maps dort 4 Stunden lang (oder dauerhaft).\n\n" +
-                        "Hinweis: In Deutschland ist dem Fahrer die Nutzung von Blitzerwarnern während der Fahrt " +
-                        "verboten (§ 23 Abs. 1c StVO). Abschalten jederzeit in den Einstellungen."
-                )
-                .setCancelable(false)
-                .setPositiveButton("Verstanden") { _, _ ->
-                    prefs.camerasAsked = true
-                    setupHint()
-                }.show()
-        } else setupHint()
+        // Keine Blitzerwarnungen mehr in KSS-Maps (Blitzer.de Pro laeuft parallel) – kein Blitzer-Hinweis.
+        setupHint()
     }
 
     private fun setupHint() {
