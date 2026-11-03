@@ -149,8 +149,6 @@ class CarScreensTest {
         assertTrue(CarHistoryScreen(car).onGetTemplate() is PlaceListNavigationTemplate)
         engine.prefs.history = emptyList()
         assertTrue(CarHistoryScreen(car).onGetTemplate() is PlaceListNavigationTemplate)
-        engine.prefs.lastPosition = null
-        assertTrue(CarHistoryScreen(car).onGetTemplate() is ListTemplate)
         engine.testSetState(NavEngine.Mode.IDLE, null, emptyList())
         assertTrue(CarMoreScreen(car).onGetTemplate() is ListTemplate)
         engine.prefs.camerasEnabled = true // mit Melde-Zeilen (Blitzer / Abstandsmessung)

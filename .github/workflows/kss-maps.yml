@@ -202,6 +202,22 @@ jobs:
           ./gradlew --no-daemon :app:assembleDebug -PallAbis=true
 
       - name: Testfahrt im Emulator
+        # ANGLE/SwiftShader-Grafik: zeichnet Symbole und Beschriftungen der Karte originalgetreuer
+        # als die alte SwiftShader-GLES-Emulation. Startet der Emulator damit nicht: Ersatz unten.
+        id: emu
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swangle_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash kss-maps/tools/smoketest.sh
+
+      - name: Testfahrt im Emulator (Ersatz-Grafik)
+        if: steps.emu.outcome == 'failure'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34

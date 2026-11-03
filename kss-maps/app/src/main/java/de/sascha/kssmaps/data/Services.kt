@@ -170,7 +170,12 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
     fun camerasCached(): List<Hazard> = cameraCache ?: emptyList()
 
     /** Mehrere gleichzeitige Aufrufer warten auf denselben Download (Mutex). */
-    suspend fun cameras(forceRefresh: Boolean = false): List<Hazard> = cameraLock.withLock { loadCameras(forceRefresh) }
+    suspend fun cameras(forceRefresh: Boolean = false): List<Hazard> {
+        // Laeuft gerade ein Download und gibt es schon einen Bestand: nicht warten (Routen
+        // sollen sofort mit dem vorhandenen Bestand rechnen, der Download ergaenzt spaeter).
+        if (!forceRefresh && cameraLock.isLocked) cameraCache?.let { return it }
+        return cameraLock.withLock { loadCameras(forceRefresh) }
+    }
 
     private fun bavariaTiles(): List<BBox> {
         val b = Bavaria.BBOX
@@ -232,7 +237,11 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
         val cached = cameraCache
         val allFresh = tiles.indices.all { i -> File(dir, "tile$i.json").let { it.exists() && now - it.lastModified() < 7 * DAY } }
         if (!forceRefresh && cached != null && allFresh) return@withContext cached
-        val anyTry = tiles.indices.any { i -> forceRefresh || now - tileFailedAt[i] > 15 * 60_000 }
+        val anyTry = tiles.indices.any { i ->
+            val f = File(dir, "tile$i.json")
+            val fresh = f.exists() && now - f.lastModified() < 7 * DAY
+            forceRefresh || (!fresh && now - tileFailedAt[i] > 15 * 60_000)
+        }
         if (!forceRefresh && cached != null && !anyTry) return@withContext cached
         for ((i, b) in tiles.withIndex()) {
             val f = File(dir, "tile$i.json")

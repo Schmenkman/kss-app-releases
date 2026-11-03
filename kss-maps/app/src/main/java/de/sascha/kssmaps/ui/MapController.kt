@@ -137,6 +137,18 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
 
     private fun firstSymbolLayerId(st: Style): String? = st.layers.firstOrNull { it is SymbolLayer }?.id
 
+    private fun isRoadLine(l: Layer): Boolean = l is LineLayer && !l.id.startsWith("nav-") &&
+        (l.sourceLayer == "transportation" || l.id.startsWith("road") || l.id.startsWith("tunnel") ||
+            l.id.startsWith("bridge") || l.id.startsWith("highway"))
+
+    /** Erste Beschriftungsebene oberhalb der letzten Strassen-Ebene. */
+    private fun labelsAboveRoads(st: Style): String? {
+        val layers = st.layers
+        val lastRoad = layers.indexOfLast { isRoadLine(it) }
+        if (lastRoad < 0) return null
+        return layers.drop(lastRoad + 1).firstOrNull { it is SymbolLayer }?.id
+    }
+
     private fun firstRoadLayerId(st: Style): String? = st.layers.firstOrNull { l ->
         l is LineLayer && (l.sourceLayer == "transportation" || l.id.startsWith("road") || l.id.startsWith("tunnel") || l.id.startsWith("highway"))
     }?.id
@@ -158,15 +170,28 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         if (below != null && st.getLayer(below) != null) st.addLayerBelow(layer, below) else st.addLayer(layer)
     }
 
-    private fun install(st: Style) {
-        st.addImage("puck", Icons.puck(px(if (forCar) 40 else 46)))
-        for (t in HazardType.values()) st.addImage("hz-" + t.name, Icons.hazard(t, px(if (forCar) 30 else 34)))
-        st.addImage("dest-pin", Icons.destinationPin(px(42)))
-        st.addImage("fuel-uta", Icons.fuelMarker(px(32), true))
-        st.addImage("fuel-other", Icons.fuelMarker(px(32), false))
-        st.addImage("avoid", Icons.avoidMarker(px(26)))
+    /**
+     * MapLibre leitet die Groesse eines Symbols aus der Pixeldichte der Bitmap ab. Neue Bitmaps
+     * tragen die Dichte des Handy-Bildschirms – auf der Android-Auto-Flaeche (eigene, meist
+     * niedrigere Dichte) waeren alle Symbole dann 2–3x zu klein. Deshalb die Dichte der Karte setzen.
+     */
+    private fun img(b: android.graphics.Bitmap): android.graphics.Bitmap {
+        b.density = ctx.resources.displayMetrics.densityDpi
+        return b
+    }
 
-        val labels = firstSymbolLayerId(st)
+    private fun install(st: Style) {
+        st.addImage("puck", img(Icons.puck(px(if (forCar) 40 else 46))))
+        for (t in HazardType.values()) st.addImage("hz-" + t.name, img(Icons.hazard(t, px(if (forCar) 30 else 34))))
+        st.addImage("dest-pin", img(Icons.destinationPin(px(42))))
+        st.addImage("fuel-uta", img(Icons.fuelMarker(px(32), true)))
+        st.addImage("fuel-other", img(Icons.fuelMarker(px(32), false)))
+        st.addImage("avoid", img(Icons.avoidMarker(px(26))))
+
+        // Routen ueber ALLEN Strassen des Grundstils, aber unter deren Beschriftungen. Im Nachtstil
+        // liegen Autobahn-Ebenen hinter der ersten Beschriftungsebene – "unter der ersten
+        // Beschriftung" allein liesse die Route dort unter der Autobahn verschwinden.
+        val labels = labelsAboveRoads(st) ?: firstSymbolLayerId(st)
         val roads = firstRoadLayerId(st) ?: labels
         val font = labelFont(st)
 
