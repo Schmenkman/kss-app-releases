@@ -98,7 +98,7 @@ class PuckSmoother(
         fixPos = null
         fixAlong = routeAlong
         fixT = t - ageSec.coerceIn(0.0, 1.5)
-        speed = if (speedMps < 0.7) 0.0 else speedMps
+        speed = if (speedMps < 0.7) 0.0 else speedMps.coerceAtMost(70.0)
         val pred = predAlong(t)
         val shown = along
         if (shown == null || abs(shown - pred) > snapDist) {
@@ -120,7 +120,7 @@ class PuckSmoother(
         along = null
         fixPos = p
         fixBearing = headingDeg
-        speed = if (speedMps < 0.7 || headingDeg == null) 0.0 else speedMps
+        speed = if (speedMps < 0.7 || headingDeg == null) 0.0 else speedMps.coerceAtMost(70.0)
         fixT = t - ageSec.coerceIn(0.0, 1.5)
         val pred = predFree(t) ?: p
         val shown = pos

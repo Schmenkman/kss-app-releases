@@ -338,7 +338,10 @@ class NavEngine(
         val prev = location
         location = loc
         val now = SystemClock.elapsedRealtime()
-        var sp = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
+        val prevSp = speedKmh / 3.6
+        // Ohne Tempoangabe erst einmal das bisherige Tempo halten: manche Geraete (und der Emulator)
+        // melden denselben Punkt kurz hintereinander doppelt – daraus wuerde sonst Tempo 0.
+        var sp = if (loc.hasSpeed()) loc.speed.toDouble() else prevSp
         if (prev != null) {
             // Ohne Tempoangabe (oder unplausibel 0 trotz deutlicher Bewegung): aus den Positionen
             val dt = (loc.time - prev.time) / 1000.0
@@ -346,11 +349,13 @@ class NavEngine(
                 val d = prev.distanceTo(loc).toDouble()
                 val calc = d / dt
                 val acc = maxOf(loc.accuracy, prev.accuracy).toDouble()
-                if (!loc.hasSpeed()) sp = calc
+                if (calc > 85.0) {
+                    // Positionssprung (GPS-Aussetzer): kein Tempo daraus ableiten
+                } else if (!loc.hasSpeed()) sp = calc
                 else if (sp < 0.5 && calc > 3.0 && acc < 25.0 && d > 2 * acc) sp = calc
-            }
-        }
-        speedKmh = sp * 3.6
+            } else if (!loc.hasSpeed() && dt > 10.0) sp = 0.0
+        } else if (!loc.hasSpeed()) sp = 0.0
+        speedKmh = sp.coerceIn(0.0, 85.0) * 3.6
         if (loc.hasBearing() && sp > 1.5) heading = loc.bearing.toDouble()
         else if (prev != null && prev.distanceTo(loc) > 8 && sp > 1.5) heading = prev.bearingTo(loc).toDouble().let { (it + 360) % 360 }
         if (now - lastSavedPos > 60_000) {

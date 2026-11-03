@@ -295,6 +295,25 @@ class CoreTest {
     }
 
     @Test
+    fun staysOnCurrentPassWhenRouteLoopsAroundTheBlock() {
+        // Route: 200 m nach Osten, 80 m nach Norden, 80 m zurueck nach Westen, dann nach Sueden –
+        // kreuzt dabei die eigene erste Strecke bei 120 m (zweiter Durchgang ~ bei 440 m).
+        val o = LatLon(48.1, 11.5)
+        fun m(e: Double, n: Double) = PuckSmoother.offset(o, e, n)
+        val pts = Geo.densify(listOf(m(0.0, 0.0), m(200.0, 0.0), m(200.0, 80.0), m(120.0, 80.0), m(120.0, -150.0)), 5.0)
+        val route = simpleRoute(pts)
+        val tr = RouteTracker(route)
+        var st = tr.update(m(0.0, 0.5), 5.0, 10.0, 90.0)
+        for (e in listOf(20.0, 40.0, 60.0, 80.0, 100.0)) st = tr.update(m(e, 0.5), 5.0, 10.0, 90.0)
+        // GPS liegt am Kreuzungspunkt minimal naeher am SPAETEREN Durchgang – trotzdem der aktuelle
+        st = tr.update(m(120.3, 1.0), 5.0, 10.0, 90.0)
+        assertTrue("along=${st.along}", st.along in 110.0..135.0)
+        st = tr.update(m(140.0, 0.5), 5.0, 10.0, 90.0)
+        assertTrue("along=${st.along}", st.along in 130.0..150.0)
+        assertFalse(st.offRoute)
+    }
+
+    @Test
     fun announcesInStages() {
         assertNull(AnnouncePlan.stageFor(3000.0, 30.0, true))
         assertEquals(AnnouncePlan.Stage.FAR, AnnouncePlan.stageFor(1900.0, 30.0, true))

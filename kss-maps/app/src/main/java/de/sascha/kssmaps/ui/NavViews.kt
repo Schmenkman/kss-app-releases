@@ -378,6 +378,9 @@ class RoutePanel(
         buttons.addView(fuelBtn)
         buttons.addView(Ui.button(ctx, "Stau umfahren", Ui.LIGHT, Ui.TEXT) { onAvoidJams() }, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).margins(ctx, r = 6))
         startBtn = Ui.button(ctx, "Los", Ui.BLUE) { onStart() }
+        // "Wegbeschreibung" passt im Querformat nicht in voller Groesse: einzeilig, Schrift passt sich an
+        startBtn.maxLines = 1
+        startBtn.setAutoSizeTextTypeUniformWithConfiguration(10, 16, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
         buttons.addView(startBtn, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
         view.addView(buttons, Ui.linLp().margins(ctx, t = 10))
     }
@@ -418,6 +421,13 @@ class RoutePanel(
         // Mit dem Standort-Knopf in der Von-Zeile geht es wieder ab hier los.
         val planning = o != null
         startBtn.text = if (planning) "Wegbeschreibung" else "Los"
+        (startBtn.layoutParams as? LinearLayout.LayoutParams)?.let {
+            val w = if (planning) 1.2f else 0.8f
+            if (it.weight != w) {
+                it.weight = w
+                startBtn.layoutParams = it
+            }
+        }
         fuelBtn.visibility = if (planning) View.GONE else View.VISIBLE
         stepsBtn.visibility = if (planning) View.GONE else View.VISIBLE
         startBtn.alpha = if (e.routes.isEmpty()) 0.4f else 1f

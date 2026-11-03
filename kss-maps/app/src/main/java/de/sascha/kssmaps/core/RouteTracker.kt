@@ -1,5 +1,6 @@
 package de.sascha.kssmaps.core
 
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -37,14 +38,20 @@ class RouteTracker(val route: Route, startAlong: Double = 0.0) {
 
     fun update(p: LatLon, accuracyM: Double, speedMps: Double, headingDeg: Double?): State {
         val g = route.geometry
+        val tol = max(35.0, min(accuracyM * 1.5, 80.0))
         val proj: Projection? = if (!initialized) {
             g.projectNear(p, 300.0) ?: g.project(p)
         } else {
-            val from = g.segmentAt(along - 60.0)
-            val to = g.segmentAt(along + max(350.0, speedMps * 15.0 + 200.0))
-            g.project(p, from, to)
+            val ahead = along + max(350.0, speedMps * 15.0 + 200.0)
+            // Faehrt die Route eine Schleife (z. B. um den Block zum Ziel), liegt ein spaeterer Teil
+            // oft genauso nah wie der aktuelle. Unter den nahen Treffern den nehmen, der zur
+            // erwarteten Lage passt – sonst springt die Position (und die Ansage) vor.
+            val expected = along + speedMps
+            g.projectAllNear(p, tol)
+                .filter { it.along >= along - 60.0 && it.along <= ahead }
+                .minByOrNull { it.offset + 0.25 * abs(it.along - expected) }
+                ?: g.project(p, g.segmentAt(along - 60.0), g.segmentAt(ahead))
         }
-        val tol = max(35.0, min(accuracyM * 1.5, 80.0))
         var onRoute = false
         if (proj != null && proj.offset <= tol) {
             onRoute = true
