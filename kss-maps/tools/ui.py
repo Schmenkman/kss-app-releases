@@ -26,15 +26,16 @@ def dump():
     return ET.fromstring(xml[start:]) if start >= 0 else None
 
 
-def find(root, text=None, desc=None, contains=False):
+def find(root, text=None, desc=None, contains=False, icase=False):
     if root is None:
         return None
+    norm = (lambda s: s.casefold()) if icase else (lambda s: s)
     for n in root.iter("node"):
-        t = n.get("text") or ""
-        d = n.get("content-desc") or ""
-        if text is not None and (t == text or (contains and text in t)):
+        t = norm(n.get("text") or "")
+        d = norm(n.get("content-desc") or "")
+        if text is not None and (t == norm(text) or (contains and norm(text) in t)):
             return n
-        if desc is not None and (d == desc or (contains and desc in d)):
+        if desc is not None and (d == norm(desc) or (contains and norm(desc) in d)):
             return n
     return None
 
@@ -50,8 +51,9 @@ def main():
     ap.add_argument("--text")
     ap.add_argument("--desc")
     ap.add_argument("--contains", action="store_true")
+    ap.add_argument("--icase", action="store_true", help="Gross/klein egal (Dialog-Knoepfe sind oft in Grossbuchstaben)")
     a = ap.parse_args()
-    n = find(dump(), a.text, a.desc, a.contains)
+    n = find(dump(), a.text, a.desc, a.contains, a.icase)
     if n is None:
         print(f"nicht gefunden: text={a.text} desc={a.desc}")
         return 1

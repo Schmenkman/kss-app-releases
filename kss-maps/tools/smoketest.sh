@@ -30,13 +30,11 @@ car_shot() {
 
 adb install -r -g "$APK" || { echo "Installation fehlgeschlagen"; exit 1; }
 
-# Erststart-Dialoge ueberspringen (Blitzer-Frage beantwortet, Schluessel-Hinweis gezeigt)
+# Update-Pruefung aus; die Erststart-Hinweise werden unten wie von Hand weggeklickt
 cat > /tmp/navi_prefs.xml <<'XML'
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
-    <boolean name="cameras_asked" value="true" />
     <boolean name="cameras" value="true" />
-    <boolean name="setup_shown" value="true" />
     <long name="last_update_check" value="4102444800000" />
 </map>
 XML
@@ -51,7 +49,14 @@ LOGPID=$!
 # Start: Muenchen-Schwabing
 geo 11.5850 48.1640
 act
-sleep 30
+sleep 25
+# Erster Start: Hinweis Blitzer/Abstandsmessungen und Einrichtungs-Hinweis wie ein Nutzer wegklicken
+shot 00_erster_start
+python3 $T/ui.py tap --text "Verstanden" --icase || echo "kein Blitzer-Hinweis"
+sleep 3
+shot 00b_einrichtung
+python3 $T/ui.py tap --text "Später" --icase || adb shell input keyevent KEYCODE_BACK
+sleep 3
 geo 11.5851 48.1641
 sleep 5
 shot 01_start

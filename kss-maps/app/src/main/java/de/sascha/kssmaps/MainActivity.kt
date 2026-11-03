@@ -582,8 +582,12 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             if (i.getBooleanExtra("test_open_fuel", false)) openFuel()
             if (i.getBooleanExtra("test_close_panels", false)) closePanels()
             // Android-Auto-Karte auf unsichtbarer Flaeche zeichnen und als Bild sichern (Testfahrt)
-            if (i.getBooleanExtra("test_car_start", false)) de.sascha.kssmaps.car.CarSurfaceProbe.start(this)
-            i.getStringExtra("test_car_capture")?.let { de.sascha.kssmaps.car.CarSurfaceProbe.capture(this, it) }
+            try {
+                if (i.getBooleanExtra("test_car_start", false)) de.sascha.kssmaps.car.CarSurfaceProbe.start(this)
+                i.getStringExtra("test_car_capture")?.let { de.sascha.kssmaps.car.CarSurfaceProbe.capture(this, it) }
+            } catch (e: Exception) {
+                android.util.Log.e("KSSMaps", "TEST_CAR_SURFACE fehlgeschlagen", e)
+            }
         }
         val data: Uri = i.data ?: return
         when (data.scheme) {
