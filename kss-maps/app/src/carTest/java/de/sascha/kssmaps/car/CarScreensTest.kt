@@ -153,6 +153,8 @@ class CarScreensTest {
         assertTrue(CarHistoryScreen(car).onGetTemplate() is ListTemplate)
         engine.testSetState(NavEngine.Mode.IDLE, null, emptyList())
         assertTrue(CarMoreScreen(car).onGetTemplate() is ListTemplate)
+        engine.prefs.camerasEnabled = true // mit Melde-Zeilen (Blitzer / Abstandsmessung)
+        assertTrue(CarMoreScreen(car).onGetTemplate() is ListTemplate)
         val r = route()
         engine.testSetState(NavEngine.Mode.NAVIGATING, dest(), listOf(r), r, null)
         assertTrue(CarMoreScreen(car).onGetTemplate() is ListTemplate)
