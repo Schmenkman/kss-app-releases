@@ -102,9 +102,9 @@ sleep 25
 shot 07_ziel_markiert
 car_shot ziel auto_03_ziel
 
-# Tankstellen-Panel (ohne Tankerkoenig-Schluessel: Hinweis erwartet)
+# Tankstellen-Panel (ohne Tankerkoenig-Schluessel: Tankstellen aus OpenStreetMap ohne Preise)
 act --ez test_open_fuel true
-sleep 10
+sleep 25
 shot 08_tanken
 act --ez test_close_panels true
 sleep 2
