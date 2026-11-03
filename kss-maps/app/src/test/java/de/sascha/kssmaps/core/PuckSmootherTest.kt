@@ -171,6 +171,42 @@ class PuckSmootherTest {
     }
 
     @Test
+    fun ignoresRepeatedFixesThatArriveHalfASecondLater() {
+        // Emulator/manche Geraete: jeder Punkt kommt 0,5 s spaeter noch einmal an derselben Stelle
+        val line = straight()
+        val s = PuckSmoother()
+        val v = 25.0
+        var t = 0.0
+        var nextFix = 0.0
+        var dupAt = -1.0
+        var lastA = 0.0
+        var prev: Double? = null
+        var minR = 9.0
+        var maxR = 0.0
+        while (t < 30.0) {
+            if (t >= nextFix - 1e-9) {
+                lastA = v * t
+                s.fixOnRoute(t, line, line, lastA, v)
+                dupAt = t + 0.5
+                nextFix += 1.0
+            } else if (dupAt > 0 && t >= dupAt) {
+                s.fixOnRoute(t, line, line, lastA, v)
+                dupAt = -1.0
+            }
+            s.advance(t)
+            val a = s.along!!
+            if (prev != null && t > 3.0) {
+                val r = (a - prev) / (v * frame)
+                minR = minOf(minR, r)
+                maxR = max(maxR, r)
+            }
+            prev = a
+            t += frame
+        }
+        assertTrue("min=$minR max=$maxR", minR > 0.9 && maxR < 1.1)
+    }
+
+    @Test
     fun freeDrivingIsSmoothAndSettlesWhenStopped() {
         val s = PuckSmoother()
         val v = 14.0

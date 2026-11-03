@@ -55,6 +55,13 @@ class PuckSmoother(
 
     val hasPosition: Boolean get() = pos != null
 
+    /** Beim letzten Punkt sofort uebernommen statt weich ausgeglichen (fuer das Test-Protokoll). */
+    var lastSnap = false
+        private set
+    /** Aktuelle Abweichung Anzeige minus Vorhersage in Metern (fuer das Test-Protokoll). */
+    val residual: Double get() = if (line != null) errAlong else hypot(errE, errN)
+    val predictSpeed: Double get() = speed
+
     fun reset() {
         fixT = Double.NaN
         speed = 0.0
@@ -89,9 +96,16 @@ class PuckSmoother(
      */
     fun fixOnRoute(t: Double, route: Polyline, key: Any, routeAlong: Double, speedMps: Double, ageSec: Double = 0.0) {
         advance(t)
+        // Derselbe Punkt kurz danach noch einmal (veraltete Wiederholung): Vorhersage nicht zuruecksetzen
+        if (key === lineKey && speed > 2.0 && abs(routeAlong - fixAlong) < 0.3 && t - fixT < 0.9) return
         if (key !== lineKey || line == null) {
+            // Angezeigte Position auf die (neue) Route legen. Faehrt die Route eine Schleife, liegen
+            // mehrere Stellen nah: die nehmen, die zur Lage des GPS-Punkts passt.
             val shown = pos
-            along = if (shown != null) route.projectNear(shown, 60.0)?.along else null
+            along = if (shown != null) {
+                route.projectAllNear(shown, 60.0).minByOrNull { abs(it.along - routeAlong) }?.along
+                    ?.takeIf { abs(it - routeAlong) < snapDist + 40.0 }
+            } else null
         }
         line = route
         lineKey = key
@@ -102,9 +116,13 @@ class PuckSmoother(
         val pred = predAlong(t)
         val shown = along
         if (shown == null || abs(shown - pred) > snapDist) {
+            lastSnap = true
             along = pred
             errAlong = 0.0
-        } else errAlong = shown - pred
+        } else {
+            lastSnap = false
+            errAlong = shown - pred
+        }
         if (pos == null) {
             pos = route.pointAt(along ?: pred)
             bearing = route.bearingAt(along ?: pred, 24.0)
@@ -115,6 +133,8 @@ class PuckSmoother(
     /** Neuer GPS-Punkt ohne Route (freie Fahrt, abseits der Route). */
     fun fixFree(t: Double, p: LatLon, headingDeg: Double?, speedMps: Double, ageSec: Double = 0.0) {
         advance(t)
+        val fp = fixPos
+        if (line == null && fp != null && speed > 2.0 && Geo.distance(fp, p) < 0.3 && t - fixT < 0.9) return
         line = null
         lineKey = null
         along = null
@@ -124,6 +144,7 @@ class PuckSmoother(
         fixT = t - ageSec.coerceIn(0.0, 1.5)
         val pred = predFree(t) ?: p
         val shown = pos
+        lastSnap = shown == null || Geo.distance(shown, pred) > snapDist
         if (shown == null || Geo.distance(shown, pred) > snapDist) {
             errE = 0.0
             errN = 0.0

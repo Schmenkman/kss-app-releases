@@ -731,12 +731,20 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
             val age = loc.elapsedRealtimeNanos.let { ns ->
                 if (ns <= 0L) 0.0 else ((android.os.SystemClock.elapsedRealtimeNanos() - ns) / 1e9).takeIf { it in 0.0..1.5 } ?: 0.0
             }
+            val before = smoother.along
             if (nav != null && nav.onRoute && r != null && stateRoute === r) {
                 lastFixRoute = r
                 smoother.fixOnRoute(t, r.geometry, r, nav.along, sp, age)
             } else {
                 lastFixRoute = null
                 smoother.fixFree(t, LatLon(loc.latitude, loc.longitude), engine.heading, sp, age)
+            }
+            if (debuggable && !forCar && engine.mode == NavEngine.Mode.NAVIGATING) {
+                Log.i("KSSMaps", String.format(java.util.Locale.ROOT, "PUCK_FIX %s gps=%.1f anzeige=%s vorher=%s abw=%.1f v=%.1f alter=%.2f%s",
+                    if (lastFixRoute != null) "route" else "frei", nav?.along ?: -1.0,
+                    smoother.along?.let { String.format(java.util.Locale.ROOT, "%.1f", it) } ?: "-",
+                    before?.let { String.format(java.util.Locale.ROOT, "%.1f", it) } ?: "-",
+                    smoother.residual, smoother.predictSpeed, age, if (smoother.lastSnap) " SPRUNG" else ""))
             }
         }
         if (lastPuckPos == null) {

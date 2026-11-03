@@ -336,6 +336,9 @@ class NavEngine(
 
     private fun onLocation(loc: Location) {
         val prev = location
+        // Derselbe Punkt kurz danach noch einmal (manche Geraete, der Emulator): beim Fahren veraltet –
+        // verwerfen, sonst "steht" das Auto fuer einen Moment (Tempo, Pfeil, Ansagen).
+        if (prev != null && speedKmh > 7.0 && loc.time - prev.time in 0..800 && prev.distanceTo(loc) < 0.5f) return
         location = loc
         val now = SystemClock.elapsedRealtime()
         val prevSp = speedKmh / 3.6
