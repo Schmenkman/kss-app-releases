@@ -1,15 +1,16 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "notes": [
+    "Neu: Querformat wie Google Maps in Android Auto – Abbiege-Hinweis links oben, Ankunft und Knöpfe links unten, die Karte rechts bleibt frei",
+    "Neu: flüssiger Positionspfeil – zwischen den GPS-Punkten wird die Position für jedes Bild berechnet, Pfeil und Karte laufen gleichmäßig statt ruckweise",
+    "Neu: Startpunkt ändern – Route von A nach B planen („Von“ antippen), Start und Ziel tauschen, Wegbeschreibung mit allen Abbiegungen",
+    "Neu: Spracheingabe – Mikrofon in der Suchleiste; „Navigiere zum Marienplatz 7 in Freising“ öffnet direkt die Route",
+    "Behoben: Tankstellen zeigen unter dem Preis die gewählte Sorte (vorher stand dort die jeweils andere)",
     "KSS-Maps: Navigation für Bayern mit deutscher Sprachführung (abschaltbar) und Android Auto",
-    "Baustellen, Stau, Sperrungen und Gefahren – nur auf deiner Route, mit Warnung",
-    "Stau fließt in die Routenwahl ein; Alternativrouten, 'Ohne Stau' und 'Stau umfahren'",
-    "Einzelne Abschnitte meiden (z. B. ein Stück Autobahn) – lange auf die Straße drücken",
-    "Luftbild Bayern, Tempolimit + aktuelle Geschwindigkeit, Zielhaus magenta mit Hausnummer markiert",
-    "Tankstellen mit Preisen (Diesel/Super) und UTA-Akzeptanz: erst auf dem Weg, dann Preis – Zwischenstopp ohne neue Eingabe (ohne Tankerkönig-Schlüssel: ohne Preise)",
-    "Letzte 20 Ziele, Karte entlang der Route offline gespeichert",
-    "Einstellungen: Schlüssel per Knopf einfügen und sofort prüfen (TomTom, Tankerkönig)",
+    "Baustellen, Stau, Sperrungen und Gefahren – nur auf deiner Route, mit Warnung; Alternativrouten, 'Ohne Stau' und 'Stau umfahren'",
+    "Einzelne Abschnitte meiden – lange auf die Straße drücken; Luftbild Bayern, Tempolimit + aktuelle Geschwindigkeit, Zielhaus magenta markiert",
+    "Tankstellen mit Preisen (Diesel/Super) und UTA-Akzeptanz: erst auf dem Weg, dann Preis – Zwischenstopp ohne neue Eingabe",
     "Blitzerwarnungen standardmäßig aus (Blitzer.de Pro parallel) – Schalter in den Einstellungen und in Android Auto unter „Mehr“"
   ],
-  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.0.0/kss-maps.apk"
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.1.0/kss-maps.apk"
 }
