@@ -323,7 +323,10 @@ class FuelPanel(host: PanelHost) : Panel(host, fullScreen = false) {
         priceCol.addView(Ui.text(ctx, Tankerkoenig.formatPrice(s.price(fuel)), 20f, Ui.GREEN_DARK, bold = true))
         val other = if (fuel == FuelType.DIESEL) "E5 " + Tankerkoenig.formatPrice(s.e5) else "Diesel " + Tankerkoenig.formatPrice(s.diesel)
         priceCol.addView(Ui.text(ctx, other, 13f, Ui.TEXT2))
-        r.addView(priceCol, LinearLayout.LayoutParams(Ui.dp(ctx, 112), ViewGroup.LayoutParams.WRAP_CONTENT))
+        // Ohne Tankerkoenig-Schluessel gibt es keine Preise – dann keine leere Preisspalte
+        if (!host.engine.services.fuelWithoutPrices) {
+            r.addView(priceCol, LinearLayout.LayoutParams(Ui.dp(ctx, 112), ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
         val col = Ui.vbox(ctx)
         val uta = when (s.uta) {
             UtaStatus.YES -> "✅ UTA"

@@ -20,7 +20,7 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 | Route ohne Stau wählen | Route mit Etikett „Ohne Stau“ und Knopf **„Stau umfahren“** (sperrt alle Staus/Sperrungen der Route und rechnet neu). Unterwegs prüft die App alle 3 Minuten und bietet schnellere Routen an |
 | Gewisse Abschnitte nicht fahren (nicht pauschal) | **Lange auf eine Straße drücken → „Abschnitt meiden“.** Gesperrt wird nur dieses Stück (bei Autobahnen beide Fahrbahnen), dargestellt als rote Strichlinie. Liste mit Ein/Aus-Schalter und Löschen über den ⛔-Knopf. Autobahnen/Maut/Fähren komplett meiden gibt es zusätzlich in den Einstellungen |
 | Letzte 20 Adressen | Verlauf in der Suche (Handy) und „Letzte Ziele“ (Android Auto); lange drücken = entfernen |
-| Tankstellen mit Preisen, UTA | ⛽-Knopf: Diesel/Super E5/E10, Filter **„nur UTA“**. Reihenfolge: **zuerst die auf dem Weg zum Ziel liegenden, dann nach Preis**; danach Tankstellen mit Umweg. Ohne Tankerkönig-Schlüssel erscheinen die Tankstellen trotzdem (aus OpenStreetMap, mit UTA-Kennzeichnung) – nur ohne Preise |
+| Tankstellen mit Preisen, UTA | ⛽-Knopf: Diesel/Super E5/E10, Filter **„nur UTA“**. Reihenfolge: **zuerst die auf dem Weg zum Ziel liegenden, dann nach Preis**; danach Tankstellen mit Umweg. Ohne Tankerkönig-Schlüssel erscheinen die Tankstellen trotzdem sofort (Liste aller Tankstellen Bayerns aus OpenStreetMap ist in der App, mit UTA-Kennzeichnung) – nur ohne Preise |
 | Erst zur Tankstelle, dann automatisch weiter | Tankstelle antippen → wird Zwischenstopp, danach geht es ohne neue Eingabe weiter zum Ziel |
 | Sprachnavigation, Ton abschaltbar | Deutsche Ansagen in 3 Stufen (Vorankündigung, nah, „Jetzt …“), Lautsprecher-Knopf (Handy und Auto) |
 | Funklöcher | Beim Start der Navigation wird die Karte entlang der Route automatisch offline gespeichert (bis 250 km), dazu ein großer Kartenspeicher (600 MB) für oft gefahrene Gegenden |
@@ -89,7 +89,7 @@ dem Installieren einer neueren Testversion muss die alte deinstalliert werden.
 | Adresssuche | Photon (komoot), Nominatim | – |
 | Zielgebäude | OSM-Gebäude über Overpass-API | – |
 | Spritpreise | Tankerkönig / MTS-K (CC BY 4.0) | Tankerkönig |
-| Tankstellen ohne Schlüssel | OpenStreetMap über Overpass-API (`amenity=fuel`), ohne Preise | – |
+| Tankstellen ohne Schlüssel | OpenStreetMap (`amenity=fuel`, mit `payment:uta`), beim Bauen in die App gelegt; außerhalb Bayerns per Overpass-API – ohne Preise | – |
 | UTA-Akzeptanz | Markenliste (bearbeitbar) + OSM `payment:uta` + eigene Korrektur je Tankstelle (lange drücken) | – |
 
 UTA veröffentlicht keine offene Liste der Akzeptanzstellen; laut UTA und Vergleichsportalen
@@ -113,7 +113,7 @@ app/src/carTest/  Tests aller Android-Auto-Vorlagen (Robolectric, `-PcarTests`)
 tools/smoketest.sh  Testfahrt im Emulator (CI, Commit-Nachricht mit „[testfahrt]“): Route,
                   Luftbild, gesperrter Abschnitt, Fahrt mit Ansagen, Ankunft, Tanken, Suche –
                   plus Bilder der Android-Auto-Karte (auf unsichtbarer Fläche gezeichnet)
-tools/fetch_enforcement.py  Startbestand Blitzer/Abstandsmessungen für die APK (CI)
+tools/fetch_enforcement.py  Startbestand Blitzer/Abstandsmessungen und Tankstellenliste für die APK (CI)
 ```
 
 ## Build & Release
