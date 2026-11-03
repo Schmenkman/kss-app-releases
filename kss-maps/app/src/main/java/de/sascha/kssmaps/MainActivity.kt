@@ -610,9 +610,9 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             AlertDialog.Builder(this).setTitle("Blitzer & Abstandsmessungen")
                 .setMessage(
                     "KSS-Maps warnt vor festen Blitzern, Rotlicht- und Abschnittskontrollen, Abstandsmessungen " +
-                        "(OpenStreetMap) und vor deinen eigenen Meldungen – nur auf deiner Route.\n\n" +
-                        "Mobile Blitzer gibt es aus keiner freien Quelle: Mit dem roten Kamera-Knopf merkst du dir " +
-                        "einen gesehenen Blitzer oder eine Abstandsmessung.\n\n" +
+                        "(OpenStreetMap), vor den Messstellen der bayerischen Polizei (dort wird häufig mobil geblitzt) " +
+                        "und vor deinen eigenen Meldungen – nur auf deiner Route.\n\n" +
+                        "Einen gesehenen mobilen Blitzer oder eine Abstandsmessung merkst du dir mit dem roten Kamera-Knopf.\n\n" +
                         "Hinweis: In Deutschland ist dem Fahrer die Nutzung von Blitzerwarnern während der Fahrt " +
                         "verboten (§ 23 Abs. 1c StVO). Abschalten jederzeit in den Einstellungen."
                 )

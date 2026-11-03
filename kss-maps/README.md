@@ -10,7 +10,7 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 | Karte wie Google Maps, Bayern reicht | Vektorkarte (OpenFreeMap/OSM), Tag/Nacht automatisch nach Sonnenstand |
 | Satellitenbilder | **Luftbild-Knopf**: in Bayern die amtlichen Luftbilder (DOP 40 cm, Open Data der Bayerischen Vermessungsverwaltung), außerhalb Esri-Satellit; Straßen und Namen bleiben darüber sichtbar |
 | Blitzer, Abstandsmessungen, Baustellen, Stau, „sonstige Sachen“ – nur auf der Route | Feste Blitzer, Rotlicht- und Abschnittskontrollen, **Abstandsmessungen** und Mindestabstand-Strecken (OpenStreetMap, ganz Bayern – ein aktueller Bestand ist schon in der App, danach wöchentlich aktualisiert und zusätzlich je Route abgefragt), Stau/Baustellen/Sperrungen/Gefahren (Autobahn GmbH, mit TomTom-Schlüssel auf **allen** Straßen). Es wird nur angezeigt und gewarnt, was **auf der gefahrenen Strecke** liegt (Abgleich auf ~25–45 m, Gegenfahrbahn und Parallelstraßen werden aussortiert). Ohne Ziel: Blitzer voraus in Fahrtrichtung |
-| Mobile Blitzer / Abstandsmessungen | Dafür gibt es keine freie Datenquelle. Roter Kamera-Knopf (Handy) bzw. „Mehr“ (Android Auto): gesehenen Blitzer oder Abstandsmessung an der aktuellen Position merken – 4 Stunden oder dauerhaft (bekannter Messplatz). Wird danach wie alle anderen auf der Route gewarnt |
+| Mobile Blitzer / Abstandsmessungen | **Messstellen der bayerischen Polizei**: die amtlichen Messstellenlisten des Innenministeriums (Blitzmarathon 2023/2024/2026) – Orte, an denen die Polizei Geschwindigkeit misst, auch außerhalb der Aktionstage; Warnung als „Mobile Messstelle“ (eigener Schalter). Dazu der rote Kamera-Knopf (Handy) bzw. „Mehr“ (Android Auto): gesehenen Blitzer oder Abstandsmessung merken – 4 Stunden oder dauerhaft. Live-Meldungen anderer Fahrer (Blitzer.de, Waze) gibt es nur in deren eigenen Apps, ohne Schnittstelle für Fremd-Apps |
 | Warnen | Sprachwarnung + farbiges Banner („Blitzer in 600 m“, „Stau in 3 km, etwa 12 Minuten Verzögerung“), in Android Auto zusätzlich als Hinweis-Karte |
 | Tempolimit anzeigen | Tempolimit-Schild aus OSM-Daten entlang der Route (ohne Route: per Kartenabgleich der letzten GPS-Punkte) |
 | Aktuelle Geschwindigkeit | groß unten links, rot (und optional ein Ton) bei Überschreitung |
@@ -54,8 +54,9 @@ Android Auto zeigt Apps, die nicht aus dem Play Store kommen, erst nach einmalig
 In Deutschland darf der **Fahrer** während der Fahrt keine Blitzerwarner benutzen
 (§ 23 Abs. 1c StVO, 75 € und 1 Punkt). Blitzer- und Abstandswarnung sind eingeschaltet;
 beim ersten Start erscheint einmalig dieser Hinweis, abschalten geht in den Einstellungen.
-Mobile Blitzer gibt es aus keiner freien, lizenzierten Quelle (Blitzer.de erlaubt laut
-Nutzungsbedingungen keine Fremdnutzung) – daher die eigene Melden-Funktion.
+Mobile Blitzer: KSS-Maps nutzt die amtlichen Messstellenlisten der bayerischen Polizei
+(Innenministerium) und deine eigenen Meldungen. Live-Meldungen von Blitzer.de oder Waze sind nur
+in deren Apps nutzbar (keine offene Schnittstelle).
 
 ## Einmalige Einrichtung des Signier-Schlüssels (für Updates)
 
@@ -85,6 +86,7 @@ dem Installieren einer neueren Testversion muss die alte deinstalliert werden.
 | Routing + Live-Verkehr | TomTom Routing API, Traffic Flow Tiles | TomTom (optional) |
 | Stau/Baustellen/Sperrungen Autobahn | verkehr.autobahn.de (Autobahn GmbH des Bundes) | – |
 | Blitzer, Rotlicht, Abschnittskontrolle, Abstandsmessung, Mindestabstand | OpenStreetMap über Overpass-API (`highway=speed_camera`, `type=enforcement`, `mindistance`) | – |
+| Messstellen der Polizei (mobile Kontrollen) | Bayerisches Staatsministerium des Innern, Messstellenlisten Blitzmarathon; verortet mit Nominatim (© OpenStreetMap, ODbL) – `tools/fetch_messstellen.py`, Workflow `kss-maps-messstellen.yml` | – |
 | Tempolimits | OSM-Daten über Valhalla `trace_attributes` | – |
 | Adresssuche | Photon (komoot), Nominatim | – |
 | Zielgebäude | OSM-Gebäude über Overpass-API | – |
@@ -132,6 +134,10 @@ tools/fetch_enforcement.py  Startbestand Blitzer/Abstandsmessungen und Tankstell
   Beschriftungen – nur im Emulator, nicht auf echten Geräten.
 
 ## Build & Release
+
+Jeder Push baut und testet; das veröffentlichte APK im Release wird **nur** bei `[release]` in der
+Commit-Nachricht (oder manuellem Start) ersetzt – so landet nie ein ungetesteter Zwischenstand
+beim Download-Link.
 
 `.github/workflows/kss-maps.yml`: Tests → signierte APK → GitHub-Release
 `kssmaps-v<version>` mit `kss-maps.apk`. `version.json` ist die einzige Versionsquelle

@@ -584,4 +584,23 @@ class CoreTest {
         val ranked = FuelRanking.rank(l.map { it.first }, null, 0.0, LatLon(48.1, 11.5), FuelType.DIESEL, false)
         assertEquals("osm-node-1", ranked.first().station.id)
     }
+
+    @Test
+    fun parsesPoliceMeasurementPoints() {
+        val json = """{"source":"x","messstellen":[
+          {"lat":48.40123,"lon":11.74567,"street":"Münchner Straße","plz":"85354","place":"Freising","hint":"","years":[2024,2026]},
+          {"lat":48.40123,"lon":11.74567,"street":"Münchner Straße","plz":"85354","place":"Freising","hint":"","years":[2026]},
+          {"lat":"x","lon":11.0}
+        ]}"""
+        val l = Messstellen.parse(json)
+        assertEquals(1, l.size)
+        val h = l[0]
+        assertEquals(HazardType.SPEED_CAMERA, h.type)
+        assertEquals("Mobile Messstelle", h.title)
+        assertTrue(h.description, h.description.contains("Münchner Straße, 85354 Freising"))
+        assertTrue(h.description.contains("2024, 2026"))
+        assertEquals("Achtung, Mobile Messstelle in 500 Metern.", Instructions.hazardVoice(h, 500.0))
+        assertEquals("Mobile Messstelle", Instructions.hazardShort(h))
+        assertTrue(Messstellen.parse("{}").isEmpty())
+    }
 }

@@ -187,6 +187,20 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
         )
     }
 
+    /** Messstellen der bayerischen Polizei (amtliche Listen) als moegliche mobile Blitzer. */
+    @Volatile private var messstellen: List<Hazard>? = null
+
+    fun messstellen(): List<Hazard> {
+        messstellen?.let { return it }
+        val list = try {
+            ctx.assets.open("messstellen/bayern.json").bufferedReader().use { de.sascha.kssmaps.core.Messstellen.parse(it.readText()) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        messstellen = list
+        return list
+    }
+
     /** Startbestand aus der App (beim Bauen geladen), falls noch nichts heruntergeladen wurde. */
     @Volatile private var seed: List<Hazard>? = null
 

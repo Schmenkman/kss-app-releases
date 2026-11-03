@@ -123,6 +123,15 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
         toggle("Sprachansagen (Ton)", !prefs.voiceMuted) { e.setMuted(!it) }
         toggle("Blitzer & Abstandsmessungen warnen", prefs.camerasEnabled) { on -> e.setCamerasEnabled(on) }
         note("Feste Blitzer, Rotlicht- und Abschnittskontrollen, Abstandsmessungen und Mindestabstand-Strecken aus OpenStreetMap (ganz Bayern, wöchentlich aktualisiert) plus deine eigenen Meldungen (roter Kamera-Knopf). Hinweis: § 23 Abs. 1c StVO.")
+        val ms = e.services.messstellen().size
+        toggle("Mobile Messstellen der Polizei warnen", prefs.messstellenEnabled) { on ->
+            prefs.messstellenEnabled = on
+            e.enforcementSettingsChanged()
+        }
+        note(
+            if (ms > 0) "$ms Messstellen, an denen die bayerische Polizei Geschwindigkeit misst (amtliche Listen des Innenministeriums zu den Blitzmarathons). Dort wird auch sonst häufig mobil geblitzt – Warnung als „Mobile Messstelle“."
+            else "Messstellen der bayerischen Polizei (amtliche Listen des Innenministeriums) – in dieser Version noch nicht enthalten."
+        )
         val rc = e.reportCount
         if (rc > 0) action("Eigene Meldungen löschen ($rc)") {
             AlertDialog.Builder(ctx).setTitle("Alle eigenen Meldungen löschen?")

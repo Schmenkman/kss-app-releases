@@ -519,8 +519,14 @@ class NavEngine(
             list.take(3).map { r -> async { upTo(12_000, late) { services.enforcementAlong(r) } ?: emptyList() } }
                 .awaitAll().flatten()
         } else emptyList()
-        return (cached + corridor).distinctBy { it.id } + reportHazards()
+        return (cached + corridor).distinctBy { it.id } + reportHazards() + messstellenIfEnabled()
     }
+
+    /** Nach Aenderung der Warn-Einstellungen: angezeigte Routen neu abgleichen. */
+    fun enforcementSettingsChanged() = lateEnforcement()
+
+    /** Messstellen der Polizei (moegliche mobile Blitzer), wenn in den Einstellungen an. */
+    private fun messstellenIfEnabled(): List<Hazard> = if (prefs.messstellenEnabled) services.messstellen() else emptyList()
 
     /** TomTom-Verkehr hat Vorrang; Autobahn-Meldungen nur ergaenzen, wenn dort noch nichts gemeldet ist. */
     private fun merge(r: Route, matched: List<RouteHazard>): List<RouteHazard> {
@@ -986,7 +992,7 @@ class NavEngine(
         val hd = heading
         if (prefs.camerasEnabled && hd != null && sp > 3.0) {
             val warnDist = AnnouncePlan.hazardWarnDistance(HazardType.SPEED_CAMERA, sp)
-            val ahead = HazardMatcher.camerasAhead(p, hd, services.camerasCached() + reportHazards(), warnDist).firstOrNull()
+            val ahead = HazardMatcher.camerasAhead(p, hd, services.camerasCached() + reportHazards() + messstellenIfEnabled(), warnDist).firstOrNull()
             cameraAhead = ahead
             if (ahead != null && warned.add(ahead.first.id)) {
                 voice.say(Instructions.hazardVoice(ahead.first, ahead.second))
