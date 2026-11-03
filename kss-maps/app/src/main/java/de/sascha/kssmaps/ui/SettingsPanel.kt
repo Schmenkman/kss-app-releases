@@ -77,7 +77,7 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
         content.addView(r)
     }
 
-    private fun keyField(label: String, value: String, hint: String, set: (String) -> Unit) {
+    private fun keyField(label: String, value: String, hint: String, test: (suspend (String) -> String)? = null, set: (String) -> Unit) {
         content.addView(Ui.text(ctx, label, 16f, Ui.TEXT).apply { setPadding(Ui.dp(ctx, 4), Ui.dp(ctx, 8), 0, Ui.dp(ctx, 4)) })
         val et = EditText(ctx)
         et.setText(value)
@@ -90,9 +90,40 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
         et.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: android.text.Editable?) = set(s?.toString() ?: "")
+            override fun afterTextChanged(s: android.text.Editable?) = set(s?.toString()?.trim() ?: "")
         })
         content.addView(et, Ui.linLp())
+        // Einfuegen aus der Zwischenablage (lange Schluessel am Handy) und sofort pruefen
+        val status = Ui.text(ctx, "", 14f, Ui.TEXT2)
+        val row = Ui.hbox(ctx)
+        row.addView(Ui.button(ctx, "Einfügen", Ui.LIGHT, Ui.TEXT) {
+            val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+            val clip = try {
+                cm?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString()?.trim()
+            } catch (e: Exception) {
+                null
+            }
+            if (clip.isNullOrBlank()) {
+                status.text = "Die Zwischenablage ist leer – zuerst den Schlüssel kopieren."
+            } else {
+                et.setText(clip)
+                set(clip)
+                status.text = "Eingefügt (${clip.length} Zeichen)."
+            }
+        }, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).margins(ctx, r = 4))
+        if (test != null) {
+            row.addView(Ui.button(ctx, "Prüfen", Ui.BLUE) {
+                val k = et.text.toString().trim()
+                if (k.isBlank()) {
+                    status.text = "Erst den Schlüssel eintragen."
+                } else {
+                    status.text = "Prüfe …"
+                    host.engine.scope.launch { status.text = test(k) }
+                }
+            }, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).margins(ctx, l = 4))
+        }
+        content.addView(row, Ui.linLp().margins(ctx, t = 6))
+        content.addView(status, Ui.linLp().margins(ctx, t = 4))
     }
 
     private fun action(label: String, click: () -> Unit) {
@@ -105,13 +136,15 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
 
         section("Live-Verkehr (Stau auf allen Straßen)")
         note("Ohne Schlüssel: Routing über OpenStreetMap (Valhalla), Stau/Baustellen/Sperrungen von der Autobahn GmbH (nur Autobahnen). Mit kostenlosem TomTom-Schlüssel (developer.tomtom.com, ohne Kreditkarte): Live-Stau auf allen Straßen, in Routenwahl und Alternativen eingerechnet.")
-        keyField("TomTom API-Schlüssel", prefs.tomtomKey, "optional") { prefs.tomtomKey = it }
+        keyField("TomTom API-Schlüssel", prefs.tomtomKey, "optional", { k -> host.services.testTomTomKey(k) }) { prefs.tomtomKey = it }
+        note("Schlüssel finden: developer.tomtom.com → Dashboard → „API & SDK keys“ → auf „My first API key“ tippen (wird kopiert) → hier „Einfügen“.")
         toggle("Verkehrsfluss auf der Karte (TomTom)", prefs.trafficOverlay) { prefs.trafficOverlay = it }
         toggle("Bei Stau schnellere Route anbieten", prefs.trafficReroute) { prefs.trafficReroute = it }
 
         section("Tankstellen & Preise")
         note("Preise (Diesel, Super E5/E10) kommen von der Markttransparenzstelle über Tankerkönig. Kostenloser Schlüssel: onboarding.tankerkoenig.de – ohne Schlüssel zeigt die App die Tankstellen auf dem Weg ohne Preise.")
-        keyField("Tankerkönig API-Schlüssel", prefs.tankerkoenigKey, "nötig für Preise") { prefs.tankerkoenigKey = it }
+        keyField("Tankerkönig API-Schlüssel", prefs.tankerkoenigKey, "nötig für Preise", { k -> host.services.testTankerkoenigKey(k) }) { prefs.tankerkoenigKey = it }
+        note("Der Tankerkönig-Schlüssel kommt per E-Mail (nach Klick auf den Bestätigungslink), Format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.")
         choice("Kraftstoff (Sortierung)", FuelType.values().map { it.label }, prefs.fuelType.ordinal) { prefs.fuelType = FuelType.values()[it] }
         toggle("Nur Tankstellen mit UTA-Akzeptanz", prefs.utaOnly) { prefs.utaOnly = it }
         choice("Suchbereich entlang der Route", listOf("25 km", "50 km", "100 km"), when (prefs.fuelCorridorKm) { 25 -> 0; 100 -> 2; else -> 1 }) {
@@ -123,15 +156,6 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
         toggle("Sprachansagen (Ton)", !prefs.voiceMuted) { e.setMuted(!it) }
         toggle("Blitzer & Abstandsmessungen warnen", prefs.camerasEnabled) { on -> e.setCamerasEnabled(on) }
         note("Feste Blitzer, Rotlicht- und Abschnittskontrollen, Abstandsmessungen und Mindestabstand-Strecken aus OpenStreetMap (ganz Bayern, wöchentlich aktualisiert) plus deine eigenen Meldungen (roter Kamera-Knopf). Hinweis: § 23 Abs. 1c StVO.")
-        val ms = e.services.messstellen().size
-        toggle("Mobile Messstellen der Polizei warnen", prefs.messstellenEnabled) { on ->
-            prefs.messstellenEnabled = on
-            e.enforcementSettingsChanged()
-        }
-        note(
-            if (ms > 0) "$ms Messstellen, an denen die bayerische Polizei Geschwindigkeit misst (amtliche Listen des Innenministeriums zu den Blitzmarathons). Dort wird auch sonst häufig mobil geblitzt – Warnung als „Mobile Messstelle“."
-            else "Messstellen der bayerischen Polizei (amtliche Listen des Innenministeriums) – in dieser Version noch nicht enthalten."
-        )
         val rc = e.reportCount
         if (rc > 0) action("Eigene Meldungen löschen ($rc)") {
             AlertDialog.Builder(ctx).setTitle("Alle eigenen Meldungen löschen?")

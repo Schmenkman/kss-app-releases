@@ -131,6 +131,20 @@ shot 09_suche
 adb shell input keyevent KEYCODE_BACK
 sleep 2
 
+# Einstellungen: Schluessel-Felder mit "Einfuegen" (Zwischenablage leer) und "Pruefen" (leer)
+act --ez test_close_panels true
+sleep 2
+act --ez test_open_settings true
+sleep 4
+shot 10_einstellungen
+python3 $T/ui.py tap --text "Einfügen" || echo "kein Einfügen-Knopf"
+sleep 2
+python3 $T/ui.py tap --text "Prüfen" || echo "kein Prüfen-Knopf"
+sleep 3
+shot 10b_schluessel_knoepfe
+act --ez test_close_panels true
+sleep 2
+
 kill $LOGPID 2>/dev/null
 sleep 1
 grep -E "AndroidRuntime|FATAL EXCEPTION|SAY|ROUTES|ROUTE_INFO|TEST_|KSSMaps" "$OUT/logcat.txt" | grep -v -E "ROUTE_CHUNK|PREVIEW_CHUNK" > "$OUT/ereignisse.txt"

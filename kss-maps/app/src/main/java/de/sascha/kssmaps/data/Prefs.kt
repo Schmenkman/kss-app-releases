@@ -34,10 +34,6 @@ class Prefs(ctx: Context) {
     var voiceMuted: Boolean
         get() = bool("muted", false)
         set(v) = putBool("muted", v)
-    /** Warnung an Messstellen der Polizei (moegliche mobile Blitzer). */
-    var messstellenEnabled: Boolean
-        get() = bool("messstellen", true)
-        set(v) = putBool("messstellen", v)
     var camerasEnabled: Boolean
         get() = bool("cameras", true)
         set(v) = putBool("cameras", v)

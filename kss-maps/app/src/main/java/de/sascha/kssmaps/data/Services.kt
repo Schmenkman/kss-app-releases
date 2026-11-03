@@ -187,20 +187,6 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
         )
     }
 
-    /** Messstellen der bayerischen Polizei (amtliche Listen) als moegliche mobile Blitzer. */
-    @Volatile private var messstellen: List<Hazard>? = null
-
-    fun messstellen(): List<Hazard> {
-        messstellen?.let { return it }
-        val list = try {
-            ctx.assets.open("messstellen/bayern.json").bufferedReader().use { de.sascha.kssmaps.core.Messstellen.parse(it.readText()) }
-        } catch (e: Exception) {
-            emptyList()
-        }
-        messstellen = list
-        return list
-    }
-
     /** Startbestand aus der App (beim Bauen geladen), falls noch nichts heruntergeladen wurde. */
     @Volatile private var seed: List<Hazard>? = null
 
@@ -478,6 +464,41 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
         return found.map { (st, tag) ->
             val t = tag ?: osm.filter { Geo.distance(it.first, st.pos) < 60.0 }.minByOrNull { Geo.distance(it.first, st.pos) }?.second
             st.copy(uta = Uta.status(st.brand, st.name, brands, t, prefs.utaOverride(st.id)))
+        }
+    }
+
+    /** Prueft einen TomTom-Schluessel mit einer kleinen Suchanfrage (fuer den Knopf "Pruefen"). */
+    suspend fun testTomTomKey(key: String): String = withContext(Dispatchers.IO) {
+        val k = key.trim()
+        try {
+            Http.get(
+                "https://api.tomtom.com/search/2/geocode/" + URLEncoder.encode("Marienplatz München", "UTF-8") +
+                    ".json?limit=1&countrySet=DE&key=" + URLEncoder.encode(k, "UTF-8"), 12_000
+            )
+            "✅ TomTom-Schlüssel funktioniert – Live-Stau ist aktiv."
+        } catch (e: Http.HttpError) {
+            when (e.code) {
+                401, 403 -> "❌ TomTom lehnt den Schlüssel ab (HTTP ${e.code}). Bitte den Schlüssel unter „API & SDK keys“ neu kopieren."
+                429 -> "⚠️ TomTom: Tageskontingent aufgebraucht (HTTP 429) – der Schlüssel selbst ist gültig."
+                else -> "❌ TomTom antwortet mit HTTP ${e.code}."
+            }
+        } catch (e: Exception) {
+            "⚠️ TomTom nicht erreichbar (Internet?): ${e.message}"
+        }
+    }
+
+    /** Prueft einen Tankerkoenig-Schluessel mit einer Preisabfrage in Muenchen. */
+    suspend fun testTankerkoenigKey(key: String): String = withContext(Dispatchers.IO) {
+        val k = key.trim()
+        try {
+            val n = Tankerkoenig.parseList(Http.get(Tankerkoenig.listUrl(LatLon(48.137, 11.575), 3.0, k), 12_000)).size
+            "✅ Tankerkönig-Schlüssel funktioniert ($n Tankstellen mit Preisen gefunden)."
+        } catch (e: Tankerkoenig.ApiError) {
+            "❌ Tankerkönig: ${e.message}. Neue Schlüssel gelten erst nach dem Klick auf den Link in der Bestätigungsmail."
+        } catch (e: Http.HttpError) {
+            "❌ Tankerkönig antwortet mit HTTP ${e.code}."
+        } catch (e: Exception) {
+            "⚠️ Tankerkönig nicht erreichbar (Internet?): ${e.message}"
         }
     }
 

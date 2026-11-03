@@ -581,6 +581,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             }
             if (i.getBooleanExtra("test_open_fuel", false)) openFuel()
             if (i.getBooleanExtra("test_close_panels", false)) closePanels()
+            if (i.getBooleanExtra("test_open_settings", false)) openSettings()
             // Android-Auto-Karte auf unsichtbarer Flaeche zeichnen und als Bild sichern (Testfahrt)
             try {
                 if (i.getBooleanExtra("test_car_start", false)) de.sascha.kssmaps.car.CarSurfaceProbe.start(this)
@@ -610,9 +611,9 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             AlertDialog.Builder(this).setTitle("Blitzer & Abstandsmessungen")
                 .setMessage(
                     "KSS-Maps warnt vor festen Blitzern, Rotlicht- und Abschnittskontrollen, Abstandsmessungen " +
-                        "(OpenStreetMap), vor den Messstellen der bayerischen Polizei (dort wird häufig mobil geblitzt) " +
-                        "und vor deinen eigenen Meldungen – nur auf deiner Route.\n\n" +
-                        "Einen gesehenen mobilen Blitzer oder eine Abstandsmessung merkst du dir mit dem roten Kamera-Knopf.\n\n" +
+                        "(OpenStreetMap) und vor deinen eigenen Meldungen – nur auf deiner Route.\n\n" +
+                        "Einen gesehenen mobilen Blitzer oder eine Abstandsmessung merkst du dir mit dem roten " +
+                        "Kamera-Knopf – dann warnt KSS-Maps dort 4 Stunden lang (oder dauerhaft).\n\n" +
                         "Hinweis: In Deutschland ist dem Fahrer die Nutzung von Blitzerwarnern während der Fahrt " +
                         "verboten (§ 23 Abs. 1c StVO). Abschalten jederzeit in den Einstellungen."
                 )
