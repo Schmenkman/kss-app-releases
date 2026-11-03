@@ -42,12 +42,28 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 
 ### Android Auto
 
-Android Auto zeigt Apps, die nicht aus dem Play Store kommen, erst nach einmaligem Freischalten:
+Aktuelle Android-Auto-Versionen (17.x) zeigen Apps, die mit den Android-Auto-Vorlagen gebaut sind,
+**nur noch, wenn Android sie als „aus dem Play Store installiert“ führt** – der Schalter
+„Unbekannte Quellen“ allein reicht dafür nicht mehr
+([UnknownAuto](https://github.com/GitMag/UnknownAuto/), [Fermata #846](https://github.com/AndreyPavlenko/Fermata/issues/846)).
+Zwei Wege:
 
-1. Android-Auto-Einstellungen öffnen (am Handy: Einstellungen → Verbundene Geräte → Android Auto).
-2. Ganz unten **10× auf „Version“** tippen → Entwicklermodus bestätigen.
-3. Menü **⋮ → Entwicklereinstellungen → „Unbekannte Quellen“** aktivieren.
-4. Handy neu mit dem Auto verbinden – „KSS-Maps“ erscheint im App-Starter.
+**A) Installation mit KingInstaller oder UnknownAuto (kostenlos, Open Source)** – diese Apps
+installieren die APK so, dass Android den Play Store als Installer einträgt:
+1. KSS-Maps ggf. deinstallieren, die APK herunterladen (nicht öffnen).
+2. [KingInstaller](https://github.com/fcaronte/KingInstaller) installieren → APK wählen →
+   **Install** (ohne Schalter). Im „App Diagnostic Checker“ muss *Installed by: Play Store*
+   stehen. Klappt das nicht: [Shizuku](https://github.com/RikkaApps/Shizuku) einrichten
+   (Entwickleroptionen → Kabelloses Debugging → mit Shizuku koppeln → Start) und in
+   KingInstaller den Schalter **Shizuku Trick** nutzen. Alternativ [UnknownAuto](https://github.com/GitMag/UnknownAuto/)
+   (braucht Shizuku). Xiaomi/POCO/Redmi: nur mit Root.
+3. Android-Auto-Einstellungen: 10× auf „Version“ → ⋮ → Entwicklereinstellungen →
+   **„Unbekannte Quellen“** an; dann **„Launcher anpassen“** → KSS-Maps anhaken.
+4. Android Auto beenden (App-Info → Beenden erzwingen), Handy neu mit dem Auto verbinden.
+
+**B) Google Play (interner Test)** – offizieller Weg mit automatischen Updates: eigenes
+Play-Console-Konto (einmalig 25 $, Identitätsprüfung), App als *interner Test* hochladen,
+eigenes Google-Konto als Tester eintragen und KSS-Maps aus dem Play Store installieren.
 
 ## Hinweis Blitzer
 

@@ -192,7 +192,7 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
                 }
             }
         }
-        note("Android Auto zeigt selbst installierte Apps erst nach einmaligem Freischalten: Android-Auto-Einstellungen → ganz unten 10× auf \"Version\" tippen → Menü ⋮ → Entwicklereinstellungen → \"Unbekannte Quellen\" aktivieren.")
+        note("Android Auto zeigt selbst installierte Apps nur, wenn Android sie als „aus dem Play Store installiert“ führt. Dafür KSS-Maps mit KingInstaller oder UnknownAuto installieren (kostenlos, siehe Anleitung im Projekt) und in den Android-Auto-Entwicklereinstellungen „Unbekannte Quellen“ aktivieren (10× auf „Version“ tippen → ⋮ → Entwicklereinstellungen).")
 
         section("Daten")
         action("Blitzer-Daten jetzt aktualisieren") {
