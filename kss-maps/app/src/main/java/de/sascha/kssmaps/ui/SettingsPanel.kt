@@ -77,11 +77,17 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
         content.addView(r)
     }
 
-    private fun keyField(label: String, value: String, hint: String, test: (suspend (String) -> String)? = null, set: (String) -> Unit) {
+    private fun keyField(label: String, value: String, hint: String, test: (suspend (String) -> String)? = null, builtin: String = "", set: (String) -> Unit) {
         content.addView(Ui.text(ctx, label, 16f, Ui.TEXT).apply { setPadding(Ui.dp(ctx, 4), Ui.dp(ctx, 8), 0, Ui.dp(ctx, 4)) })
+        if (builtin.isNotBlank()) {
+            // In die App eingebaut: nichts eintragen noetig. Ein eigener Schluessel hier hat Vorrang.
+            content.addView(Ui.text(ctx, "✓ In die App eingebaut – du musst nichts eintragen. Nur für einen anderen Schlüssel hier eintragen.", 14f, Ui.GREEN_DARK, bold = true).apply {
+                setPadding(Ui.dp(ctx, 4), 0, Ui.dp(ctx, 4), Ui.dp(ctx, 4))
+            })
+        }
         val et = EditText(ctx)
         et.setText(value)
-        et.hint = hint
+        et.hint = if (builtin.isNotBlank()) "eingebaut (leer lassen)" else hint
         et.setSingleLine(true)
         et.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
         et.background = Ui.bg(ctx, Ui.LIGHT, 12)
@@ -113,7 +119,8 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
         }, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).margins(ctx, r = 4))
         if (test != null) {
             row.addView(Ui.button(ctx, "Prüfen", Ui.BLUE) {
-                val k = et.text.toString().trim()
+                // Leeres Feld: den eingebauten Schluessel pruefen
+                val k = et.text.toString().trim().ifBlank { builtin }
                 if (k.isBlank()) {
                     status.text = "Erst den Schlüssel eintragen."
                 } else {
@@ -136,14 +143,14 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
 
         section("Live-Verkehr (Stau auf allen Straßen)")
         note("Ohne Schlüssel: Routing über OpenStreetMap (Valhalla), Stau/Baustellen/Sperrungen von der Autobahn GmbH (nur Autobahnen). Mit kostenlosem TomTom-Schlüssel (developer.tomtom.com, ohne Kreditkarte): Live-Stau auf allen Straßen, in Routenwahl und Alternativen eingerechnet.")
-        keyField("TomTom API-Schlüssel", prefs.tomtomKey, "optional", { k -> host.services.testTomTomKey(k) }) { prefs.tomtomKey = it }
+        keyField("TomTom API-Schlüssel", prefs.ownTomtomKey, "optional", { k -> host.services.testTomTomKey(k) }, de.sascha.kssmaps.data.BuiltinKeys.tomtom) { prefs.ownTomtomKey = it }
         note("Schlüssel finden: developer.tomtom.com → Dashboard → „API & SDK keys“ → auf „My first API key“ tippen (wird kopiert) → hier „Einfügen“.")
         toggle("Verkehrsfluss auf der Karte (TomTom)", prefs.trafficOverlay) { prefs.trafficOverlay = it }
         toggle("Bei Stau schnellere Route anbieten", prefs.trafficReroute) { prefs.trafficReroute = it }
 
         section("Tankstellen & Preise")
         note("Preise (Diesel, Super E5/E10) kommen von der Markttransparenzstelle über Tankerkönig. Kostenloser Schlüssel: onboarding.tankerkoenig.de – ohne Schlüssel zeigt die App die Tankstellen auf dem Weg ohne Preise.")
-        keyField("Tankerkönig API-Schlüssel", prefs.tankerkoenigKey, "nötig für Preise", { k -> host.services.testTankerkoenigKey(k) }) { prefs.tankerkoenigKey = it }
+        keyField("Tankerkönig API-Schlüssel", prefs.ownTankerkoenigKey, "nötig für Preise", { k -> host.services.testTankerkoenigKey(k) }, de.sascha.kssmaps.data.BuiltinKeys.tankerkoenig) { prefs.ownTankerkoenigKey = it }
         note("Der Tankerkönig-Schlüssel kommt per E-Mail (nach Klick auf den Bestätigungslink), Format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.")
         choice("Kraftstoff (Sortierung)", FuelType.values().map { it.label }, prefs.fuelType.ordinal) { prefs.fuelType = FuelType.values()[it] }
         toggle("Nur Tankstellen mit UTA-Akzeptanz", prefs.utaOnly) { prefs.utaOnly = it }

@@ -109,7 +109,15 @@ jobs:
           retention-days: 3
 
       - name: Release-APK bauen
-        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
+        # API-Schluessel (TomTom, Tankerkoenig) aus den Secrets in die APK einbauen – nur hier,
+        # nicht in der Testfahrt (deren Protokolle sind oeffentlich).
+        env:
+          KSSMAPS_TOMTOM_KEY: ${{ secrets.KSSMAPS_TOMTOM_KEY }}
+          KSSMAPS_TANKERKOENIG_KEY: ${{ secrets.KSSMAPS_TANKERKOENIG_KEY }}
+        run: |
+          if [ -n "$KSSMAPS_TOMTOM_KEY" ]; then echo "TomTom-Schluessel wird eingebaut"; else echo "::notice::Kein Secret KSSMAPS_TOMTOM_KEY – APK ohne eingebauten TomTom-Schluessel"; fi
+          if [ -n "$KSSMAPS_TANKERKOENIG_KEY" ]; then echo "Tankerkoenig-Schluessel wird eingebaut"; else echo "::notice::Kein Secret KSSMAPS_TANKERKOENIG_KEY – APK ohne eingebauten Tankerkoenig-Schluessel"; fi
+          ./gradlew --no-daemon --stacktrace :app:assembleRelease
 
       - name: APK als Artefakt bereitstellen
         uses: actions/upload-artifact@v4

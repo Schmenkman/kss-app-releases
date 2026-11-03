@@ -163,6 +163,9 @@ sleep 3
 adb shell input text "Hauptbahnhof%sMuenchen"
 sleep 8
 shot 09_suche
+# Startpunkt direkt in der Suche: "Von … aendern" -> Startsuche -> "Mein Standort" -> zurueck zur Zielsuche
+python3 $T/ui.py tap --desc "Startpunkt ändern" && sleep 3 && shot 09b_startpunkt_in_suche
+python3 $T/ui.py tap --text "Mein Standort" && sleep 3 && shot 09c_wieder_zielsuche
 adb shell input keyevent KEYCODE_BACK
 sleep 2
 

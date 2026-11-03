@@ -768,6 +768,11 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
 
     private fun setupHint() {
         if (prefs.setupShown) return
+        // Schluessel eingebaut (bzw. schon eingetragen): kein Einrichtungs-Hinweis noetig
+        if (prefs.tomtomKey.isNotBlank() && prefs.tankerkoenigKey.isNotBlank()) {
+            prefs.setupShown = true
+            return
+        }
         prefs.setupShown = true
         AlertDialog.Builder(this).setTitle("Fast fertig")
             .setMessage(

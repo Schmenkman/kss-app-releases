@@ -14,6 +14,18 @@ val versionInfo = JsonSlurper().parse(rootProject.file("version.json")) as Map<S
 val appVersion = versionInfo["version"] as String
 val appVersionCode = appVersion.split(".").map { it.toInt() }.let { it[0] * 10000 + it[1] * 100 + it[2] }
 
+// API-Schluessel (TomTom, Tankerkoenig) kommen beim Bauen aus den GitHub-Secrets
+// KSSMAPS_TOMTOM_KEY / KSSMAPS_TANKERKOENIG_KEY – sie stehen NIE im (oeffentlichen) Repo.
+// In der APK leicht verschleiert (XOR + Base64, Gegenstueck: data/BuiltinKeys.kt), damit sie
+// dort nicht als Klartext stehen. Ohne Secrets (lokaler Build, Testfahrt): leer.
+fun builtinKey(env: String): String {
+    val v = (System.getenv(env) ?: "").trim()
+    if (v.isEmpty()) return ""
+    val mask = "kss-maps".toByteArray()
+    val b = v.toByteArray()
+    return java.util.Base64.getEncoder().encodeToString(ByteArray(b.size) { (b[it].toInt() xor mask[it % mask.size].toInt()).toByte() })
+}
+
 android {
     namespace = "de.sascha.kssmaps"
     compileSdk = 35
@@ -24,6 +36,8 @@ android {
         targetSdk = 34
         versionCode = appVersionCode
         versionName = appVersion
+        buildConfigField("String", "BUILTIN_TOMTOM", "\"" + builtinKey("KSSMAPS_TOMTOM_KEY") + "\"")
+        buildConfigField("String", "BUILTIN_TANKERKOENIG", "\"" + builtinKey("KSSMAPS_TANKERKOENIG_KEY") + "\"")
         ndk {
             // Nur echte Handys – halbiert die APK-Groesse (MapLibre bringt native Bibliotheken mit).
             // -PallAbis=true (Emulator-Test in der CI) baut zusaetzlich x86/x86_64.

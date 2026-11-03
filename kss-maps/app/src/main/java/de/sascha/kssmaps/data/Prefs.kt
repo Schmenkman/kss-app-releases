@@ -23,12 +23,15 @@ class Prefs(ctx: Context) {
     private fun putInt(k: String, v: Int) = sp.edit().putInt(k, v).apply()
 
     // ---- API-Schluessel ----
-    var tomtomKey: String
+    // Eigener Schluessel (Einstellungen) hat Vorrang, sonst der beim Bauen eingebaute (BuiltinKeys).
+    var ownTomtomKey: String
         get() = str("tomtom_key").trim()
         set(v) = putStr("tomtom_key", v.trim())
-    var tankerkoenigKey: String
+    var ownTankerkoenigKey: String
         get() = str("tk_key").trim()
         set(v) = putStr("tk_key", v.trim())
+    val tomtomKey: String get() = ownTomtomKey.ifBlank { BuiltinKeys.tomtom }
+    val tankerkoenigKey: String get() = ownTankerkoenigKey.ifBlank { BuiltinKeys.tankerkoenig }
 
     // ---- Ton & Warnungen ----
     var voiceMuted: Boolean

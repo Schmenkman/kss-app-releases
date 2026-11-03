@@ -146,8 +146,21 @@ class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
     private var target = Target.DESTINATION
     /** Gesprochener Fahrbefehl ("Navigiere zu …"): bestes Ergebnis direkt nehmen. */
     private var autoPick = false
+    /** "Von"-Zeile in der Zielsuche: Startpunkt direkt hier aendern (nicht erst in der Routenvorschau). */
+    private val originRow = Ui.hbox(ctx)
+    private val originText = Ui.text(ctx, "", 16f, Ui.BLUE, bold = true, maxLines = 1)
 
     init {
+        originRow.setPadding(Ui.dp(ctx, 12), Ui.dp(ctx, 10), Ui.dp(ctx, 12), Ui.dp(ctx, 10))
+        Ui.clickable(ctx, originRow, Ui.LIGHT, 14)
+        originRow.contentDescription = "Startpunkt ändern"
+        originRow.addView(View(ctx).apply { background = Ui.bg(ctx, Color.parseColor("#1A73E8"), 7, Color.WHITE, 2) },
+            LinearLayout.LayoutParams(Ui.dp(ctx, 14), Ui.dp(ctx, 14)).margins(ctx, r = 10))
+        originRow.addView(Ui.text(ctx, "Von", 14f, Ui.TEXT2), Ui.linLp(Ui.dp(ctx, 38)))
+        originRow.addView(originText, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        originRow.addView(Ui.text(ctx, "ändern ›", 14f, Ui.BLUE, bold = true))
+        originRow.setOnClickListener { open(Target.ORIGIN, voice = false) }
+        extras.addView(originRow, Ui.linLp().margins(ctx, t = 8))
         titleView.text = "Wohin?"
         input.hint = "Adresse, Ort oder Firma"
         input.setSingleLine(true)
@@ -182,8 +195,11 @@ class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
         super.show()
         target = t
         autoPick = false
-        titleView.text = if (t == Target.ORIGIN) "Von wo?" else "Wohin?"
+        titleView.text = if (t == Target.ORIGIN) "Von wo? (Startpunkt)" else "Wohin?"
         input.hint = if (t == Target.ORIGIN) "Startadresse, Ort oder Firma" else "Adresse, Ort oder Firma"
+        originRow.visibility = if (t == Target.DESTINATION) View.VISIBLE else View.GONE
+        originText.text = host.engine.origin?.name ?: "Mein Standort"
+        originText.setTextColor(if (host.engine.origin != null) Ui.TEXT else Ui.BLUE)
         input.setText("")
         showHistory()
         if (voice) {
@@ -220,10 +236,7 @@ class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
     private fun showHistory() {
         content.removeAllViews()
         if (target == Target.ORIGIN) {
-            content.addView(row("Mein Standort", "Route ab der aktuellen Position", "📍", onClick = {
-                hide()
-                host.engine.setOrigin(null)
-            }))
+            content.addView(row("Mein Standort", "Route ab der aktuellen Position", "📍", onClick = { chooseOrigin(null) }))
         }
         val h = host.engine.prefs.history
         if (h.isEmpty()) {
@@ -272,8 +285,27 @@ class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
     }
 
     private fun choose(p: Place) {
+        if (target == Target.ORIGIN) {
+            chooseOrigin(p)
+            return
+        }
         hide()
-        if (target == Target.ORIGIN) host.engine.setOrigin(p) else host.engine.setDestination(p)
+        host.engine.setDestination(p)
+    }
+
+    /**
+     * Startpunkt gewaehlt. Gibt es schon ein Ziel (Routenvorschau), wird neu berechnet. Sonst geht
+     * es direkt mit der Zielsuche weiter – "Von" steht dann oben in der Suche.
+     */
+    private fun chooseOrigin(p: Place?) {
+        val e = host.engine
+        e.setOrigin(p)
+        if (e.mode == NavEngine.Mode.PREVIEW) {
+            hide()
+        } else {
+            host.toast(if (p == null) "Start: Mein Standort – jetzt das Ziel eingeben" else "Start: ${p.name} – jetzt das Ziel eingeben")
+            open(Target.DESTINATION, voice = false)
+        }
     }
 }
 

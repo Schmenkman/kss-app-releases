@@ -20,7 +20,7 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 | Route ohne Stau wählen | Route mit Etikett „Ohne Stau“ und Knopf **„Stau umfahren“** (sperrt alle Staus/Sperrungen der Route und rechnet neu). Unterwegs prüft die App alle 3 Minuten und bietet schnellere Routen an |
 | Gewisse Abschnitte nicht fahren (nicht pauschal) | **Lange auf eine Straße drücken → „Abschnitt meiden“.** Gesperrt wird nur dieses Stück (bei Autobahnen beide Fahrbahnen), dargestellt als rote Strichlinie. Liste mit Ein/Aus-Schalter und Löschen über den ⛔-Knopf. Autobahnen/Maut/Fähren komplett meiden gibt es zusätzlich in den Einstellungen |
 | Letzte 20 Adressen | Verlauf in der Suche (Handy) und „Letzte Ziele“ (Android Auto); lange drücken = entfernen |
-| Startpunkt ändern (Start → Ziel) | In der Routenvorschau „Von“ antippen → andere Startadresse (Suche, Verlauf oder „Mein Standort“). ⇅ tauscht Start und Ziel (Rückweg). Mit eigenem Start zeigt die App Zeit, Strecke, Stau und die **Wegbeschreibung**; mit dem ⌖-Knopf geht es wieder ab dem Standort los |
+| Startpunkt ändern (Start → Ziel) | In der Suche „Wohin?“ oben **„Von … ändern ›“** antippen (oder in der Routenvorschau die Zeile „Von“) → andere Startadresse (Suche, Verlauf oder „Mein Standort“), danach geht es mit dem Ziel weiter. ⇅ tauscht Start und Ziel (Rückweg). Mit eigenem Start zeigt die App Zeit, Strecke, Stau und die **Wegbeschreibung**; mit dem ⌖-Knopf geht es wieder ab dem Standort los |
 | Spracheingabe | Mikrofon in der Suchleiste und in der Suche (Google-Spracherkennung, Deutsch). „Navigiere zum Marienplatz 7 in Freising“ öffnet direkt die Route; nur eine Adresse sprechen zeigt die Trefferliste. In Android Auto über „Hey Google, navigiere zu …“ |
 | Querformat | Wie Google Maps in Android Auto: Abbiege-Hinweis links oben, Ankunft und Knöpfe links unten, die Karte rechts bleibt frei; Tempo unten links auf der Karte |
 | Flüssiger Positionspfeil | GPS kommt einmal pro Sekunde – dazwischen wird die Position für jedes Bild vorausberechnet (entlang der Route, mit dem gefahrenen Tempo) und weich korrigiert; Pfeil und Karte bewegen sich gleichmäßig statt ruckweise |
@@ -77,6 +77,16 @@ Blitzer-, Abstands- und Überwachungswarnungen sind in KSS-Maps **standardmäßi
 Blitzer.de Pro parallel. Einschalten: Einstellungen → „Blitzerwarnungen in KSS-Maps“ oder in
 Android Auto unter „Mehr“. (Hinweis: Dem Fahrer ist die Nutzung von Blitzerwarnern während der
 Fahrt verboten, § 23 Abs. 1c StVO.)
+
+## Eingebaute API-Schlüssel (TomTom, Tankerkönig)
+
+Damit nach einer Neuinstallation nichts mehr eingetragen werden muss, baut die CI die Schlüssel
+aus zwei GitHub-Secrets in die APK ein: `KSSMAPS_TOMTOM_KEY` und `KSSMAPS_TANKERKOENIG_KEY`
+(Repo → Settings → Secrets and variables → Actions → New repository secret, oder
+`tools\setup_github.ps1`). Sie stehen **nie** im Repo; in der APK sind sie nur leicht
+verschleiert – wer die öffentliche APK zerlegt, könnte sie auslesen. Bei Missbrauch: neuen
+Schlüssel erzeugen, Secret ersetzen, neu bauen. Ein in den Einstellungen eingetragener eigener
+Schlüssel hat Vorrang. Die Testfahrt baut ohne Schlüssel (ihre Protokolle sind öffentlich).
 
 ## Einmalige Einrichtung des Signier-Schlüssels (für Updates)
 

@@ -305,6 +305,7 @@ class RoutePanel(
     val view: LinearLayout = Ui.vbox(ctx)
     private val originText = Ui.text(ctx, "", 15f, Ui.TEXT, maxLines = 1)
     private val originHere: View
+    private val originChange: TextView
     private val title = Ui.text(ctx, "", 18f, Ui.TEXT, bold = true, maxLines = 1)
     private val subtitle = Ui.text(ctx, "", 13f, Ui.TEXT2, maxLines = 1)
     private val listScroll = Ui.MaxHeightScroll(ctx)
@@ -335,6 +336,9 @@ class RoutePanel(
             setPadding(Ui.dp(ctx, 5), Ui.dp(ctx, 5), Ui.dp(ctx, 5), Ui.dp(ctx, 5))
         }
         originRow.addView(originHere)
+        // Deutlich machen, dass man den Start hier aendern kann
+        originChange = Ui.text(ctx, "ändern ›", 13f, Ui.BLUE, bold = true)
+        originRow.addView(originChange, Ui.linLp(ViewGroup.LayoutParams.WRAP_CONTENT).margins(ctx, l = 6))
         rows.addView(originRow, Ui.linLp())
         // Nach: Ziel
         val destRow = Ui.hbox(ctx)
@@ -398,6 +402,7 @@ class RoutePanel(
         originText.text = o?.name ?: "Mein Standort"
         originText.setTextColor(if (o != null) Ui.TEXT else Ui.BLUE)
         originHere.visibility = if (o != null) View.VISIBLE else View.GONE
+        originChange.visibility = if (o != null) View.GONE else View.VISIBLE
         title.text = d?.name ?: "Ziel"
         subtitle.text = listOfNotNull(d?.address?.takeIf { it.isNotBlank() }, e.fuelStop?.let { "über ⛽ ${it.displayName()}" }).joinToString(" · ")
         subtitle.visibility = if (subtitle.text.isNullOrBlank()) View.GONE else View.VISIBLE

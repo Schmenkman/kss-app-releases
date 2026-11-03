@@ -47,6 +47,21 @@ foreach ($name in $all.Keys) {
     Ok $name
 }
 
+Step "API-Schluessel in die App einbauen (optional)"
+Write-Host "    Leer lassen = ueberspringen (vorhandene Secrets bleiben)."
+$keys = [ordered]@{
+    "KSSMAPS_TOMTOM_KEY"       = "TomTom API-Schluessel"
+    "KSSMAPS_TANKERKOENIG_KEY" = "Tankerkoenig API-Schluessel"
+}
+foreach ($name in $keys.Keys) {
+    $val = (Read-Host "    $($keys[$name])").Trim()
+    if ($val) {
+        $val | gh secret set $name --repo $Repo
+        if ($LASTEXITCODE -ne 0) { Fail "Secret $name konnte nicht gesetzt werden." }
+        Ok $name
+    }
+}
+
 Step "Neuen Build starten"
 $branch = Read-Host "    Branch (Enter = main)"
 if (-not $branch) { $branch = "main" }
