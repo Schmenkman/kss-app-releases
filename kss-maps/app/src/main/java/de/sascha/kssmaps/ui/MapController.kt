@@ -23,6 +23,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.BackgroundLayer
+import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillExtrusionLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.Layer
@@ -278,6 +279,15 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         }
 
         // --- Punkte: Meldungen, Tankstellen, Sperrpunkte, Ziel ---
+        // Farbiger Punkt unter jedem Meldungs-Symbol (Rueckfallebene, wird vom Symbol verdeckt)
+        st.addLayer(CircleLayer("nav-points-dot", SRC_POINTS)
+            .withFilter(Expression.eq(Expression.get("k"), Expression.literal("icon")))
+            .withProperties(
+                PropertyFactory.circleRadius(if (forCar) 6f else 7f),
+                PropertyFactory.circleColor(Expression.get("c")),
+                PropertyFactory.circleStrokeColor("#FFFFFF"),
+                PropertyFactory.circleStrokeWidth(2f),
+            ))
         st.addLayer(SymbolLayer("nav-points", SRC_POINTS)
             .withFilter(Expression.eq(Expression.get("k"), Expression.literal("icon")))
             .withProperties(
@@ -311,7 +321,15 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
                 PropertyFactory.textHaloColor("#AD1457"), PropertyFactory.textHaloWidth(4f),
                 PropertyFactory.textAllowOverlap(true), PropertyFactory.textIgnorePlacement(true),
             ))
-        // Eigene Position ganz oben
+        // Eigene Position ganz oben: blauer Punkt (ohne Bild, wird immer gezeichnet) und darueber
+        // der Fahrtpfeil, der den Punkt verdeckt.
+        st.addLayer(CircleLayer("nav-pos-dot", SRC_POS).withProperties(
+            PropertyFactory.circleRadius(if (forCar) 8f else 9f),
+            PropertyFactory.circleColor("#1A73E8"),
+            PropertyFactory.circleStrokeColor("#FFFFFF"),
+            PropertyFactory.circleStrokeWidth(3f),
+            PropertyFactory.circlePitchAlignment(Property.CIRCLE_PITCH_ALIGNMENT_MAP),
+        ))
         st.addLayer(SymbolLayer("nav-pos", SRC_POS).withProperties(
             PropertyFactory.iconImage("puck"),
             PropertyFactory.iconRotate(Expression.get("b")),
@@ -508,6 +526,10 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         it.addStringProperty("k", "icon")
         it.addStringProperty("icon", icon)
         it.addNumberProperty("z", z)
+        // Farbe fuer den Punkt unter dem Symbol (sichtbar, falls ein Geraet das Symbol nicht zeichnet)
+        val type = HazardType.values().firstOrNull { t -> icon == "hz-" + t.name }
+        val c = if (type != null) Icons.hazardColor(type) else Color.parseColor("#D32F2F")
+        it.addStringProperty("c", String.format("#%06X", 0xFFFFFF and c))
     }
 
     // Rueckfallebene, falls die Overpass-Abfrage nichts liefert (z. B. Server ueberlastet):
