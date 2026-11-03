@@ -61,11 +61,16 @@ class StillDetector(
         }
         val first = recent.first()
         val span = t - first.t
-        // Tempo im Stand: klein, oder bei schlechter Genauigkeit (drinnen) bis 7 km/h unglaubwuerdig
-        val slow = recent.all { f ->
-            val limit = if (f.acc > 12.0) 2.0 else 0.8
-            f.speed < limit
+        // Tempo im Stand: klein – je schlechter die Genauigkeit (drinnen), desto mehr "Rausch-Tempo"
+        // ist unglaubwuerdig (bis 7 km/h). Median statt "alle", damit ein Ausreisser nicht stoert.
+        val speeds = recent.map { it.speed }.sorted()
+        val accMedian = recent.map { it.acc }.sorted()[recent.size / 2]
+        val limit = when {
+            accMedian > 12.0 -> 2.0
+            accMedian > 6.0 -> 1.2
+            else -> 0.8
         }
+        val slow = speeds[speeds.size / 2] < limit && speeds.last() < 2 * limit
         val radius = max(10.0, 1.5 * acc)
         val close = recent.all { Geo.distance(it.p, p) < radius }
         if (span >= minSpanSec && slow && close) {

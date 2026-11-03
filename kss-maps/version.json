@@ -1,16 +1,17 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "notes": [
-    "Neu: Querformat wie Google Maps in Android Auto – Abbiege-Hinweis links oben, Ankunft und Knöpfe links unten, die Karte rechts bleibt frei",
-    "Neu: flüssiger Positionspfeil – zwischen den GPS-Punkten wird die Position für jedes Bild berechnet, Pfeil und Karte laufen gleichmäßig statt ruckweise",
-    "Neu: Startpunkt ändern – Route von A nach B planen („Von“ antippen), Start und Ziel tauschen, Wegbeschreibung mit allen Abbiegungen",
-    "Neu: Spracheingabe – Mikrofon in der Suchleiste; „Navigiere zum Marienplatz 7 in Freising“ öffnet direkt die Route",
-    "Behoben: Tankstellen zeigen unter dem Preis die gewählte Sorte (vorher stand dort die jeweils andere)",
+    "Neu: Startpunkt direkt in der Suche – oben „Von … ändern ›“ antippen, dann das Ziel",
+    "Neu: TomTom- und Tankerkönig-Schlüssel sind eingebaut – nichts mehr eintragen",
+    "Behoben: Im Stand (z. B. drinnen) zeigt die App 0 km/h und der Pfeil wandert nicht mehr umher",
+    "Querformat wie Google Maps in Android Auto – Abbiege-Hinweis links oben, Ankunft und Knöpfe links unten, die Karte rechts bleibt frei",
+    "Flüssiger Positionspfeil – zwischen den GPS-Punkten wird die Position für jedes Bild berechnet, Pfeil und Karte laufen gleichmäßig statt ruckweise",
+    "Spracheingabe – Mikrofon in der Suchleiste; „Navigiere zum Marienplatz 7 in Freising“ öffnet direkt die Route",
     "KSS-Maps: Navigation für Bayern mit deutscher Sprachführung (abschaltbar) und Android Auto",
     "Baustellen, Stau, Sperrungen und Gefahren – nur auf deiner Route, mit Warnung; Alternativrouten, 'Ohne Stau' und 'Stau umfahren'",
     "Einzelne Abschnitte meiden – lange auf die Straße drücken; Luftbild Bayern, Tempolimit + aktuelle Geschwindigkeit, Zielhaus magenta markiert",
     "Tankstellen mit Preisen (Diesel/Super) und UTA-Akzeptanz: erst auf dem Weg, dann Preis – Zwischenstopp ohne neue Eingabe",
     "Blitzerwarnungen standardmäßig aus (Blitzer.de Pro parallel) – Schalter in den Einstellungen und in Android Auto unter „Mehr“"
   ],
-  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.1.0/kss-maps.apk"
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.1.1/kss-maps.apk"
 }

@@ -32,6 +32,19 @@ class StillDetectorTest {
     }
 
     @Test
+    fun indoorsWithMediumAccuracyAndSpeedNoiseCountsAsStanding() {
+        // Genauigkeit 8 m, gemeldet 1–5 km/h (0,3–1,4 m/s) mit einem Ausreisser
+        val d = StillDetector()
+        val r = Random(12)
+        var still = false
+        for (i in 0 until 20) {
+            val speed = if (i == 7) 2.0 else 0.3 + r.nextDouble() * 1.1
+            still = d.update(i.toDouble(), jitter(r, 3.0), 8.0, speed)
+        }
+        assertTrue(still)
+    }
+
+    @Test
     fun drivingOffEndsStandstillImmediately() {
         val d = StillDetector()
         val r = Random(9)

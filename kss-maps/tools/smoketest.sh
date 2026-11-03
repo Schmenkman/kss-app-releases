@@ -82,7 +82,7 @@ shot 01_start
 for off in $(python3 -c "
 import random
 random.seed(3)
-print(' '.join('%.6f,%.6f,%.1f' % (11.5851 + random.gauss(0, 0.00007), 48.1641 + random.gauss(0, 0.00005), abs(random.gauss(1.6, 0.8))) for _ in range(12)))
+print(' '.join('%.6f,%.6f,%.1f' % (11.5851 + random.gauss(0, 0.00004), 48.1641 + random.gauss(0, 0.00003), abs(random.gauss(0.8, 0.5))) for _ in range(12)))
 "); do
   IFS=, read -r glon glat gkn <<< "$off"
   adb emu geo fix "$glon" "$glat" 500 12 "$gkn" >/dev/null
