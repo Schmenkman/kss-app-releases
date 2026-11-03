@@ -35,14 +35,13 @@ class Prefs(ctx: Context) {
         get() = bool("muted", false)
         set(v) = putBool("muted", v)
     /**
-     * Blitzer-, Abstands- und Ueberwachungswarnungen sind aus KSS-Maps entfernt – dafuer laeuft
-     * Blitzer.de Pro parallel. Fest "aus"; alle Blitzer-Funktionen der App haengen an diesem Wert.
+     * Blitzer-, Abstands- und Ueberwachungswarnungen der App. Standard AUS – Blitzer.de Pro laeuft
+     * parallel. Schalter in den Einstellungen und in Android Auto unter "Mehr".
+     * (Neuer Schluessel, damit ein frueher gespeichertes "an" nicht uebernommen wird.)
      */
     var camerasEnabled: Boolean
-        get() = false
-        set(value) {
-            // bewusst ignoriert
-        }
+        get() = bool("cameras_v2", false)
+        set(v) = putBool("cameras_v2", v)
     var camerasAsked: Boolean
         get() = bool("cameras_asked", false)
         set(v) = putBool("cameras_asked", v)

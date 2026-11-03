@@ -10,7 +10,7 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 | Karte wie Google Maps, Bayern reicht | Vektorkarte (OpenFreeMap/OSM), Tag/Nacht automatisch nach Sonnenstand |
 | Satellitenbilder | **Luftbild-Knopf**: in Bayern die amtlichen Luftbilder (DOP 40 cm, Open Data der Bayerischen Vermessungsverwaltung), außerhalb Esri-Satellit; Straßen und Namen bleiben darüber sichtbar |
 | Baustellen, Stau, Sperrungen, Gefahren – nur auf der Route | Stau/Baustellen/Sperrungen/Gefahren (Autobahn GmbH, mit TomTom-Schlüssel auf **allen** Straßen). Es wird nur angezeigt und gewarnt, was **auf der gefahrenen Strecke** liegt (Gegenfahrbahn und Parallelstraßen werden aussortiert) |
-| Blitzer / Abstandsmessungen | **Bewusst nicht enthalten** – dafür läuft Blitzer.de Pro parallel (Live-Meldungen der Community) |
+| Blitzer / Abstandsmessungen | Schalter, **standardmäßig aus** – Blitzer.de Pro läuft parallel. Eingeschaltet (Einstellungen oder Android Auto → „Mehr“): feste Blitzer, Rotlicht-/Abschnittskontrollen, Abstandsmessungen aus OpenStreetMap und eigene Meldungen (roter Kamera-Knopf), nur auf der Route |
 | Warnen | Sprachwarnung + farbiges Banner („Stau in 3 km, etwa 12 Minuten Verzögerung“, „Baustelle in 800 m“), in Android Auto zusätzlich als Hinweis-Karte |
 | Tempolimit anzeigen | Tempolimit-Schild aus OSM-Daten entlang der Route (ohne Route: per Kartenabgleich der letzten GPS-Punkte) |
 | Aktuelle Geschwindigkeit | groß unten links, rot (und optional ein Ton) bei Überschreitung |
@@ -67,8 +67,9 @@ eigenes Google-Konto als Tester eintragen und KSS-Maps aus dem Play Store instal
 
 ## Blitzer
 
-Blitzer-, Abstands- und Überwachungswarnungen sind **bewusst nicht** in KSS-Maps – dafür läuft
-Blitzer.de Pro parallel. (Hinweis: Dem Fahrer ist die Nutzung von Blitzerwarnern während der
+Blitzer-, Abstands- und Überwachungswarnungen sind in KSS-Maps **standardmäßig aus** – dafür läuft
+Blitzer.de Pro parallel. Einschalten: Einstellungen → „Blitzerwarnungen in KSS-Maps“ oder in
+Android Auto unter „Mehr“. (Hinweis: Dem Fahrer ist die Nutzung von Blitzerwarnern während der
 Fahrt verboten, § 23 Abs. 1c StVO.)
 
 ## Einmalige Einrichtung des Signier-Schlüssels (für Updates)
@@ -98,6 +99,7 @@ dem Installieren einer neueren Testversion muss die alte deinstalliert werden.
 | Routing ohne Schlüssel | Valhalla, öffentliche FOSSGIS-Instanz (OSM) | – |
 | Routing + Live-Verkehr | TomTom Routing API, Traffic Flow Tiles | TomTom (optional) |
 | Stau/Baustellen/Sperrungen Autobahn | verkehr.autobahn.de (Autobahn GmbH des Bundes) | – |
+| Blitzer, Rotlicht, Abschnittskontrolle, Abstandsmessung (wenn eingeschaltet) | OpenStreetMap über Overpass-API (`highway=speed_camera`, `type=enforcement`, `mindistance`) | – |
 | Tempolimits | OSM-Daten über Valhalla `trace_attributes` | – |
 | Adresssuche | Photon (komoot), Nominatim | – |
 | Zielgebäude | OSM-Gebäude über Overpass-API | – |
@@ -126,7 +128,7 @@ app/src/carTest/  Tests aller Android-Auto-Vorlagen (Robolectric, `-PcarTests`)
 tools/smoketest.sh  Testfahrt im Emulator (CI, Commit-Nachricht mit „[testfahrt]“): Route,
                   Luftbild, gesperrter Abschnitt, Fahrt mit Ansagen, Ankunft, Tanken, Suche –
                   plus Bilder der Android-Auto-Karte (auf unsichtbarer Fläche gezeichnet)
-tools/fetch_enforcement.py  Tankstellenliste für die APK (CI)
+tools/fetch_enforcement.py  Blitzer-Startbestand und Tankstellenliste für die APK (CI)
 ```
 
 ## Automatische Prüfungen

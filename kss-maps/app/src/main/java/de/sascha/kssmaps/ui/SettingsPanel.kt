@@ -154,7 +154,20 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
 
         section("Warnungen & Ton")
         toggle("Sprachansagen (Ton)", !prefs.voiceMuted) { e.setMuted(!it) }
-        note("Blitzerwarnungen gibt es in KSS-Maps nicht – dafür Blitzer.de Pro parallel nutzen. Stau, Baustellen und Sperrungen auf der Route werden weiter angesagt.")
+        toggle("Blitzerwarnungen in KSS-Maps", prefs.camerasEnabled) { on ->
+            e.setCamerasEnabled(on)
+            render()
+        }
+        note(
+            if (prefs.camerasEnabled) "An: feste Blitzer, Rotlicht- und Abschnittskontrollen, Abstandsmessungen (OpenStreetMap) und deine eigenen Meldungen (roter Kamera-Knopf). Hinweis: § 23 Abs. 1c StVO."
+            else "Aus (Standard) – dafür Blitzer.de Pro parallel nutzen. Stau, Baustellen und Sperrungen auf der Route werden weiter angesagt. Auch in Android Auto unter „Mehr“ schaltbar."
+        )
+        val rc = e.reportCount
+        if (prefs.camerasEnabled && rc > 0) action("Eigene Meldungen löschen ($rc)") {
+            AlertDialog.Builder(ctx).setTitle("Alle eigenen Meldungen löschen?")
+                .setPositiveButton("Löschen") { _, _ -> e.clearReports(); render() }
+                .setNegativeButton("Abbrechen", null).show()
+        }
         toggle("Warnton bei Tempoüberschreitung", prefs.overspeedWarning) { prefs.overspeedWarning = it }
         choice("Toleranz", listOf("+0", "+3", "+5", "+10 km/h"), when (prefs.overspeedTolerance) { 0 -> 0; 3 -> 1; 10 -> 3; else -> 2 }) {
             prefs.overspeedTolerance = listOf(0, 3, 5, 10)[it]

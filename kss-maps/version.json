@@ -9,7 +9,7 @@
     "Tankstellen mit Preisen (Diesel/Super) und UTA-Akzeptanz: erst auf dem Weg, dann Preis – Zwischenstopp ohne neue Eingabe (ohne Tankerkönig-Schlüssel: ohne Preise)",
     "Letzte 20 Ziele, Karte entlang der Route offline gespeichert",
     "Einstellungen: Schlüssel per Knopf einfügen und sofort prüfen (TomTom, Tankerkönig)",
-    "Keine Blitzerwarnungen in KSS-Maps – dafür Blitzer.de Pro parallel nutzen"
+    "Blitzerwarnungen standardmäßig aus (Blitzer.de Pro parallel) – Schalter in den Einstellungen und in Android Auto unter „Mehr“"
   ],
   "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.0.0/kss-maps.apk"
 }

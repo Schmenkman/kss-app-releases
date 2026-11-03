@@ -533,6 +533,14 @@ class CarMoreScreen(carContext: CarContext) : Screen(carContext) {
             }
         }
         row(if (e.prefs.voiceMuted) "Ton einschalten" else "Ton ausschalten", null) { e.toggleMuted() }
+        row(
+            if (e.prefs.camerasEnabled) "Blitzerwarnungen ausschalten" else "Blitzerwarnungen einschalten",
+            if (e.prefs.camerasEnabled) "z. B. wenn Blitzer.de parallel läuft" else "feste Blitzer und Abstandsmessungen auf der Route",
+        ) {
+            val on = !e.prefs.camerasEnabled
+            e.setCamerasEnabled(on)
+            toast(if (on) "Blitzerwarnungen an" else "Blitzerwarnungen aus")
+        }
         return androidx.car.app.model.ListTemplate.Builder()
             .setTitle("Mehr")
             .setHeaderAction(Action.BACK)

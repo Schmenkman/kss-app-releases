@@ -142,6 +142,12 @@ sleep 2
 python3 $T/ui.py tap --text "Prüfen" || echo "kein Prüfen-Knopf"
 sleep 3
 shot 10b_schluessel_knoepfe
+# weiter nach unten zum Schalter "Blitzerwarnungen in KSS-Maps" (Standard: aus)
+adb shell input swipe 540 1900 540 700 400
+sleep 1
+adb shell input swipe 540 1900 540 700 400
+sleep 2
+shot 10c_warnungen
 act --ez test_close_panels true
 sleep 2
 
