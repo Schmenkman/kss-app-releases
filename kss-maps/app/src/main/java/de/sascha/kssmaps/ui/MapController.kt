@@ -182,9 +182,9 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
     }
 
     private fun install(st: Style) {
-        st.addImage("puck", img(Icons.puck(px(if (forCar) 40 else 46))))
-        for (t in HazardType.values()) st.addImage("hz-" + t.name, img(Icons.hazard(t, px(if (forCar) 30 else 34))))
-        st.addImage("dest-pin", img(Icons.destinationPin(px(42))))
+        st.addImage("puck", img(Icons.puck(px(if (forCar) 52 else 46))))
+        for (t in HazardType.values()) st.addImage("hz-" + t.name, img(Icons.hazard(t, px(if (forCar) 36 else 34))))
+        st.addImage("dest-pin", img(Icons.destinationPin(px(if (forCar) 46 else 42))))
         st.addImage("fuel-uta", img(Icons.fuelMarker(px(32), true)))
         st.addImage("fuel-other", img(Icons.fuelMarker(px(32), false)))
         st.addImage("avoid", img(Icons.avoidMarker(px(26))))
@@ -317,8 +317,8 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
             .withFilter(Expression.eq(Expression.get("k"), Expression.literal("hn")))
             .withProperties(
                 PropertyFactory.textField(Expression.get("t")), PropertyFactory.textFont(font),
-                PropertyFactory.textSize(if (forCar) 20f else 24f), PropertyFactory.textColor("#FFFFFF"),
-                PropertyFactory.textHaloColor("#AD1457"), PropertyFactory.textHaloWidth(4f),
+                PropertyFactory.textSize(if (forCar) 28f else 26f), PropertyFactory.textColor("#FFFFFF"),
+                PropertyFactory.textHaloColor("#5C0026"), PropertyFactory.textHaloWidth(3f),
                 PropertyFactory.textAllowOverlap(true), PropertyFactory.textIgnorePlacement(true),
             ))
         // Eigene Position ganz oben: blauer Punkt (ohne Bild, wird immer gezeichnet) und darueber

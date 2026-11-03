@@ -93,9 +93,20 @@ shot 04_navigation_start
 python3 $T/ui.py tap --desc "Blitzer melden" && sleep 3 && shot 04b_melden && python3 $T/ui.py tap --text "📏 Abstandsmessung hier (4 Stunden)" --contains
 sleep 3
 
-# Fahrt: erste 9 km mit 90 km/h
-python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from 0 --to 9000 --speed 25 --shot-every 50 --prefix 05_fahrt
-car_shot fahrt auto_02_fahrt
+# Fahrt bis kurz vor den ersten Blitzer der Route (Position aus ROUTE_INFO) – prueft Warnung,
+# Banner und Ansage; danach am Blitzer vorbei. Ohne Blitzer auf der Route: die ersten 9 km.
+CAM=$(grep -o "SPEED_CAMERA@[0-9]*" "$OUT/logcat.txt" | head -1 | cut -d@ -f2)
+echo "Erster Blitzer auf der Route bei: ${CAM:-keiner} m"
+if [ -n "$CAM" ] && [ "$CAM" -gt 1500 ] && [ "$CAM" -lt 25000 ]; then
+  STOP=$((CAM - 350))
+  python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from 0 --to $STOP --speed 30 --shot-every 60 --prefix 05_fahrt
+  shot 05b_blitzer_voraus
+  car_shot blitzer auto_02_fahrt
+  python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from $STOP --to $((CAM + 250)) --speed 22 --shot-every 100 --prefix 05c_blitzer
+else
+  python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from 0 --to 9000 --speed 25 --shot-every 50 --prefix 05_fahrt
+  car_shot fahrt auto_02_fahrt
+fi
 # Sprung kurz vors Ziel (prueft nebenbei die Neuberechnung) und langsam ankommen
 python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from-end 1200 --to-end 0 --speed 9 --shot-every 35 --prefix 06_ankunft
 sleep 25
