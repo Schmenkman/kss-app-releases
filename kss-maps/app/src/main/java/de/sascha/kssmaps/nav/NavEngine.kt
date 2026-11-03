@@ -183,6 +183,11 @@ class NavEngine(
     var location: Location? = null
         private set
     val position: LatLon? get() = location?.let { LatLon(it.latitude, it.longitude) }
+    /** Stillstand (Couch, Ampel): GPS wandert, die App zeigt dann Tempo 0 und einen festen Pfeil. */
+    private val still = de.sascha.kssmaps.core.StillDetector()
+    val stationary: Boolean get() = still.stationary
+    /** Position fuer die Anzeige: im Stand fest am Ankerpunkt, sonst die GPS-Position. */
+    val displayPosition: LatLon? get() = (if (still.stationary) still.anchor else null) ?: position
     var speedKmh = 0.0
         private set
     var heading: Double? = null
@@ -341,6 +346,8 @@ class NavEngine(
         // Derselbe Punkt kurz danach noch einmal (manche Geraete, der Emulator): beim Fahren veraltet –
         // verwerfen, sonst "steht" das Auto fuer einen Moment (Tempo, Pfeil, Ansagen).
         if (prev != null && speedKmh > 7.0 && loc.time - prev.time in 0..800 && prev.distanceTo(loc) < 0.5f) return
+        // Netzwerkortung nach laengerer Pause oder sehr ungenaue Punkte: Stand-Erkennung neu beginnen
+        if (prev == null || loc.elapsedRealtimeNanos - prev.elapsedRealtimeNanos > 30_000_000_000L) still.reset()
         location = loc
         val now = SystemClock.elapsedRealtime()
         val prevSp = speedKmh / 3.6
@@ -360,11 +367,18 @@ class NavEngine(
                 else if (sp < 0.5 && calc > 3.0 && acc < 25.0 && d > 2 * acc) sp = calc
             } else if (!loc.hasSpeed() && dt > 10.0) sp = 0.0
         } else if (!loc.hasSpeed()) sp = 0.0
+        // Im Stand wandert das GPS und meldet 1–5 km/h: dann Tempo 0, Richtung bleibt
+        val wasStanding = still.stationary
+        val standing = still.update(loc.elapsedRealtimeNanos / 1e9, LatLon(loc.latitude, loc.longitude), loc.accuracy.toDouble(), sp)
+        if (standing != wasStanding) Log.i(TAG, "STILL ${if (standing) "an" else "aus"} (Tempo gemeldet ${"%.1f".format(sp * 3.6)} km/h, Genauigkeit ${loc.accuracy.roundToInt()} m)")
+        if (standing) sp = 0.0
         speedKmh = sp.coerceIn(0.0, 85.0) * 3.6
         // Fahrtrichtung: vom GPS, ausser sie passt nicht zur tatsaechlichen Bewegung (manche Geraete
         // und der Emulator melden z. B. immer Norden) – dann die Richtung zwischen den Punkten.
         val moveBearing = if (prev != null && prev.distanceTo(loc) > 8) prev.bearingTo(loc).toDouble().let { (it + 360) % 360 } else null
-        if (loc.hasBearing() && sp > 1.5 && (moveBearing == null || Geo.angleDiff(loc.bearing.toDouble(), moveBearing) < 90.0)) heading = loc.bearing.toDouble()
+        if (standing) {
+            // keine Richtungsaenderung im Stand
+        } else if (loc.hasBearing() && sp > 1.5 && (moveBearing == null || Geo.angleDiff(loc.bearing.toDouble(), moveBearing) < 90.0)) heading = loc.bearing.toDouble()
         else if (moveBearing != null && sp > 1.5) heading = moveBearing
         if (now - lastSavedPos > 60_000) {
             lastSavedPos = now
@@ -741,7 +755,8 @@ class NavEngine(
     private fun navigateStep(loc: Location, sp: Double) {
         val route = activeRoute ?: return
         val tr = tracker ?: return
-        val p = LatLon(loc.latitude, loc.longitude)
+        // Im Stand den festen Punkt nehmen: sonst "kriecht" die Position an der Ampel vorwaerts
+        val p = displayPosition ?: LatLon(loc.latitude, loc.longitude)
         val st = tr.update(p, loc.accuracy.toDouble(), sp, heading)
         state = st
         speedLimit = route.speedLimitAt(st.along)

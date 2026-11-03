@@ -78,6 +78,17 @@ sleep 3
 geo 11.5851 48.1641
 sleep 5
 shot 01_start
+# "Couch": 12 s wandernde GPS-Punkte (bis ~9 m) mit Rausch-Tempo -> erwartet 0 km/h, ruhiger Pfeil
+for off in $(python3 -c "
+import random
+random.seed(3)
+print(' '.join('%.6f,%.6f,%.1f' % (11.5851 + random.gauss(0, 0.00007), 48.1641 + random.gauss(0, 0.00005), abs(random.gauss(1.6, 0.8))) for _ in range(12)))
+"); do
+  IFS=, read -r glon glat gkn <<< "$off"
+  adb emu geo fix "$glon" "$glat" 500 12 "$gkn" >/dev/null
+  sleep 1
+done
+shot 01b_stillstand
 
 # Ziel wie aus einer anderen App (geo:-Link) -> Suche, Routen, Vorschau
 adb shell "am start -a android.intent.action.VIEW -d 'geo:0,0?q=Marienplatz%207%2C%2085354%20Freising' -n $PKG/.MainActivity" >/dev/null

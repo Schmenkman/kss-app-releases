@@ -1,4 +1,5 @@
 import groovy.json.JsonSlurper
+import java.util.Base64
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -23,7 +24,7 @@ fun builtinKey(env: String): String {
     if (v.isEmpty()) return ""
     val mask = "kss-maps".toByteArray()
     val b = v.toByteArray()
-    return java.util.Base64.getEncoder().encodeToString(ByteArray(b.size) { (b[it].toInt() xor mask[it % mask.size].toInt()).toByte() })
+    return Base64.getEncoder().encodeToString(ByteArray(b.size) { (b[it].toInt() xor mask[it % mask.size].toInt()).toByte() })
 }
 
 android {

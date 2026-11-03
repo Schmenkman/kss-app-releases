@@ -737,7 +737,8 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
                 smoother.fixOnRoute(t, r.geometry, r, nav.along, sp, age)
             } else {
                 lastFixRoute = null
-                smoother.fixFree(t, LatLon(loc.latitude, loc.longitude), engine.heading, sp, age)
+                // Im Stand der feste Punkt (sonst wandert der Pfeil mit dem GPS umher)
+                smoother.fixFree(t, engine.displayPosition ?: LatLon(loc.latitude, loc.longitude), engine.heading, sp, age)
             }
             if (debuggable && !forCar && engine.mode == NavEngine.Mode.NAVIGATING) {
                 Log.i("KSSMaps", String.format(java.util.Locale.ROOT, "PUCK_FIX %s gps=%.1f anzeige=%s vorher=%s abw=%.1f v=%.1f alter=%.2f%s",
