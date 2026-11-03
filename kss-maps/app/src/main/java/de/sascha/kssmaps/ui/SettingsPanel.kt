@@ -110,7 +110,7 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
         toggle("Bei Stau schnellere Route anbieten", prefs.trafficReroute) { prefs.trafficReroute = it }
 
         section("Tankstellen & Preise")
-        note("Preise kommen von der Markttransparenzstelle über Tankerkönig. Kostenloser Schlüssel: onboarding.tankerkoenig.de")
+        note("Preise (Diesel, Super E5/E10) kommen von der Markttransparenzstelle über Tankerkönig. Kostenloser Schlüssel: onboarding.tankerkoenig.de – ohne Schlüssel zeigt die App die Tankstellen auf dem Weg ohne Preise.")
         keyField("Tankerkönig API-Schlüssel", prefs.tankerkoenigKey, "nötig für Preise") { prefs.tankerkoenigKey = it }
         choice("Kraftstoff (Sortierung)", FuelType.values().map { it.label }, prefs.fuelType.ordinal) { prefs.fuelType = FuelType.values()[it] }
         toggle("Nur Tankstellen mit UTA-Akzeptanz", prefs.utaOnly) { prefs.utaOnly = it }
