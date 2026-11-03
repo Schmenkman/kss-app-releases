@@ -129,6 +129,48 @@ class PuckSmootherTest {
     }
 
     @Test
+    fun staysSmoothWithLateFixesNoisySpeedAndGaps() {
+        // Wie im Emulator: Punkte kommen unregelmaessig (0,7–1,4 s, ab und zu 2,5 s Pause), das
+        // Tempo daraus schwankt stark. Der Pfeil darf weder stehen bleiben noch springen.
+        val line = straight()
+        val s = PuckSmoother()
+        val v = 25.0
+        val rnd = Random(11)
+        var t = 0.0
+        var nextFix = 0.0
+        var lastFixT = 0.0
+        var lastFixA = 0.0
+        var prev: Double? = null
+        val ratios = ArrayList<Double>()
+        var fixes = 0
+        while (t < 120.0) {
+            if (t >= nextFix) {
+                val a = v * t
+                val reported = if (fixes == 0) v else ((a - lastFixA) / (t - lastFixT)).coerceIn(0.0, 60.0)
+                s.fixOnRoute(t, line, line, a, reported)
+                lastFixT = t
+                lastFixA = a
+                fixes++
+                nextFix += if (fixes % 17 == 0) 2.5 else 0.7 + rnd.nextDouble() * 0.7
+            }
+            s.advance(t)
+            val a = s.along!!
+            if (prev != null && t > 5.0) {
+                val step = a - prev
+                assertTrue("rueckwaerts bei t=$t", step >= -1e-9)
+                ratios.add(step / (v * frame))
+            }
+            prev = a
+            t += frame
+        }
+        ratios.sort()
+        val p5 = ratios[(ratios.size * 0.05).toInt()]
+        val p95 = ratios[(ratios.size * 0.95).toInt()]
+        val maxR = ratios.last()
+        assertTrue("p5=$p5 p95=$p95 max=$maxR", p5 > 0.35 && p95 < 1.9 && maxR < 2.6)
+    }
+
+    @Test
     fun freeDrivingIsSmoothAndSettlesWhenStopped() {
         val s = PuckSmoother()
         val v = 14.0

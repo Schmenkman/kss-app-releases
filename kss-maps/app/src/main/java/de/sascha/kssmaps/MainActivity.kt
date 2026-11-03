@@ -333,6 +333,11 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         super.onConfigurationChanged(newConfig)
         applyLayout()
         renderAll(false)
+        // Nach dem Drehen die Routenuebersicht neu einpassen (die Leiste sitzt jetzt woanders)
+        handler.postDelayed({
+            updateMapPadding()
+            if (engine.mode == NavEngine.Mode.PREVIEW && engine.routes.isNotEmpty()) mapCtl?.showRoutesOverview()
+        }, 400)
     }
 
     private fun setupMap(map: MapLibreMap) {
@@ -718,6 +723,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             if (i.getBooleanExtra("test_open_fuel", false)) openFuel()
             // Startpunkt setzen ("Breite,Laenge") bzw. zuruecksetzen ("here")
             i.getStringExtra("test_origin")?.let { o ->
+                android.util.Log.i("KSSMaps", "TEST_ORIGIN $o")
                 if (o == "here") engine.setOrigin(null)
                 else Geocoding.parseCoordinates(o)?.let { p -> engine.setOrigin(de.sascha.kssmaps.core.Place("Teststart", o, p.lat, p.lon)) }
             }
@@ -725,6 +731,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             if (i.getBooleanExtra("test_open_origin_search", false)) search.open(SearchPanel.Target.ORIGIN, voice = false)
             // Wie ein erkannter Sprachbefehl (ohne Mikrofon): Suche oeffnen und Text verarbeiten
             i.getStringExtra("test_voice")?.let { t ->
+                android.util.Log.i("KSSMaps", "TEST_VOICE $t")
                 closePanels()
                 search.open(SearchPanel.Target.DESTINATION, voice = false)
                 search.onVoice(t)

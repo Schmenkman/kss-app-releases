@@ -726,12 +726,17 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
             lastFixState = nav
             val t = nowSec()
             val sp = engine.speedKmh / 3.6
+            // Alter des Punkts aus dem GPS-Zeitstempel: die Vorhersage rechnet ab dem Messzeitpunkt,
+            // nicht ab dem (schwankenden) Eintreffen. Unplausible Werte -> 0.
+            val age = loc.elapsedRealtimeNanos.let { ns ->
+                if (ns <= 0L) 0.0 else ((android.os.SystemClock.elapsedRealtimeNanos() - ns) / 1e9).takeIf { it in 0.0..1.5 } ?: 0.0
+            }
             if (nav != null && nav.onRoute && r != null && stateRoute === r) {
                 lastFixRoute = r
-                smoother.fixOnRoute(t, r.geometry, r, nav.along, sp)
+                smoother.fixOnRoute(t, r.geometry, r, nav.along, sp, age)
             } else {
                 lastFixRoute = null
-                smoother.fixFree(t, LatLon(loc.latitude, loc.longitude), engine.heading, sp)
+                smoother.fixFree(t, LatLon(loc.latitude, loc.longitude), engine.heading, sp, age)
             }
         }
         if (lastPuckPos == null) {
@@ -779,49 +784,48 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
             lastFrameT = Double.NaN
             return
         }
-        val fdt = if (lastFrameT.isNaN()) 1.0 / 60 else (t - lastFrameT).coerceIn(0.0, 0.25)
+        val restart = lastFrameT.isNaN()
+        val fdt = if (restart) 1.0 / 60 else (t - lastFrameT).coerceIn(0.0, 0.25)
         lastFrameT = t
         smoother.advance(t)
         drawPuck()
         val camBusy = following && cameraFrame(t, fdt)
-        if (debuggable) smoothStats(t, fdt)
+        if (debuggable) smoothStats(t, fdt, restart)
         if (!smoother.isSettled(t) || camBusy) scheduleFrame() else lastFrameT = Double.NaN
     }
 
     // ---- Messung fuer die Testfahrt: wie gleichmaessig laeuft der Pfeil? (nur Test-Builds) ----
+    // Pro Bild das Tempo des angezeigten Pfeils (Weg / Bildabstand), alle 10 s als Verteilung ins
+    // Log: bei gleichmaessiger Bewegung liegen 5 %- und 95 %-Wert nahe am Fahrtempo.
     private var statT0 = Double.NaN
     private var statPrev: LatLon? = null
-    private var statN = 0
-    private var statMin = Double.MAX_VALUE
-    private var statMax = 0.0
-    private var statSum = 0.0
+    private val statSpeeds = ArrayList<Double>()
+    private var statTempo = 0.0
 
-    private fun smoothStats(t: Double, fdt: Double) {
+    private fun smoothStats(t: Double, fdt: Double, restart: Boolean) {
         val p = smoother.pos ?: return
         val prev = statPrev
         statPrev = p
         val v = engine.speedKmh / 3.6
-        if (prev == null || fdt <= 0.0 || v < 3.0 || engine.mode != NavEngine.Mode.NAVIGATING) return
+        if (restart || prev == null || fdt <= 0.0 || v < 3.0 || engine.mode != NavEngine.Mode.NAVIGATING) return
         if (statT0.isNaN()) statT0 = t
-        val sp = Geo.distance(prev, p) / fdt
-        statN++
-        statSum += sp
-        statMin = minOf(statMin, sp)
-        statMax = maxOf(statMax, sp)
-        if (t - statT0 >= 10.0) {
-            Log.i("KSSMaps", String.format(java.util.Locale.ROOT, "PUCK_SMOOTH %s bilder=%d fps=%.0f tempo=%.1f pfeil_min=%.1f pfeil_mittel=%.1f pfeil_max=%.1f m/s",
-                if (forCar) "auto" else "handy", statN, statN / (t - statT0), v, statMin, statSum / statN, statMax))
+        statSpeeds.add(Geo.distance(prev, p) / fdt)
+        statTempo += v
+        if (t - statT0 >= 10.0 && statSpeeds.size >= 20) {
+            val n = statSpeeds.size
+            val tempo = statTempo / n
+            statSpeeds.sort()
+            fun q(f: Double) = statSpeeds[((n - 1) * f).roundToInt()]
+            val stops = statSpeeds.count { it < 0.2 * tempo }
+            val jumps = statSpeeds.count { it > 2.5 * tempo }
+            Log.i("KSSMaps", String.format(java.util.Locale.ROOT,
+                "PUCK_SMOOTH %s bilder=%d fps=%.0f tempo=%.1f p5=%.1f median=%.1f p95=%.1f max=%.1f stehen=%d spruenge=%d",
+                if (forCar) "auto" else "handy", n, n / (t - statT0), tempo, q(0.05), q(0.5), q(0.95), statSpeeds.last(), stops, jumps))
             statT0 = t
-            statN = 0
-            statMin = Double.MAX_VALUE
-            statMax = 0.0
-            statSum = 0.0
+            statSpeeds.clear()
+            statTempo = 0.0
         }
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Kamera
-    // ---------------------------------------------------------------------------------------
 
     private var zoomBand = -1
 

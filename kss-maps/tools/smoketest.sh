@@ -27,6 +27,16 @@ rotate() {
   adb shell cmd window user-rotation lock "$1" >/dev/null 2>&1 || adb shell settings put system user_rotation "$1"
   sleep 4
 }
+# Laeuft die App noch? Sonst Grund festhalten (Systemprotokoll) und neu starten, damit der Rest
+# der Testfahrt weiterlaeuft.
+ensure_alive() {
+  if [ -z "$(adb shell pidof $PKG 2>/dev/null | tr -d '\r')" ]; then
+    echo "APP BEENDET vor: $1 ($(date +%H:%M:%S))" | tee -a "$OUT/app_beendet.txt"
+    adb shell dumpsys activity exit-info $PKG 2>/dev/null | head -80 >> "$OUT/app_beendet.txt"
+    act
+    sleep 20
+  fi
+}
 # Anzahl der berechneten Routenvorschauen bisher
 routes_n() { local c; c=$(grep -c "ROUTES " "$OUT/logcat.txt" 2>/dev/null); echo "${c:-0}"; }
 # Android-Auto-Karte (unsichtbare Flaeche wie im Auto) als Bild sichern
@@ -127,6 +137,7 @@ else
   car_shot fahrt auto_02_fahrt
 fi
 # Querformat beim Fahren (wie Google Maps in Android Auto): 1,5 km mit 15 m/s
+ensure_alive quer_fahrt
 rotate 1
 python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from 9000 --to 10500 --speed 15 --shot-every 30 --prefix 05q_quer
 rotate 0
@@ -137,6 +148,7 @@ shot 07_ziel_markiert
 car_shot ziel auto_03_ziel
 
 # Tankstellen-Panel (ohne Tankerkoenig-Schluessel: Tankstellen aus OpenStreetMap ohne Preise)
+ensure_alive tanken
 act --ez test_open_fuel true
 sleep 25
 shot 08_tanken
@@ -155,19 +167,22 @@ adb shell input keyevent KEYCODE_BACK
 sleep 2
 
 # Sprachbefehl (wie von der Google-Spracherkennung erkannt): direkt zur Routenvorschau
+ensure_alive sprachbefehl
 act --ez test_close_panels true
 sleep 2
 N=$(routes_n)
-act --es test_voice "'Navigiere zum Marienplatz 7 in Freising'"
+act --es test_voice "'Navigiere zur Allianz Arena'"
 wait_log "ROUTES " $((N + 1)) 150
 sleep 5
 shot 11_sprachbefehl
 # Eigener Startpunkt (Muenchen Stachus) -> Planung von dort; statt "Los" die Wegbeschreibung
+ensure_alive startpunkt
 N=$(routes_n)
 act --es test_origin "48.13906,11.56575"
 wait_log "ROUTES " $((N + 1)) 150
 sleep 6
 shot 12_start_ziel
+ensure_alive start_ziel_quer
 rotate 1
 sleep 3
 shot 12q_start_ziel_quer
@@ -187,6 +202,7 @@ act --ez test_clear true
 sleep 2
 
 # Einstellungen: Schluessel-Felder mit "Einfuegen" (Zwischenablage leer) und "Pruefen" (leer)
+ensure_alive einstellungen
 act --ez test_close_panels true
 sleep 2
 act --ez test_open_settings true
@@ -212,6 +228,10 @@ grep -E "AndroidRuntime|FATAL EXCEPTION|SAY|ROUTES|ROUTE_INFO|TEST_|KSSMaps" "$O
 grep "PUCK_SMOOTH" "$OUT/logcat.txt" > "$OUT/pfeil.txt" || echo "keine Messung" > "$OUT/pfeil.txt"
 grep -E " [EW]/" "$OUT/logcat.txt" | grep -i -E "kssmaps|maplibre|mbgl|AndroidRuntime" | grep -v -E "ROUTE_CHUNK|PREVIEW_CHUNK" | tail -300 > "$OUT/warnungen.txt"
 grep -A 40 "FATAL EXCEPTION" "$OUT/logcat.txt" > "$OUT/absturz.txt" || echo "kein Absturz" > "$OUT/absturz.txt"
+# Native Abstuerze (Kartenbibliothek), Speicher-Notabschaltung, Prozess-Ende, ANR – mit Umgebung
+grep -n -E "F/libc|F/DEBUG|Fatal signal|Abort message|backtrace:|lowmemorykiller|lmkd|has died|ANR in|Watchdog|FATAL EXCEPTION IN SYSTEM" "$OUT/logcat.txt" | head -400 > "$OUT/absturz_details.txt" || true
+[ -s "$OUT/absturz_details.txt" ] || echo "keine nativen Abstuerze / Prozess-Enden" > "$OUT/absturz_details.txt"
+adb shell dumpsys activity exit-info $PKG 2>/dev/null | head -150 > "$OUT/exit_info.txt"
 echo "===== Absturz?"; head -60 "$OUT/absturz.txt"
 echo "===== Ereignisse"; head -200 "$OUT/ereignisse.txt"
 exit 0

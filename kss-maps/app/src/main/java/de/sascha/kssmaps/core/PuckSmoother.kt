@@ -3,6 +3,7 @@ package de.sascha.kssmaps.core
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
@@ -10,28 +11,33 @@ import kotlin.math.min
  * Fluessige Positionsanzeige zwischen den GPS-Punkten.
  *
  * GPS liefert etwa einen Punkt pro Sekunde. Frueher sprang der Pfeil bei jedem Punkt, die Karte
- * glitt hinterher – das sah nach Stocken aus. Jetzt wird fuer jedes Bild (60 pro Sekunde)
- * vorausberechnet, wo das Auto gerade ist: auf der Route entlang der Strecke (folgt Kurven),
- * sonst geradeaus in Fahrtrichtung, jeweils mit dem gemessenen Tempo. Weicht der naechste
- * GPS-Punkt davon ab, wird die Abweichung weich ausgeglichen (klingt mit [tauErr] ab), statt
- * zu springen. Rueckwaerts laeuft der Pfeil beim Fahren nie.
+ * glitt hinterher – das sah nach Stocken aus. Jetzt wird fuer jedes Bild vorausberechnet, wo das
+ * Auto gerade ist: auf der Route entlang der Strecke (folgt Kurven), sonst geradeaus in
+ * Fahrtrichtung, jeweils mit dem gemessenen Tempo. Weicht der naechste GPS-Punkt davon ab, wird
+ * die Abweichung Bild fuer Bild abgebaut – weich (klingt mit [tauErr] ab) und begrenzt (nie
+ * schneller als ein Drittel des Tempos zusaetzlich), damit der Pfeil weder steht noch springt.
+ * Beim Fahren laeuft er nie rueckwaerts; nur sehr grosse Abweichungen (GPS-Sprung) werden sofort
+ * uebernommen.
  *
  * Zeiten in Sekunden (beliebiger, monotoner Bezug, z. B. System.nanoTime() / 1e9).
  */
 class PuckSmoother(
-    private val tauErr: Double = 0.6,
+    private val tauErr: Double = 0.8,
     private val tauBearing: Double = 0.35,
-    private val maxPredict: Double = 2.0,
+    private val maxPredict: Double = 3.0,
+    private val snapDist: Double = 60.0,
 ) {
-    // ---- letzter GPS-Punkt ----
+    // ---- letzter GPS-Punkt (Vorhersage-Modell) ----
     private var fixT = Double.NaN
     private var speed = 0.0
     private var line: Polyline? = null
     private var lineKey: Any? = null
     private var fixAlong = 0.0
-    private var errAlong = 0.0
     private var fixPos: LatLon? = null
     private var fixBearing: Double? = null
+
+    // ---- Abweichung Anzeige minus Vorhersage, wird pro Bild abgebaut ----
+    private var errAlong = 0.0
     private var errE = 0.0
     private var errN = 0.0
 
@@ -65,95 +71,120 @@ class PuckSmoother(
         errN = 0.0
     }
 
+    /** Hoechste Korrekturgeschwindigkeit (m/s) zusaetzlich zum Tempo. */
+    private fun maxRate(): Double = 0.35 * speed + 1.5
+
+    private fun predAlong(t: Double): Double = fixAlong + speed * min(max(0.0, t - fixT), maxPredict)
+
+    private fun predFree(t: Double): LatLon? {
+        val p = fixPos ?: return null
+        val b = fixBearing
+        return if (b != null && speed > 0.0) Geo.destination(p, b, speed * min(max(0.0, t - fixT), maxPredict)) else p
+    }
+
     /**
      * Neuer GPS-Punkt, auf die Route gelegt. [key] erkennt eine neue Route (z. B. nach einer
      * Neuberechnung): die angezeigte Position wird dann auf die neue Route uebertragen.
+     * [ageSec]: so alt war der Punkt beim Eintreffen (aus dem Zeitstempel des GPS).
      */
-    fun fixOnRoute(t: Double, route: Polyline, key: Any, routeAlong: Double, speedMps: Double) {
+    fun fixOnRoute(t: Double, route: Polyline, key: Any, routeAlong: Double, speedMps: Double, ageSec: Double = 0.0) {
         advance(t)
         if (key !== lineKey || line == null) {
             val shown = pos
-            val pr = if (shown != null) route.projectNear(shown, 60.0) else null
-            along = pr?.along
+            along = if (shown != null) route.projectNear(shown, 60.0)?.along else null
         }
         line = route
         lineKey = key
         fixPos = null
-        var err = (along ?: routeAlong) - routeAlong
-        if (abs(err) > 150.0) {
-            // Grosser Sprung (GPS-Aussetzer, falsche Zuordnung): nicht 150 m "nachrutschen"
-            err = 0.0
-            along = routeAlong
-        }
-        if (along == null) along = routeAlong
-        errAlong = err
         fixAlong = routeAlong
+        fixT = t - ageSec.coerceIn(0.0, 1.5)
         speed = if (speedMps < 0.7) 0.0 else speedMps
-        fixT = t
+        val pred = predAlong(t)
+        val shown = along
+        if (shown == null || abs(shown - pred) > snapDist) {
+            along = pred
+            errAlong = 0.0
+        } else errAlong = shown - pred
         if (pos == null) {
-            pos = route.pointAt(routeAlong)
-            bearing = route.bearingAt(routeAlong, 24.0)
+            pos = route.pointAt(along ?: pred)
+            bearing = route.bearingAt(along ?: pred, 24.0)
             hasBearing = true
         }
     }
 
     /** Neuer GPS-Punkt ohne Route (freie Fahrt, abseits der Route). */
-    fun fixFree(t: Double, p: LatLon, headingDeg: Double?, speedMps: Double) {
+    fun fixFree(t: Double, p: LatLon, headingDeg: Double?, speedMps: Double, ageSec: Double = 0.0) {
         advance(t)
         line = null
         lineKey = null
         along = null
-        val shown = pos
-        if (shown == null || Geo.distance(shown, p) > 300.0) {
-            errE = 0.0
-            errN = 0.0
-            pos = p
-        } else {
-            errE = eastM(p, shown)
-            errN = northM(p, shown)
-        }
         fixPos = p
         fixBearing = headingDeg
         speed = if (speedMps < 0.7 || headingDeg == null) 0.0 else speedMps
-        fixT = t
+        fixT = t - ageSec.coerceIn(0.0, 1.5)
+        val pred = predFree(t) ?: p
+        val shown = pos
+        if (shown == null || Geo.distance(shown, pred) > snapDist) {
+            errE = 0.0
+            errN = 0.0
+            pos = pred
+        } else {
+            errE = eastM(pred, shown)
+            errN = northM(pred, shown)
+        }
         if (!hasBearing && headingDeg != null) {
             bearing = headingDeg
             hasBearing = true
         }
     }
 
+    /** Abweichung um ein Bild abbauen: exponentiell, aber hoechstens [maxRate] m/s. */
+    private fun shrink(err: Double, dt: Double): Double {
+        if (err == 0.0 || dt <= 0.0) return err
+        val target = err * exp(-dt / tauErr)
+        val lim = maxRate() * dt
+        val change = (err - target).coerceIn(-lim, lim)
+        val r = err - change
+        return if (abs(r) < 0.005) 0.0 else r
+    }
+
     /** Anzeige fuer den Zeitpunkt [t] berechnen (einmal pro Bild). */
     fun advance(t: Double) {
         if (fixT.isNaN()) return
-        val since = max(0.0, t - fixT)
-        val dtPred = min(since, maxPredict)
-        val decay = exp(-since / tauErr)
-        val fdt = if (lastT.isNaN()) 0.0 else (t - lastT).coerceIn(0.0, 0.5)
+        val dt = if (lastT.isNaN()) 0.0 else (t - lastT).coerceIn(0.0, 0.5)
         lastT = t
         val l = line
         if (l != null) {
-            val target = fixAlong + speed * dtPred + errAlong * decay
-            val cur = along ?: target
-            // Beim Fahren nie zurueck: lieber kurz stehen, bis die Vorhersage aufholt.
-            var a = if (speed > 0.5) max(cur, target) else target
+            val pred = predAlong(t)
+            errAlong = shrink(errAlong, dt)
+            var a = pred + errAlong
+            val cur = along
+            // Beim Fahren nie zurueck: lieber kurz langsamer, bis die Vorhersage aufholt.
+            if (cur != null && speed > 0.5 && a < cur) {
+                a = cur
+                errAlong = a - pred
+            }
             a = a.coerceIn(0.0, l.length)
             along = a
             pos = l.pointAt(a)
             targetBearing = l.bearingAt(a, 24.0)
         } else {
-            val p = fixPos ?: return
-            val b = fixBearing
-            var q = if (b != null && speed > 0.0) Geo.destination(p, b, speed * dtPred) else p
-            q = offset(q, errE * decay, errN * decay)
-            pos = q
-            targetBearing = b
+            val pred = predFree(t) ?: return
+            val m = hypot(errE, errN)
+            if (m > 0.0) {
+                val k = shrink(m, dt) / m
+                errE *= k
+                errN *= k
+            }
+            pos = offset(pred, errE, errN)
+            targetBearing = fixBearing
         }
         val tb = targetBearing ?: return
         if (!hasBearing) {
             bearing = tb
             hasBearing = true
-        } else if (fdt > 0.0) {
-            val k = 1.0 - exp(-fdt / tauBearing)
+        } else if (dt > 0.0) {
+            val k = 1.0 - exp(-dt / tauBearing)
             bearing = norm360(bearing + Geo.signedAngle(bearing, tb) * k)
         }
     }
@@ -163,10 +194,10 @@ class PuckSmoother(
         if (fixT.isNaN()) return true
         val since = t - fixT
         if (speed > 0.0 && since < maxPredict) return false
-        if (since < 5 * tauErr) {
-            val residual = if (line != null) abs(errAlong) else abs(errE) + abs(errN)
-            if (residual * exp(-since / tauErr) > 0.05) return false
-        }
+        // Laenger kein GPS (Tunnel): Vorhersage ist zu Ende, Pfeil bleibt stehen – keine Bilder mehr.
+        if (since > maxPredict + 4 * tauErr) return true
+        val residual = if (line != null) abs(errAlong) else hypot(errE, errN)
+        if (residual > 0.02) return false
         val tb = targetBearing
         return tb == null || abs(Geo.signedAngle(bearing, tb)) < 0.3
     }

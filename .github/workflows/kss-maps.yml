@@ -251,7 +251,8 @@ jobs:
           ls -la smoke
           mkdir -p upload
           for f in smoke/*; do cp "$f" "upload/testfahrt_$(basename "$f")"; done
-          # Grosses Volllog nicht hochladen, nur die gefilterte Fassung
+          # Volllog nur gepackt hochladen (fuer die Fehlersuche), dazu die gefilterten Fassungen
+          if [ -f smoke/logcat.txt ]; then gzip -9 -c smoke/logcat.txt > upload/testfahrt_logcat.txt.gz; fi
           rm -f upload/testfahrt_logcat.txt
           R="$GITHUB_REPOSITORY"
           if ! gh release view "$TAG" --repo "$R" >/dev/null 2>&1; then
