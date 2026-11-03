@@ -2,12 +2,12 @@
   "version": "1.0.0",
   "notes": [
     "KSS-Maps: Navigation für Bayern mit deutscher Sprachführung (abschaltbar) und Android Auto",
-    "Blitzer, Rotlicht- und Abschnittskontrollen, Abstandsmessungen, Baustellen, Stau und Sperrungen – nur auf deiner Route, mit Warnung",
+    "Blitzer, Rotlicht- und Abschnittskontrollen, Abstandsmessungen, Baustellen, Stau und Sperrungen – nur auf deiner Route, mit Warnung (Bayern-Bestand schon in der App)",
     "Eigene Meldungen: mobile Blitzer und Abstandsmessungen per Knopfdruck merken",
     "Stau fließt in die Routenwahl ein; Alternativrouten, 'Ohne Stau' und 'Stau umfahren'",
     "Einzelne Abschnitte meiden (z. B. ein Stück Autobahn) – lange auf die Straße drücken",
-    "Luftbild Bayern, Tempolimit + aktuelle Geschwindigkeit, Zielhaus mit Hausnummer farbig markiert",
-    "Tankstellen mit Preisen (Diesel/Super) und UTA-Akzeptanz: erst auf dem Weg, dann Preis – Zwischenstopp ohne neue Eingabe",
+    "Luftbild Bayern, Tempolimit + aktuelle Geschwindigkeit, Zielhaus magenta mit Hausnummer markiert",
+    "Tankstellen mit Preisen (Diesel/Super) und UTA-Akzeptanz: erst auf dem Weg, dann Preis – Zwischenstopp ohne neue Eingabe (ohne Tankerkönig-Schlüssel: ohne Preise)",
     "Letzte 20 Ziele, Karte entlang der Route offline gespeichert"
   ],
   "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.0.0/kss-maps.apk"
