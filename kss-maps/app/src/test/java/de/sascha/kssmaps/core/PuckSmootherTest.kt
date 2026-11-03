@@ -207,6 +207,38 @@ class PuckSmootherTest {
     }
 
     @Test
+    fun movesOnWhenDeviceReportsSpeedZeroWhileDriving() {
+        // Manche Geraete/der Emulator melden Tempo 0, obwohl sich die Punkte bewegen (9 m/s)
+        val line = straight()
+        val s = PuckSmoother()
+        val v = 9.0
+        var t = 0.0
+        var nextFix = 0.0
+        var prev: Double? = null
+        var maxLag = 0.0
+        val ratios = ArrayList<Double>()
+        while (t < 40.0) {
+            if (t >= nextFix - 1e-9) {
+                s.fixOnRoute(t, line, line, v * t, 0.0)
+                nextFix += 1.0
+            }
+            s.advance(t)
+            val a = s.along!!
+            if (prev != null && t > 4.0) {
+                ratios.add((a - prev) / (v * frame))
+                maxLag = max(maxLag, abs(v * t - a))
+                assertTrue("Sprung bei t=$t", s.lastSnap.not())
+            }
+            prev = a
+            t += frame
+        }
+        ratios.sort()
+        val p5 = ratios[(ratios.size * 0.05).toInt()]
+        val p95 = ratios[(ratios.size * 0.95).toInt()]
+        assertTrue("p5=$p5 p95=$p95 lag=$maxLag", p5 > 0.6 && p95 < 1.5 && maxLag < 15.0)
+    }
+
+    @Test
     fun freeDrivingIsSmoothAndSettlesWhenStopped() {
         val s = PuckSmoother()
         val v = 14.0

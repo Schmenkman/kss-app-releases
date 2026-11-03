@@ -110,12 +110,26 @@ def main():
         t = 0 if seg <= 0 else (d - cum[lo]) / seg
         return (pts[lo][0] + (pts[hi][0] - pts[lo][0]) * t, pts[lo][1] + (pts[hi][1] - pts[lo][1]) * t)
 
+    # Wie ein echtes GPS auch das Tempo mitgeben (geo fix <Laenge> <Breite> <Hoehe> <Satelliten> <Knoten>).
+    # Kennt der Emulator die Langform nicht, nur Position.
+    knots = a.speed * 1.943844
+    lat0, lon0 = point_at(start)
+    r = subprocess.run(["adb", "emu", "geo", "fix", f"{lon0:.6f}", f"{lat0:.6f}", "500", "12", f"{knots:.1f}"], capture_output=True, text=True)
+    with_speed = "KO" not in (r.stdout + r.stderr)
+    print("GPS mit Tempo" if with_speed else "GPS ohne Tempo (Emulator kennt die Langform nicht)")
+
+    def fix(lat, lon, kn):
+        args = ["adb", "emu", "geo", "fix", f"{lon:.6f}", f"{lat:.6f}"]
+        if with_speed:
+            args += ["500", "12", f"{kn:.1f}"]
+        subprocess.run(args, capture_output=True)
+
     t0 = time.time()
     last_shot = t0
     k, d, n_shot = 0, start, 0
     while d <= end + 0.01:
         lat, lon = point_at(d)
-        subprocess.run(["adb", "emu", "geo", "fix", f"{lon:.6f}", f"{lat:.6f}"], capture_output=True)
+        fix(lat, lon, knots)
         now = time.time()
         if now - last_shot >= a.shot_every:
             last_shot = now
@@ -130,7 +144,7 @@ def main():
     # am Ende noch ein paar Sekunden stehen bleiben
     lat, lon = point_at(end)
     for _ in range(8):
-        subprocess.run(["adb", "emu", "geo", "fix", f"{lon:.6f}", f"{lat:.6f}"], capture_output=True)
+        fix(lat, lon, 0.0)
         time.sleep(1)
     subprocess.run(f"adb exec-out screencap -p > {a.out}/{a.prefix}_ende.png", shell=True)
     return 0

@@ -309,7 +309,9 @@ class NavEngine(
         if (locating || !hasLocationPermission()) return
         try {
             if (lm.allProviders.contains(LocationManager.GPS_PROVIDER)) {
-                lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, gpsListener, Looper.getMainLooper())
+                // 0,5 s: Android verwirft sonst bei leicht schwankendem Takt einzelne echte Punkte
+                // (das GPS liefert meist ohnehin 1 Punkt pro Sekunde; Wiederholungen filtert onLocation).
+                lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 0f, gpsListener, Looper.getMainLooper())
             }
             if (lm.allProviders.contains(LocationManager.NETWORK_PROVIDER)) {
                 lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 4000L, 5f, netListener, Looper.getMainLooper())

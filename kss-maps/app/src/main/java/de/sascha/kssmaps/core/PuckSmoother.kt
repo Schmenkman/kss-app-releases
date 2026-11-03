@@ -107,12 +107,21 @@ class PuckSmoother(
                     ?.takeIf { abs(it - routeAlong) < snapDist + 40.0 }
             } else null
         }
+        val sameLine = key === lineKey && line != null
         line = route
         lineKey = key
         fixPos = null
+        val tf = t - ageSec.coerceIn(0.0, 1.5)
+        // Meldet das Geraet Tempo 0, obwohl die Punkte entlang der Route vorankommen (manche Geraete,
+        // der Emulator), den beobachteten Fortschritt nehmen – sonst faellt der Pfeil zurueck.
+        var v = speedMps
+        if (sameLine && !fixT.isNaN() && tf - fixT in 0.4..4.0) {
+            val vObs = (routeAlong - fixAlong) / (tf - fixT)
+            if (v < 1.0 && vObs > 1.5) v = vObs
+        }
         fixAlong = routeAlong
-        fixT = t - ageSec.coerceIn(0.0, 1.5)
-        speed = if (speedMps < 0.7) 0.0 else speedMps.coerceAtMost(70.0)
+        fixT = tf
+        speed = if (v < 0.7) 0.0 else v.coerceAtMost(70.0)
         val pred = predAlong(t)
         val shown = along
         if (shown == null || abs(shown - pred) > snapDist) {
@@ -159,11 +168,14 @@ class PuckSmoother(
         }
     }
 
-    /** Abweichung um ein Bild abbauen: exponentiell, aber hoechstens [maxRate] m/s. */
+    /**
+     * Abweichung um ein Bild abbauen: exponentiell, aber hoechstens [maxRate] m/s – bei grossen
+     * Abweichungen etwas schneller (statt sie irgendwann mit einem Sprung zu uebernehmen).
+     */
     private fun shrink(err: Double, dt: Double): Double {
         if (err == 0.0 || dt <= 0.0) return err
         val target = err * exp(-dt / tauErr)
-        val lim = maxRate() * dt
+        val lim = max(maxRate(), 0.6 * abs(err)) * dt
         val change = (err - target).coerceIn(-lim, lim)
         val r = err - change
         return if (abs(r) < 0.005) 0.0 else r
