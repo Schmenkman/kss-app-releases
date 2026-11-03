@@ -9,7 +9,7 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 |---|---|
 | Karte wie Google Maps, Bayern reicht | Vektorkarte (OpenFreeMap/OSM), Tag/Nacht automatisch nach Sonnenstand |
 | Satellitenbilder | **Luftbild-Knopf**: in Bayern die amtlichen Luftbilder (DOP 40 cm, Open Data der Bayerischen Vermessungsverwaltung), außerhalb Esri-Satellit; Straßen und Namen bleiben darüber sichtbar |
-| Blitzer, Abstandsmessungen, Baustellen, Stau, „sonstige Sachen“ – nur auf der Route | Feste Blitzer, Rotlicht- und Abschnittskontrollen, **Abstandsmessungen** und Mindestabstand-Strecken (OpenStreetMap, ganz Bayern, wöchentlich aktualisiert, zusätzlich je Route abgefragt), Stau/Baustellen/Sperrungen/Gefahren (Autobahn GmbH, mit TomTom-Schlüssel auf **allen** Straßen). Es wird nur angezeigt und gewarnt, was **auf der gefahrenen Strecke** liegt (Abgleich auf ~25–45 m, Gegenfahrbahn und Parallelstraßen werden aussortiert). Ohne Ziel: Blitzer voraus in Fahrtrichtung |
+| Blitzer, Abstandsmessungen, Baustellen, Stau, „sonstige Sachen“ – nur auf der Route | Feste Blitzer, Rotlicht- und Abschnittskontrollen, **Abstandsmessungen** und Mindestabstand-Strecken (OpenStreetMap, ganz Bayern – ein aktueller Bestand ist schon in der App, danach wöchentlich aktualisiert und zusätzlich je Route abgefragt), Stau/Baustellen/Sperrungen/Gefahren (Autobahn GmbH, mit TomTom-Schlüssel auf **allen** Straßen). Es wird nur angezeigt und gewarnt, was **auf der gefahrenen Strecke** liegt (Abgleich auf ~25–45 m, Gegenfahrbahn und Parallelstraßen werden aussortiert). Ohne Ziel: Blitzer voraus in Fahrtrichtung |
 | Mobile Blitzer / Abstandsmessungen | Dafür gibt es keine freie Datenquelle. Roter Kamera-Knopf (Handy) bzw. „Mehr“ (Android Auto): gesehenen Blitzer oder Abstandsmessung an der aktuellen Position merken – 4 Stunden oder dauerhaft (bekannter Messplatz). Wird danach wie alle anderen auf der Route gewarnt |
 | Warnen | Sprachwarnung + farbiges Banner („Blitzer in 600 m“, „Stau in 3 km, etwa 12 Minuten Verzögerung“), in Android Auto zusätzlich als Hinweis-Karte |
 | Tempolimit anzeigen | Tempolimit-Schild aus OSM-Daten entlang der Route (ohne Route: per Kartenabgleich der letzten GPS-Punkte) |
@@ -20,7 +20,7 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 | Route ohne Stau wählen | Route mit Etikett „Ohne Stau“ und Knopf **„Stau umfahren“** (sperrt alle Staus/Sperrungen der Route und rechnet neu). Unterwegs prüft die App alle 3 Minuten und bietet schnellere Routen an |
 | Gewisse Abschnitte nicht fahren (nicht pauschal) | **Lange auf eine Straße drücken → „Abschnitt meiden“.** Gesperrt wird nur dieses Stück (bei Autobahnen beide Fahrbahnen), dargestellt als rote Strichlinie. Liste mit Ein/Aus-Schalter und Löschen über den ⛔-Knopf. Autobahnen/Maut/Fähren komplett meiden gibt es zusätzlich in den Einstellungen |
 | Letzte 20 Adressen | Verlauf in der Suche (Handy) und „Letzte Ziele“ (Android Auto); lange drücken = entfernen |
-| Tankstellen mit Preisen, UTA | ⛽-Knopf: Diesel/Super E5/E10, Filter **„nur UTA“**. Reihenfolge: **zuerst die auf dem Weg zum Ziel liegenden, dann nach Preis**; danach Tankstellen mit Umweg |
+| Tankstellen mit Preisen, UTA | ⛽-Knopf: Diesel/Super E5/E10, Filter **„nur UTA“**. Reihenfolge: **zuerst die auf dem Weg zum Ziel liegenden, dann nach Preis**; danach Tankstellen mit Umweg. Ohne Tankerkönig-Schlüssel erscheinen die Tankstellen trotzdem (aus OpenStreetMap, mit UTA-Kennzeichnung) – nur ohne Preise |
 | Erst zur Tankstelle, dann automatisch weiter | Tankstelle antippen → wird Zwischenstopp, danach geht es ohne neue Eingabe weiter zum Ziel |
 | Sprachnavigation, Ton abschaltbar | Deutsche Ansagen in 3 Stufen (Vorankündigung, nah, „Jetzt …“), Lautsprecher-Knopf (Handy und Auto) |
 | Funklöcher | Beim Start der Navigation wird die Karte entlang der Route automatisch offline gespeichert (bis 250 km), dazu ein großer Kartenspeicher (600 MB) für oft gefahrene Gegenden |
@@ -36,7 +36,8 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
    - **TomTom** (developer.tomtom.com, ohne Kreditkarte; 2 500 Anfragen/Tag frei):
      Live-Stau auf allen Straßen, Verkehrsfluss auf der Karte. Ohne Schlüssel funktioniert
      alles, Stau kommt dann aber nur für Autobahnen (Autobahn GmbH).
-   - **Tankerkönig** (onboarding.tankerkoenig.de): Spritpreise. Ohne Schlüssel keine Preise.
+   - **Tankerkönig** (onboarding.tankerkoenig.de): Spritpreise (Diesel, Super E5/E10). Ohne
+     Schlüssel zeigt die App die Tankstellen auf dem Weg ohne Preise.
 4. Optional: deutsche Stimme prüfen (Android → Einstellungen → Sprachausgabe).
 
 ### Android Auto
@@ -88,6 +89,7 @@ dem Installieren einer neueren Testversion muss die alte deinstalliert werden.
 | Adresssuche | Photon (komoot), Nominatim | – |
 | Zielgebäude | OSM-Gebäude über Overpass-API | – |
 | Spritpreise | Tankerkönig / MTS-K (CC BY 4.0) | Tankerkönig |
+| Tankstellen ohne Schlüssel | OpenStreetMap über Overpass-API (`amenity=fuel`), ohne Preise | – |
 | UTA-Akzeptanz | Markenliste (bearbeitbar) + OSM `payment:uta` + eigene Korrektur je Tankstelle (lange drücken) | – |
 
 UTA veröffentlicht keine offene Liste der Akzeptanzstellen; laut UTA und Vergleichsportalen
@@ -106,7 +108,12 @@ app/src/main/java/de/sascha/kssmaps/
   ui/        MapController (Karte für Handy UND Auto), Icons (alle Symbole gezeichnet), Panels
   car/       Android Auto: NaviCarAppService, CarMapRenderer (VirtualDisplay + MapLibre), Screens
   MainActivity, NavService (Vordergrunddienst während der Navigation), NaviApp
-app/src/test/  Tests der Kernlogik (Parser, Abgleich, Ansagen, Sortierung, Gebäude …)
+app/src/test/     Tests der Kernlogik (Parser, Abgleich, Ansagen, Sortierung, Gebäude …)
+app/src/carTest/  Tests aller Android-Auto-Vorlagen (Robolectric, `-PcarTests`)
+tools/smoketest.sh  Testfahrt im Emulator (CI, Commit-Nachricht mit „[testfahrt]“): Route,
+                  Luftbild, gesperrter Abschnitt, Fahrt mit Ansagen, Ankunft, Tanken, Suche –
+                  plus Bilder der Android-Auto-Karte (auf unsichtbarer Fläche gezeichnet)
+tools/fetch_enforcement.py  Startbestand Blitzer/Abstandsmessungen für die APK (CI)
 ```
 
 ## Build & Release
