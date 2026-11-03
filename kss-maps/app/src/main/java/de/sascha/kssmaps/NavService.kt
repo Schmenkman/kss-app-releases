@@ -85,7 +85,11 @@ class NavService : Service(), NavEngine.Listener {
                 startForeground(NOTIFICATION_ID, build())
             }
         } catch (e: Exception) {
+            // Darf nicht als "gestartet, aber nicht im Vordergrund" stehen bleiben – sonst beendet
+            // Android die App nach ein paar Sekunden. Die Navigation laeuft trotzdem weiter,
+            // solange App oder Android Auto sichtbar sind.
             Log.w("KSSMaps", "startForeground: ${e.message}")
+            stopSelf()
         }
     }
 
