@@ -31,8 +31,15 @@ QUERY = (
 ).format(bb=BB)
 
 
-def fetch(ep: str) -> bytes:
-    data = urllib.parse.urlencode({"data": QUERY}).encode()
+# Alle Tankstellen (ohne Preise, mit UTA-Tag): Liste ohne Tankerkoenig-Schluessel und UTA-Abgleich
+FUEL_QUERY = (
+    '[out:json][timeout:170];'
+    '(node["amenity"="fuel"]{bb};way["amenity"="fuel"]{bb};);out center tags;'
+).format(bb=BB)
+
+
+def fetch(ep: str, query: str = QUERY) -> bytes:
+    data = urllib.parse.urlencode({"data": query}).encode()
     req = urllib.request.Request(ep, data=data, headers={
         "User-Agent": "KSS-Maps-Build/1.0 (private Navigations-App; einmal pro Build)",
         "Content-Type": "application/x-www-form-urlencoded",
@@ -41,8 +48,28 @@ def fetch(ep: str) -> bytes:
         return r.read()
 
 
-def main() -> int:
-    out_dir = sys.argv[1] if len(sys.argv) > 1 else "app/src/main/assets/enforcement"
+def fetch_fuel(out_dir: str) -> None:
+    for ep in ENDPOINTS:
+        try:
+            t0 = time.time()
+            body = fetch(ep, FUEL_QUERY)
+            d = json.loads(body)
+            if "error" in d.get("remark", "").lower():
+                raise ValueError(d["remark"])
+            n = len(d.get("elements", []))
+            if n < 500:
+                raise ValueError("unplausibel wenige Tankstellen: %d" % n)
+            os.makedirs(out_dir, exist_ok=True)
+            with open(os.path.join(out_dir, "tankstellen.json"), "wb") as f:
+                f.write(body)
+            print("Tankstellen: %d, %d kB, %s, %.0f s" % (n, len(body) // 1024, ep, time.time() - t0))
+            return
+        except Exception as e:
+            print("Tankstellen: Fehler bei %s: %s" % (ep, e))
+    print("Keine Tankstellenliste - die App fragt OpenStreetMap bei Bedarf direkt.")
+
+
+def fetch_enforcement(out_dir: str) -> bool:
     for attempt in range(2):
         for ep in ENDPOINTS:
             try:
@@ -61,11 +88,18 @@ def main() -> int:
                     f.write(body)
                 print("Startbestand: %d Objekte (%d Blitzer), %d kB, %s, %.0f s"
                       % (len(els), cams, len(body) // 1024, ep, time.time() - t0))
-                return 0
+                return True
             except Exception as e:  # naechsten Server probieren
                 print("Fehler bei %s: %s" % (ep, e))
         time.sleep(15)
     print("Kein Startbestand - die App laedt die Daten beim ersten Start selbst.")
+    return False
+
+
+def main() -> int:
+    out_dir = sys.argv[1] if len(sys.argv) > 1 else "app/src/main/assets/enforcement"
+    fetch_enforcement(out_dir)   # wichtiger zuerst
+    fetch_fuel(out_dir)
     return 0
 
 

@@ -380,9 +380,32 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
     private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var utaLoading = false
 
+    /** Rechteck des mitgelieferten Bestands (tools/fetch_enforcement.py). */
+    private val seedBox = BBox(47.20, 8.90, 50.60, 13.90)
+
+    /** Alle Tankstellen Bayerns aus der App (beim Bauen aus OpenStreetMap geladen), mit UTA-Tag. */
+    @Volatile private var fuelSeed: List<Pair<FuelStation, Boolean?>>? = null
+
+    private fun fuelSeed(): List<Pair<FuelStation, Boolean?>> {
+        fuelSeed?.let { return it }
+        val list = try {
+            ctx.assets.open("enforcement/tankstellen.json").bufferedReader().use { Overpass.parseFuel(it.readText()) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        fuelSeed = list
+        return list
+    }
+
     /** OSM-Tags payment:uta in Bayern. Laedt im Hintergrund – die Tankstellensuche wartet nie darauf. */
     private fun utaFromOsm(): List<Pair<LatLon, Boolean>> {
         utaOsm?.let { return it }
+        val seed = fuelSeed()
+        if (seed.isNotEmpty()) {
+            val l = seed.mapNotNull { (st, tag) -> tag?.let { st.pos to it } }
+            utaOsm = l
+            return l
+        }
         val file = File(ctx.filesDir, "uta_osm.json")
         val stale = !file.exists() || System.currentTimeMillis() - file.lastModified() > 14 * DAY
         if (stale && !utaLoading) {
@@ -420,15 +443,25 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
             val pts = g.points.filterIndexed { i, _ -> g.cum[i] >= along - 300 && g.cum[i] <= along + ahead }
             Overpass.corridorBoxes(Geo.simplify(pts, 30.0), 15_000.0, 1500.0).take(12)
         } else listOf(BBox(here.lat, here.lon, here.lat, here.lon).expanded(8000.0))
-        val json = try {
-            overpass(Overpass.fuelQuery(boxes), 30_000)
-        } catch (e: Exception) {
-            Log.w(TAG, "Tankstellen (OSM): ${e.message}")
-            throw MissingKey()
+        // Mitgelieferte Liste (sofort, offline), ausserhalb davon direkt bei OpenStreetMap fragen
+        val seed = fuelSeed()
+        val inSeed = seed.isNotEmpty() && boxes.all { b ->
+            b.minLat >= seedBox.minLat && b.maxLat <= seedBox.maxLat && b.minLon >= seedBox.minLon && b.maxLon <= seedBox.maxLon
+        }
+        val found: List<Pair<FuelStation, Boolean?>> = if (inSeed) {
+            seed.filter { (st, _) -> boxes.any { it.contains(st.pos) } }
+        } else {
+            val json = try {
+                overpass(Overpass.fuelQuery(boxes), 30_000)
+            } catch (e: Exception) {
+                Log.w(TAG, "Tankstellen (OSM): ${e.message}")
+                throw MissingKey()
+            }
+            Overpass.parseFuel(json)
         }
         val osm = utaFromOsm()
         val brands = prefs.utaBrands
-        return Overpass.parseFuel(json).map { (st, tag) ->
+        return found.map { (st, tag) ->
             val t = tag ?: osm.filter { Geo.distance(it.first, st.pos) < 60.0 }.minByOrNull { Geo.distance(it.first, st.pos) }?.second
             st.copy(uta = Uta.status(st.brand, st.name, brands, t, prefs.utaOverride(st.id)))
         }
