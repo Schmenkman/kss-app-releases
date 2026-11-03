@@ -98,7 +98,7 @@ sleep 3
 CAM=$(grep -o "SPEED_CAMERA@[0-9]*" "$OUT/logcat.txt" | head -1 | cut -d@ -f2)
 echo "Erster Blitzer auf der Route bei: ${CAM:-keiner} m"
 if [ -n "$CAM" ] && [ "$CAM" -gt 1500 ] && [ "$CAM" -lt 25000 ]; then
-  STOP=$((CAM - 350))
+  STOP=$((CAM - 250))   # im Stand gilt der 300-m-Warnbereich -> Banner bleibt sichtbar
   python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from 0 --to $STOP --speed 30 --shot-every 60 --prefix 05_fahrt
   shot 05b_blitzer_voraus
   car_shot blitzer auto_02_fahrt
