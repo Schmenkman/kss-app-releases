@@ -8,7 +8,8 @@
     "Einzelne Abschnitte meiden (z. B. ein Stück Autobahn) – lange auf die Straße drücken",
     "Luftbild Bayern, Tempolimit + aktuelle Geschwindigkeit, Zielhaus magenta mit Hausnummer markiert",
     "Tankstellen mit Preisen (Diesel/Super) und UTA-Akzeptanz: erst auf dem Weg, dann Preis – Zwischenstopp ohne neue Eingabe (ohne Tankerkönig-Schlüssel: ohne Preise)",
-    "Letzte 20 Ziele, Karte entlang der Route offline gespeichert"
+    "Letzte 20 Ziele, Karte entlang der Route offline gespeichert",
+    "Einstellungen: Schlüssel per Knopf einfügen und sofort prüfen (TomTom, Tankerkönig)"
   ],
   "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.0.0/kss-maps.apk"
 }
