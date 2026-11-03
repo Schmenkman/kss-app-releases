@@ -40,7 +40,8 @@ class RouteTracker(val route: Route, startAlong: Double = 0.0) {
         val g = route.geometry
         val tol = max(35.0, min(accuracyM * 1.5, 80.0))
         val proj: Projection? = if (!initialized) {
-            g.projectNear(p, 300.0) ?: g.project(p)
+            // Eine neue Route beginnt am eigenen Standort: bei Schleifen den ersten Durchgang nehmen
+            g.projectAllNear(p, 60.0).minByOrNull { it.along } ?: g.projectNear(p, 300.0) ?: g.project(p)
         } else {
             val ahead = along + max(350.0, speedMps * 15.0 + 200.0)
             // Faehrt die Route eine Schleife (z. B. um den Block zum Ziel), liegt ein spaeterer Teil

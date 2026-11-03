@@ -311,6 +311,10 @@ class CoreTest {
         st = tr.update(m(140.0, 0.5), 5.0, 10.0, 90.0)
         assertTrue("along=${st.along}", st.along in 130.0..150.0)
         assertFalse(st.offRoute)
+        // Neue Route, erster Punkt genau am Kreuzungspunkt: erster Durchgang (nicht der spaetere)
+        val fresh = RouteTracker(simpleRoute(Geo.densify(listOf(m(120.0, 0.0), m(200.0, 0.0), m(200.0, 80.0), m(120.0, 80.0), m(120.0, -150.0)), 5.0)))
+        val first = fresh.update(m(120.2, 0.6), 5.0, 10.0, 90.0)
+        assertTrue("along=${first.along}", first.along < 20.0)
     }
 
     @Test

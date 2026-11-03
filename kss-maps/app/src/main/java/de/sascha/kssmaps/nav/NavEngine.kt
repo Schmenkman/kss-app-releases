@@ -361,8 +361,11 @@ class NavEngine(
             } else if (!loc.hasSpeed() && dt > 10.0) sp = 0.0
         } else if (!loc.hasSpeed()) sp = 0.0
         speedKmh = sp.coerceIn(0.0, 85.0) * 3.6
-        if (loc.hasBearing() && sp > 1.5) heading = loc.bearing.toDouble()
-        else if (prev != null && prev.distanceTo(loc) > 8 && sp > 1.5) heading = prev.bearingTo(loc).toDouble().let { (it + 360) % 360 }
+        // Fahrtrichtung: vom GPS, ausser sie passt nicht zur tatsaechlichen Bewegung (manche Geraete
+        // und der Emulator melden z. B. immer Norden) – dann die Richtung zwischen den Punkten.
+        val moveBearing = if (prev != null && prev.distanceTo(loc) > 8) prev.bearingTo(loc).toDouble().let { (it + 360) % 360 } else null
+        if (loc.hasBearing() && sp > 1.5 && (moveBearing == null || Geo.angleDiff(loc.bearing.toDouble(), moveBearing) < 90.0)) heading = loc.bearing.toDouble()
+        else if (moveBearing != null && sp > 1.5) heading = moveBearing
         if (now - lastSavedPos > 60_000) {
             lastSavedPos = now
             prefs.lastPosition = LatLon(loc.latitude, loc.longitude)
