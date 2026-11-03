@@ -39,6 +39,8 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
    - **Tankerkönig** (onboarding.tankerkoenig.de): Spritpreise (Diesel, Super E5/E10). Ohne
      Schlüssel zeigt die App die Tankstellen auf dem Weg ohne Preise.
 4. Optional: deutsche Stimme prüfen (Android → Einstellungen → Sprachausgabe).
+5. Neue Version installieren: solange die CI mit dem vorläufigen Signier-Schlüssel baut, vorher
+   die alte KSS-Maps deinstallieren (für Android Auto wieder über KingInstaller installieren).
 
 ### Android Auto
 
