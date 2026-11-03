@@ -2,6 +2,8 @@ package de.sascha.kssmaps.car
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.text.SpannableString
+import android.text.Spanned
 import androidx.car.app.CarContext
 import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.Action
@@ -9,6 +11,8 @@ import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.DateTimeWithZone
 import androidx.car.app.model.Distance
+import androidx.car.app.model.DistanceSpan
+import androidx.car.app.model.DurationSpan
 import androidx.car.app.navigation.model.Step
 import androidx.car.app.navigation.model.TravelEstimate
 import androidx.core.graphics.drawable.IconCompat
@@ -59,6 +63,24 @@ object CarUtil {
         m < 1000 -> Distance.create(((m / 10).roundToInt() * 10).coerceAtLeast(0).toDouble(), Distance.UNIT_METERS)
         m < 10_000 -> Distance.create(m / 1000.0, Distance.UNIT_KILOMETERS_P1)
         else -> Distance.create((m / 1000.0).roundToInt().toDouble(), Distance.UNIT_KILOMETERS)
+    }
+
+    /**
+     * "‹Entfernung› · rest". Orts-Listen in Android Auto (PlaceListNavigationTemplate) verlangen
+     * eine Entfernung je Zeile – ohne wirft die Vorlage eine Ausnahme. Das erste Zeichen wird
+     * vom Auto durch die formatierte Entfernung ersetzt.
+     */
+    fun distanceText(m: Double, rest: String): CharSequence {
+        val s = SpannableString(if (rest.isBlank()) "X" else "X · $rest")
+        s.setSpan(DistanceSpan.create(distance(m)), 0, 1, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+        return s
+    }
+
+    /** "‹Dauer› · rest" – die Routenauswahl verlangt Dauer oder Entfernung je Zeile. */
+    fun durationText(sec: Double, rest: String): CharSequence {
+        val s = SpannableString(if (rest.isBlank()) "X" else "X · $rest")
+        s.setSpan(DurationSpan.create(sec.toLong().coerceAtLeast(0)), 0, 1, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+        return s
     }
 
     fun travelEstimate(remainingM: Double, remainingSec: Double, delaySec: Double): TravelEstimate {

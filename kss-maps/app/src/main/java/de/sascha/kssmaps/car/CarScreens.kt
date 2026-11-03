@@ -12,6 +12,7 @@ import androidx.car.app.model.AlertCallback
 import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarText
 import androidx.car.app.model.ItemList
+import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.SearchTemplate
@@ -25,6 +26,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import de.sascha.kssmaps.NaviApp
 import de.sascha.kssmaps.core.FuelType
+import de.sascha.kssmaps.core.Geo
 import de.sascha.kssmaps.core.HazardType
 import de.sascha.kssmaps.core.Instructions
 import de.sascha.kssmaps.core.ManeuverKind
@@ -260,14 +262,24 @@ class CarSearchScreen(carContext: CarContext) : EngineScreen(carContext) {
 class CarHistoryScreen(carContext: CarContext) : EngineScreen(carContext) {
     override fun onGetTemplate(): Template {
         val h = engine.prefs.history
+        // Mit Standort: Kartenliste mit Entfernung je Ziel (Pflicht dieser Vorlage), sonst einfache Liste.
+        val here = engine.position ?: engine.prefs.lastPosition
         val il = ItemList.Builder().setNoItemsMessage("Noch keine Ziele – zuerst über die Suche eins anfahren")
         for (p in h.take(CarUtil.listLimit(carContext, 20))) {
             val row = Row.Builder().setTitle(p.name).setOnClickListener {
                 engine.setDestination(p)
                 screenManager.push(CarRoutePreviewScreen(carContext))
             }
-            if (p.address.isNotBlank()) row.addText(p.address)
+            if (here != null) row.addText(CarUtil.distanceText(Geo.distance(here, p.pos), p.address))
+            else if (p.address.isNotBlank()) row.addText(p.address)
             il.addItem(row.build())
+        }
+        if (here == null) {
+            return ListTemplate.Builder()
+                .setTitle("Letzte Ziele")
+                .setHeaderAction(Action.BACK)
+                .setSingleList(il.build())
+                .build()
         }
         return PlaceListNavigationTemplate.Builder()
             .setTitle("Letzte Ziele")
@@ -334,7 +346,8 @@ class CarRoutePreviewScreen(carContext: CarContext) : EngineScreen(carContext) {
         } else {
             val il = ItemList.Builder()
             for (r in e.routes) {
-                il.addItem(Row.Builder().setTitle("${Ui.minutes(r.durationSec)} · ${r.label}").addText(summary(r)).build())
+                // Dauer als DurationSpan: Pflicht je Zeile in der Routenauswahl von Android Auto
+                il.addItem(Row.Builder().setTitle(CarUtil.durationText(r.durationSec, r.label)).addText(summary(r)).build())
             }
             il.setOnSelectedListener { idx -> e.selectRoute(idx) }
             il.setSelectedIndex(e.selectedIndex.coerceIn(0, e.routes.size - 1))
@@ -407,19 +420,21 @@ class CarFuelScreen(carContext: CarContext) : EngineScreen(carContext) {
             for ((i, rs) in list.take(CarUtil.listLimit(carContext, 12)).withIndex()) {
                 val s = rs.station
                 val where = when {
-                    rs.along == null -> Instructions.formatDistance(rs.distFromHereM)
-                    rs.onTheWay -> "auf dem Weg · " + Instructions.formatDistance(rs.distToStationM)
-                    else -> "Umweg " + Instructions.formatDistance(rs.detourM)
+                    rs.along == null -> ""
+                    rs.onTheWay -> "auf dem Weg · "
+                    else -> "Umweg " + Instructions.formatDistance(rs.detourM) + " · "
                 }
                 val uta = when (s.uta) {
                     UtaStatus.YES -> "UTA ✓"
                     UtaStatus.NO -> "kein UTA"
                     UtaStatus.UNKNOWN -> "UTA ?"
                 }
+                val dist = if (rs.along != null && rs.onTheWay) rs.distToStationM else rs.distFromHereM
                 il.addItem(
                     Row.Builder()
                         .setTitle(s.price(fuel)?.let { "${i + 1}. ${Tankerkoenig.formatPrice(it)} · ${s.displayName()}" } ?: "${i + 1}. ${s.displayName()}")
-                        .addText("$where · $uta")
+                        // Entfernung als DistanceSpan: Pflicht je Zeile in Orts-Listen von Android Auto
+                        .addText(CarUtil.distanceText(dist, "$where$uta"))
                         .setOnClickListener { choose(rs) }
                         .build()
                 )

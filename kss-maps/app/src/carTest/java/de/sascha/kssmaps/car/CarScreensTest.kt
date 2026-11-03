@@ -142,9 +142,15 @@ class CarScreensTest {
     fun searchHistoryMorePermission() {
         engine.prefs.history = listOf(dest(), Place("Ohne Adresszeile", "", 48.0, 11.0))
         assertTrue(CarSearchScreen(car).onGetTemplate() is SearchTemplate)
+        // ohne Standort: einfache Liste, mit Standort: Kartenliste mit Entfernungen
+        engine.prefs.lastPosition = null
+        assertTrue(CarHistoryScreen(car).onGetTemplate() is ListTemplate)
+        engine.prefs.lastPosition = LatLon(48.1, 11.5)
         assertTrue(CarHistoryScreen(car).onGetTemplate() is PlaceListNavigationTemplate)
         engine.prefs.history = emptyList()
         assertTrue(CarHistoryScreen(car).onGetTemplate() is PlaceListNavigationTemplate)
+        engine.prefs.lastPosition = null
+        assertTrue(CarHistoryScreen(car).onGetTemplate() is ListTemplate)
         engine.testSetState(NavEngine.Mode.IDLE, null, emptyList())
         assertTrue(CarMoreScreen(car).onGetTemplate() is ListTemplate)
         val r = route()
