@@ -628,7 +628,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
                 "Zwei kostenlose Schlüssel machen die App komplett:\n\n" +
                     "• TomTom (developer.tomtom.com): Live-Stau auf ALLEN Straßen in der Routenberechnung. " +
                     "Ohne Schlüssel kommen Stau, Baustellen und Sperrungen von der Autobahn GmbH (nur Autobahnen).\n\n" +
-                    "• Tankerkönig (onboarding.tankerkoenig.de): aktuelle Spritpreise.\n\n" +
+                    "• Tankerkönig (onboarding.tankerkoenig.de): aktuelle Spritpreise für Diesel und Super. " +
+                    "Ohne Schlüssel zeigt die App die Tankstellen auf dem Weg ohne Preise.\n\n" +
                     "Beide in den Einstellungen eintragen."
             )
             .setPositiveButton("Einstellungen") { _, _ -> openSettings() }
