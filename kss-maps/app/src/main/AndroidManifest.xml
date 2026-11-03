@@ -16,6 +16,13 @@
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
 
+    <!-- Spracheingabe: Google-Spracherkennung muss sichtbar sein (Android 11+) -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <application
         android:name=".NaviApp"
         android:allowBackup="true"

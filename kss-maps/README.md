@@ -20,6 +20,10 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 | Route ohne Stau wählen | Route mit Etikett „Ohne Stau“ und Knopf **„Stau umfahren“** (sperrt alle Staus/Sperrungen der Route und rechnet neu). Unterwegs prüft die App alle 3 Minuten und bietet schnellere Routen an |
 | Gewisse Abschnitte nicht fahren (nicht pauschal) | **Lange auf eine Straße drücken → „Abschnitt meiden“.** Gesperrt wird nur dieses Stück (bei Autobahnen beide Fahrbahnen), dargestellt als rote Strichlinie. Liste mit Ein/Aus-Schalter und Löschen über den ⛔-Knopf. Autobahnen/Maut/Fähren komplett meiden gibt es zusätzlich in den Einstellungen |
 | Letzte 20 Adressen | Verlauf in der Suche (Handy) und „Letzte Ziele“ (Android Auto); lange drücken = entfernen |
+| Startpunkt ändern (Start → Ziel) | In der Routenvorschau „Von“ antippen → andere Startadresse (Suche, Verlauf oder „Mein Standort“). ⇅ tauscht Start und Ziel (Rückweg). Mit eigenem Start zeigt die App Zeit, Strecke, Stau und die **Wegbeschreibung**; mit dem ⌖-Knopf geht es wieder ab dem Standort los |
+| Spracheingabe | Mikrofon in der Suchleiste und in der Suche (Google-Spracherkennung, Deutsch). „Navigiere zum Marienplatz 7 in Freising“ öffnet direkt die Route; nur eine Adresse sprechen zeigt die Trefferliste. In Android Auto über „Hey Google, navigiere zu …“ |
+| Querformat | Wie Google Maps in Android Auto: Abbiege-Hinweis links oben, Ankunft und Knöpfe links unten, die Karte rechts bleibt frei; Tempo unten links auf der Karte |
+| Flüssiger Positionspfeil | GPS kommt einmal pro Sekunde – dazwischen wird die Position für jedes Bild vorausberechnet (entlang der Route, mit dem gefahrenen Tempo) und weich korrigiert; Pfeil und Karte bewegen sich gleichmäßig statt ruckweise |
 | Tankstellen mit Preisen, UTA | ⛽-Knopf: Diesel/Super E5/E10, Filter **„nur UTA“**. Reihenfolge: **zuerst die auf dem Weg zum Ziel liegenden, dann nach Preis**; danach Tankstellen mit Umweg. Ohne Tankerkönig-Schlüssel erscheinen die Tankstellen trotzdem sofort (Liste aller Tankstellen Bayerns aus OpenStreetMap ist in der App, mit UTA-Kennzeichnung) – nur ohne Preise |
 | Erst zur Tankstelle, dann automatisch weiter | Tankstelle antippen → wird Zwischenstopp, danach geht es ohne neue Eingabe weiter zum Ziel |
 | Sprachnavigation, Ton abschaltbar | Deutsche Ansagen in 3 Stufen (Vorankündigung, nah, „Jetzt …“), Lautsprecher-Knopf (Handy und Auto) |
@@ -143,8 +147,10 @@ tools/fetch_enforcement.py  Blitzer-Startbestand und Tankstellenliste für die A
 - **Testfahrt im Emulator** (Commit-Nachricht mit `[testfahrt]`): Erststart-Hinweise, Ziel per
   geo-Link, Routen mit Baustellen, Luftbild, gesperrter Abschnitt, Navigation München →
   Freising mit Ansagen, Ankunft mit markiertem Zielhaus,
-  Tankstellen, Suche – plus Bilder der Android-Auto-Karte. Ergebnisse hängen als `testfahrt_*` am
-  Release, der nächste normale Build entfernt sie. Der Emulator nutzt die ANGLE-Grafik
+  Tankstellen, Suche, Querformat, eigener Startpunkt mit Wegbeschreibung, Sprachbefehl – plus
+  Bilder der Android-Auto-Karte und eine Messung, wie gleichmäßig der Positionspfeil läuft
+  (`pfeil.txt`). Ergebnisse hängen als `testfahrt_*` an der Vorabversion `kssmaps-testfahrt`
+  (nicht installieren – nur Testergebnisse). Der Emulator nutzt die ANGLE-Grafik
   (`-gpu swangle_indirect`); mit der älteren SwiftShader-Emulation fehlen Kartensymbole und
   Beschriftungen – nur im Emulator, nicht auf echten Geräten.
 

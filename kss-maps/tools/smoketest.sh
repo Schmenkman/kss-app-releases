@@ -21,6 +21,14 @@ wait_log() {
   done
   echo "ZEITUEBERSCHREITUNG: '$pat' (${max}s)"; return 1
 }
+# Bildschirm drehen: quer (1) bzw. hochkant (0)
+rotate() {
+  adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1
+  adb shell cmd window user-rotation lock "$1" >/dev/null 2>&1 || adb shell settings put system user_rotation "$1"
+  sleep 4
+}
+# Anzahl der berechneten Routenvorschauen bisher
+routes_n() { local c; c=$(grep -c "ROUTES " "$OUT/logcat.txt" 2>/dev/null); echo "${c:-0}"; }
 # Android-Auto-Karte (unsichtbare Flaeche wie im Auto) als Bild sichern
 car_shot() {
   act --es test_car_capture "$1"; sleep 3
@@ -66,6 +74,11 @@ adb shell "am start -a android.intent.action.VIEW -d 'geo:0,0?q=Marienplatz%207%
 wait_log "ROUTES " 1 150
 sleep 6
 shot 02_vorschau
+# Querformat: Routenleiste links, Karte rechts frei
+rotate 1
+sleep 3
+shot 02q_vorschau_quer
+rotate 0
 # Android-Auto-Kartenflaeche starten (zeigt jetzt die Routenvorschau)
 act --ez test_car_start true
 sleep 15
@@ -83,6 +96,12 @@ act --es test_avoid "'$AV'"
 wait_log "ROUTES " 2 150
 sleep 6
 shot 03b_abschnitt_gesperrt
+# Wegbeschreibung (Liste aller Abbiegungen)
+python3 $T/ui.py tap --desc "Wegbeschreibung" || act --ez test_open_steps true
+sleep 4
+shot 03c_wegbeschreibung
+act --ez test_close_panels true
+sleep 2
 
 # "Los" tippen (Fallback: Test-Intent)
 python3 $T/ui.py tap --text "Los" || act --ez test_start_navigation true
@@ -107,6 +126,10 @@ else
   python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from 0 --to 9000 --speed 25 --shot-every 50 --prefix 05_fahrt
   car_shot fahrt auto_02_fahrt
 fi
+# Querformat beim Fahren (wie Google Maps in Android Auto): 1,5 km mit 15 m/s
+rotate 1
+python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from 9000 --to 10500 --speed 15 --shot-every 30 --prefix 05q_quer
+rotate 0
 # Sprung kurz vors Ziel (prueft nebenbei die Neuberechnung) und langsam ankommen
 python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from-end 1200 --to-end 0 --speed 9 --shot-every 35 --prefix 06_ankunft
 sleep 25
@@ -129,6 +152,38 @@ adb shell input text "Hauptbahnhof%sMuenchen"
 sleep 8
 shot 09_suche
 adb shell input keyevent KEYCODE_BACK
+sleep 2
+
+# Sprachbefehl (wie von der Google-Spracherkennung erkannt): direkt zur Routenvorschau
+act --ez test_close_panels true
+sleep 2
+N=$(routes_n)
+act --es test_voice "'Navigiere zum Marienplatz 7 in Freising'"
+wait_log "ROUTES " $((N + 1)) 150
+sleep 5
+shot 11_sprachbefehl
+# Eigener Startpunkt (Muenchen Stachus) -> Planung von dort; statt "Los" die Wegbeschreibung
+N=$(routes_n)
+act --es test_origin "48.13906,11.56575"
+wait_log "ROUTES " $((N + 1)) 150
+sleep 6
+shot 12_start_ziel
+rotate 1
+sleep 3
+shot 12q_start_ziel_quer
+python3 $T/ui.py tap --text "Wegbeschreibung" || act --ez test_open_steps true
+sleep 4
+shot 12b_wegbeschreibung_quer
+act --ez test_close_panels true
+rotate 0
+# Startpunkt-Suche ("Von wo?") mit "Mein Standort" oben
+act --ez test_open_origin_search true
+sleep 4
+shot 12c_startpunkt_suche
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+act --ez test_close_panels true
+act --ez test_clear true
 sleep 2
 
 # Einstellungen: Schluessel-Felder mit "Einfuegen" (Zwischenablage leer) und "Pruefen" (leer)
@@ -154,6 +209,7 @@ sleep 2
 kill $LOGPID 2>/dev/null
 sleep 1
 grep -E "AndroidRuntime|FATAL EXCEPTION|SAY|ROUTES|ROUTE_INFO|TEST_|KSSMaps" "$OUT/logcat.txt" | grep -v -E "ROUTE_CHUNK|PREVIEW_CHUNK" > "$OUT/ereignisse.txt"
+grep "PUCK_SMOOTH" "$OUT/logcat.txt" > "$OUT/pfeil.txt" || echo "keine Messung" > "$OUT/pfeil.txt"
 grep -E " [EW]/" "$OUT/logcat.txt" | grep -i -E "kssmaps|maplibre|mbgl|AndroidRuntime" | grep -v -E "ROUTE_CHUNK|PREVIEW_CHUNK" | tail -300 > "$OUT/warnungen.txt"
 grep -A 40 "FATAL EXCEPTION" "$OUT/logcat.txt" > "$OUT/absturz.txt" || echo "kein Absturz" > "$OUT/absturz.txt"
 echo "===== Absturz?"; head -60 "$OUT/absturz.txt"

@@ -30,6 +30,9 @@ class ManeuverBanner(private val ctx: Context) {
     private val thenIcon = ImageView(ctx)
     private val thenText = Ui.text(ctx, "", 15f, Color.WHITE, maxLines = 1)
     private var lastKey = ""
+    /** Symbolgroesse in px (kleiner im Querformat). */
+    private var iconPx = Ui.dp(ctx, 72)
+    private var lanePx = Ui.dp(ctx, 30)
 
     init {
         view.background = Ui.bg(ctx, Ui.NAV_GREEN, 18)
@@ -52,13 +55,31 @@ class ManeuverBanner(private val ctx: Context) {
         view.addView(thenRow, Ui.linLp().margins(ctx, t = 8))
     }
 
+    /** Querformat: schmale Karte links oben (wie Google Maps in Android Auto). */
+    fun setCompact(compact: Boolean) {
+        iconPx = Ui.dp(ctx, if (compact) 54 else 72)
+        lanePx = Ui.dp(ctx, if (compact) 24 else 30)
+        (icon.layoutParams as? LinearLayout.LayoutParams)?.let {
+            it.width = iconPx
+            it.height = iconPx
+            icon.layoutParams = it
+        }
+        dist.textSize = if (compact) 26f else 32f
+        street.textSize = if (compact) 17f else 19f
+        thenText.textSize = if (compact) 14f else 15f
+        val ph = Ui.dp(ctx, if (compact) 12 else 14)
+        val pv = Ui.dp(ctx, if (compact) 9 else 12)
+        view.setPadding(ph, pv, ph, pv)
+        lastKey = ""
+    }
+
     fun render(e: NavEngine) {
         val r = e.activeRoute
         val st = e.state
         if (e.rerouting) {
             dist.text = "Neue Route …"
             street.text = "wird berechnet"
-            icon.setImageBitmap(Icons.glyph(Icons.Glyph.REFRESH, Ui.dp(ctx, 72)))
+            icon.setImageBitmap(Icons.glyph(Icons.Glyph.REFRESH, iconPx))
             lanes.visibility = View.GONE
             thenRow.visibility = View.GONE
             lastKey = ""
@@ -67,7 +88,7 @@ class ManeuverBanner(private val ctx: Context) {
         if (r == null || st == null) {
             dist.text = "Warte auf GPS …"
             street.text = e.destination?.name ?: ""
-            icon.setImageBitmap(Icons.glyph(Icons.Glyph.NAVIGATE, Ui.dp(ctx, 72)))
+            icon.setImageBitmap(Icons.glyph(Icons.Glyph.NAVIGATE, iconPx))
             lanes.visibility = View.GONE
             thenRow.visibility = View.GONE
             return
@@ -75,7 +96,7 @@ class ManeuverBanner(private val ctx: Context) {
         if (e.arrived) {
             dist.text = "Ziel erreicht"
             street.text = e.destination?.label() ?: ""
-            icon.setImageBitmap(Icons.maneuver(ManeuverKind.ARRIVE, Ui.dp(ctx, 72)))
+            icon.setImageBitmap(Icons.maneuver(ManeuverKind.ARRIVE, iconPx))
             lanes.visibility = View.GONE
             thenRow.visibility = View.GONE
             return
@@ -84,7 +105,7 @@ class ManeuverBanner(private val ctx: Context) {
         val m = r.maneuvers.getOrNull(st.nextIdx)
         if (m == null) {
             street.text = "Der Straße folgen"
-            icon.setImageBitmap(Icons.maneuver(ManeuverKind.STRAIGHT, Ui.dp(ctx, 72)))
+            icon.setImageBitmap(Icons.maneuver(ManeuverKind.STRAIGHT, iconPx))
             thenRow.visibility = View.GONE
             lanes.visibility = View.GONE
             return
@@ -92,7 +113,7 @@ class ManeuverBanner(private val ctx: Context) {
         val key = "${st.nextIdx}/${r.hashCode()}"
         if (key != lastKey) {
             lastKey = key
-            icon.setImageBitmap(Icons.maneuver(m.kind, Ui.dp(ctx, 72), roundaboutExit = m.roundaboutExit, angleHint = m.turnAngle))
+            icon.setImageBitmap(Icons.maneuver(m.kind, iconPx, roundaboutExit = m.roundaboutExit, angleHint = m.turnAngle))
             street.text = if (m.kind == ManeuverKind.WAYPOINT && e.fuelStop != null) "Tankstelle: ${e.fuelStop?.displayName()}" else Instructions.text(m)
             renderLanes(m.lanes)
             val after = r.maneuvers.getOrNull(st.afterIdx)
@@ -113,9 +134,9 @@ class ManeuverBanner(private val ctx: Context) {
             val good = l.active != 0 || l.valid != 0
             val color = if (good) Color.WHITE else Color.argb(90, 255, 255, 255)
             val iv = ImageView(ctx)
-            iv.setImageBitmap(Icons.maneuver(kind, Ui.dp(ctx, 30), color))
+            iv.setImageBitmap(Icons.maneuver(kind, lanePx, color))
             iv.background = Ui.bg(ctx, if (l.active != 0) Color.argb(70, 255, 255, 255) else Color.TRANSPARENT, 6)
-            lanes.addView(iv, LinearLayout.LayoutParams(Ui.dp(ctx, 34), Ui.dp(ctx, 34)).margins(ctx, l = 2, r = 2))
+            lanes.addView(iv, LinearLayout.LayoutParams(lanePx + Ui.dp(ctx, 4), lanePx + Ui.dp(ctx, 4)).margins(ctx, l = 2, r = 2))
         }
     }
 
@@ -176,10 +197,13 @@ class SpeedWidget(private val ctx: Context) {
 /** Unten waehrend der Fahrt: Ankunft, Restzeit, Reststrecke + Knoepfe. */
 class NavBar(private val ctx: Context, onStop: () -> Unit, onFuel: () -> Unit, onList: () -> Unit) {
     val view: LinearLayout = Ui.vbox(ctx)
-    private val eta = Ui.text(ctx, "", 24f, Ui.GREEN_DARK, bold = true)
-    private val remain = Ui.text(ctx, "", 15f, Ui.TEXT2)
-    private val delay = Ui.text(ctx, "", 14f, Ui.RED, bold = true)
+    private val eta = Ui.text(ctx, "", 24f, Ui.GREEN_DARK, bold = true, maxLines = 1)
+    private val remain = Ui.text(ctx, "", 15f, Ui.TEXT2, maxLines = 1)
+    private val delay = Ui.text(ctx, "", 14f, Ui.RED, bold = true, maxLines = 1)
     private val fuelChip = Ui.text(ctx, "", 14f, Ui.GREEN_DARK, bold = true)
+    private val listBtn: View
+    private val stopText: TextView
+    private val stopIcon: View
     var onRemoveFuel: (() -> Unit)? = null
 
     init {
@@ -192,20 +216,42 @@ class NavBar(private val ctx: Context, onStop: () -> Unit, onFuel: () -> Unit, o
         col.addView(remain)
         col.addView(delay)
         row.addView(col, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.LIST, Ui.dp(ctx, 26), Ui.TEXT), Ui.LIGHT, 48) { onList() }.apply {
+        listBtn = Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.LIST, Ui.dp(ctx, 26), Ui.TEXT), Ui.LIGHT, 48, "Meldungen auf der Route") { onList() }.apply {
+            (layoutParams as LinearLayout.LayoutParams).apply { topMargin = 0; rightMargin = Ui.dp(ctx, 8) }
+            elevation = 0f
+        }
+        row.addView(listBtn)
+        row.addView(Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.FUEL, Ui.dp(ctx, 26), Ui.TEXT), Ui.LIGHT, 48, "Tanken") { onFuel() }.apply {
             (layoutParams as LinearLayout.LayoutParams).apply { topMargin = 0; rightMargin = Ui.dp(ctx, 8) }
             elevation = 0f
         })
-        row.addView(Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.FUEL, Ui.dp(ctx, 26), Ui.TEXT), Ui.LIGHT, 48) { onFuel() }.apply {
-            (layoutParams as LinearLayout.LayoutParams).apply { topMargin = 0; rightMargin = Ui.dp(ctx, 8) }
+        stopText = Ui.button(ctx, "Beenden", Ui.RED) { onStop() }
+        row.addView(stopText)
+        // Querformat: runder roter Knopf mit X (wie in Android Auto)
+        stopIcon = Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.CLOSE, Ui.dp(ctx, 24), Color.WHITE), Ui.RED, 48, "Navigation beenden") { onStop() }.apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = 0
             elevation = 0f
-        })
-        row.addView(Ui.button(ctx, "Beenden", Ui.RED) { onStop() })
+            visibility = View.GONE
+        }
+        row.addView(stopIcon)
         view.addView(row)
         fuelChip.setPadding(Ui.dp(ctx, 10), Ui.dp(ctx, 6), Ui.dp(ctx, 10), Ui.dp(ctx, 6))
         Ui.clickable(ctx, fuelChip, Color.parseColor("#E8F5E9"), 12)
         fuelChip.setOnClickListener { onRemoveFuel?.invoke() }
         view.addView(fuelChip, Ui.linLp(ViewGroup.LayoutParams.WRAP_CONTENT).margins(ctx, t = 8))
+    }
+
+    /** Querformat: schmale Karte links unten – Text kleiner, nur Tanken + X. */
+    fun setCompact(compact: Boolean) {
+        eta.textSize = if (compact) 21f else 24f
+        remain.textSize = if (compact) 14f else 15f
+        delay.textSize = if (compact) 13f else 14f
+        // Die Meldungsliste oeffnet im Querformat ein Tipp auf das Abbiege-Banner.
+        listBtn.visibility = if (compact) View.GONE else View.VISIBLE
+        stopText.visibility = if (compact) View.GONE else View.VISIBLE
+        stopIcon.visibility = if (compact) View.VISIBLE else View.GONE
+        val p = Ui.dp(ctx, if (compact) 10 else 12)
+        view.setPadding(Ui.dp(ctx, if (compact) 14 else 16), p, p, p)
     }
 
     fun render(e: NavEngine) {
@@ -239,7 +285,10 @@ class NavBar(private val ctx: Context, onStop: () -> Unit, onFuel: () -> Unit, o
     }
 }
 
-/** Unten in der Routenvorschau: Alternativen mit Zeit, Stau, Blitzer, Baustellen. */
+/**
+ * Unten in der Routenvorschau: Start und Ziel (beide aenderbar), Alternativen mit Zeit, Stau,
+ * Baustellen, darunter die Knoepfe.
+ */
 class RoutePanel(
     private val ctx: Context,
     private val onSelect: (Int) -> Unit,
@@ -247,42 +296,108 @@ class RoutePanel(
     private val onAvoidJams: () -> Unit,
     private val onFuel: () -> Unit,
     private val onClose: () -> Unit,
+    private val onPickOrigin: () -> Unit,
+    private val onPickDestination: () -> Unit,
+    private val onSwap: () -> Unit,
+    private val onOriginHere: () -> Unit,
+    private val onSteps: () -> Unit,
 ) {
     val view: LinearLayout = Ui.vbox(ctx)
-    private val title = Ui.text(ctx, "", 19f, Ui.TEXT, bold = true, maxLines = 1)
-    private val subtitle = Ui.text(ctx, "", 14f, Ui.TEXT2, maxLines = 1)
+    private val originText = Ui.text(ctx, "", 15f, Ui.TEXT, maxLines = 1)
+    private val originHere: View
+    private val title = Ui.text(ctx, "", 18f, Ui.TEXT, bold = true, maxLines = 1)
+    private val subtitle = Ui.text(ctx, "", 13f, Ui.TEXT2, maxLines = 1)
+    private val listScroll = Ui.MaxHeightScroll(ctx)
     private val list = Ui.vbox(ctx)
     private val status = Ui.text(ctx, "", 15f, Ui.TEXT2)
     private val startBtn: TextView
+    private val fuelBtn: View
+    private val stepsBtn: View
 
     init {
         view.background = Ui.bg(ctx, Color.WHITE, 22)
         view.elevation = Ui.dpf(ctx, 8f)
-        view.setPadding(Ui.dp(ctx, 14), Ui.dp(ctx, 12), Ui.dp(ctx, 14), Ui.dp(ctx, 14))
+        view.setPadding(Ui.dp(ctx, 14), Ui.dp(ctx, 10), Ui.dp(ctx, 14), Ui.dp(ctx, 14))
         val head = Ui.hbox(ctx)
-        val hc = Ui.vbox(ctx)
-        hc.addView(title)
-        hc.addView(subtitle)
-        head.addView(hc, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        head.addView(Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.CLOSE, Ui.dp(ctx, 22), Ui.TEXT), Ui.LIGHT, 40) { onClose() }.apply {
+        val rows = Ui.vbox(ctx)
+        // Von: eigener Standort oder gewaehlter Startpunkt
+        val originRow = Ui.hbox(ctx)
+        originRow.setPadding(Ui.dp(ctx, 6), Ui.dp(ctx, 6), Ui.dp(ctx, 6), Ui.dp(ctx, 6))
+        Ui.clickable(ctx, originRow, Ui.LIGHT, 12)
+        originRow.contentDescription = "Startpunkt ändern"
+        originRow.setOnClickListener { onPickOrigin() }
+        originRow.addView(dot(Color.parseColor("#1A73E8")), LinearLayout.LayoutParams(Ui.dp(ctx, 14), Ui.dp(ctx, 14)).margins(ctx, l = 4, r = 10))
+        originRow.addView(Ui.text(ctx, "Von", 13f, Ui.TEXT2), Ui.linLp(Ui.dp(ctx, 34)))
+        originRow.addView(originText, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        originHere = Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.RECENTER, Ui.dp(ctx, 20), Ui.BLUE), Ui.LIGHT, 30, "Ab meinem Standort") { onOriginHere() }.apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = 0
+            elevation = 0f
+            setPadding(Ui.dp(ctx, 5), Ui.dp(ctx, 5), Ui.dp(ctx, 5), Ui.dp(ctx, 5))
+        }
+        originRow.addView(originHere)
+        rows.addView(originRow, Ui.linLp())
+        // Nach: Ziel
+        val destRow = Ui.hbox(ctx)
+        destRow.setPadding(Ui.dp(ctx, 6), Ui.dp(ctx, 6), Ui.dp(ctx, 6), Ui.dp(ctx, 6))
+        Ui.clickable(ctx, destRow, Ui.LIGHT, 12)
+        destRow.contentDescription = "Ziel ändern"
+        destRow.setOnClickListener { onPickDestination() }
+        destRow.addView(dot(Color.parseColor("#E91E63")), LinearLayout.LayoutParams(Ui.dp(ctx, 14), Ui.dp(ctx, 14)).margins(ctx, l = 4, r = 10))
+        destRow.addView(Ui.text(ctx, "Nach", 13f, Ui.TEXT2), Ui.linLp(Ui.dp(ctx, 34)))
+        val dc = Ui.vbox(ctx)
+        dc.addView(title)
+        dc.addView(subtitle)
+        destRow.addView(dc, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        rows.addView(destRow, Ui.linLp().margins(ctx, t = 4))
+        head.addView(rows, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val side = Ui.vbox(ctx)
+        side.addView(Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.CLOSE, Ui.dp(ctx, 22), Ui.TEXT), Ui.LIGHT, 40, "Schließen") { onClose() }.apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = 0
             elevation = 0f
         })
+        side.addView(Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.SWAP, Ui.dp(ctx, 22), Ui.TEXT), Ui.LIGHT, 40, "Start und Ziel tauschen") { onSwap() }.apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = Ui.dp(ctx, 8)
+            elevation = 0f
+        })
+        head.addView(side, Ui.linLp(ViewGroup.LayoutParams.WRAP_CONTENT).margins(ctx, l = 8))
         view.addView(head)
         view.addView(status, Ui.linLp().margins(ctx, t = 6))
-        view.addView(list, Ui.linLp().margins(ctx, t = 6))
+        listScroll.isVerticalScrollBarEnabled = true
+        listScroll.addView(list)
+        view.addView(listScroll, Ui.linLp().margins(ctx, t = 6))
         val buttons = Ui.hbox(ctx)
+        stepsBtn = Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.LIST, Ui.dp(ctx, 24), Ui.TEXT), Ui.LIGHT, 46, "Wegbeschreibung") { onSteps() }.apply {
+            (layoutParams as LinearLayout.LayoutParams).apply { topMargin = 0; rightMargin = Ui.dp(ctx, 6) }
+            elevation = 0f
+        }
+        buttons.addView(stepsBtn)
+        fuelBtn = Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.FUEL, Ui.dp(ctx, 24), Ui.TEXT), Ui.LIGHT, 46, "Tanken") { onFuel() }.apply {
+            (layoutParams as LinearLayout.LayoutParams).apply { topMargin = 0; rightMargin = Ui.dp(ctx, 6) }
+            elevation = 0f
+        }
+        buttons.addView(fuelBtn)
         buttons.addView(Ui.button(ctx, "Stau umfahren", Ui.LIGHT, Ui.TEXT) { onAvoidJams() }, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).margins(ctx, r = 6))
-        buttons.addView(Ui.button(ctx, "⛽ Tanken", Ui.LIGHT, Ui.TEXT) { onFuel() }, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f).margins(ctx, r = 6))
         startBtn = Ui.button(ctx, "Los", Ui.BLUE) { onStart() }
         buttons.addView(startBtn, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
         view.addView(buttons, Ui.linLp().margins(ctx, t = 10))
     }
 
+    private fun dot(color: Int): View = View(ctx).apply { background = Ui.bg(ctx, color, 7, Color.WHITE, 2) }
+
+    /** Hoechsthoehe der Routenliste (px), damit die Leiste die Karte nicht ganz verdeckt. */
+    fun setListMaxHeight(px: Int) {
+        listScroll.maxHeightPx = px
+    }
+
     fun render(e: NavEngine) {
         val d = e.destination
+        val o = e.origin
+        originText.text = o?.name ?: "Mein Standort"
+        originText.setTextColor(if (o != null) Ui.TEXT else Ui.BLUE)
+        originHere.visibility = if (o != null) View.VISIBLE else View.GONE
         title.text = d?.name ?: "Ziel"
         subtitle.text = listOfNotNull(d?.address?.takeIf { it.isNotBlank() }, e.fuelStop?.let { "über ⛽ ${it.displayName()}" }).joinToString(" · ")
+        subtitle.visibility = if (subtitle.text.isNullOrBlank()) View.GONE else View.VISIBLE
         list.removeAllViews()
         when {
             e.loading -> {
@@ -299,8 +414,15 @@ class RoutePanel(
                 e.routes.forEachIndexed { i, r -> list.addView(routeRow(r, i, i == e.selectedIndex, e.routes.minOf { it.durationSec }), Ui.linLp().margins(ctx, b = 6)) }
             }
         }
+        // Eigener Startpunkt = Planung: statt "Los" die Wegbeschreibung (wie bei Google Maps).
+        // Mit dem Standort-Knopf in der Von-Zeile geht es wieder ab hier los.
+        val planning = o != null
+        startBtn.text = if (planning) "Wegbeschreibung" else "Los"
+        fuelBtn.visibility = if (planning) View.GONE else View.VISIBLE
+        stepsBtn.visibility = if (planning) View.GONE else View.VISIBLE
         startBtn.alpha = if (e.routes.isEmpty()) 0.4f else 1f
         startBtn.isEnabled = e.routes.isNotEmpty()
+        startBtn.setOnClickListener { if (planning) onSteps() else onStart() }
     }
 
     private fun routeRow(r: Route, i: Int, selected: Boolean, fastest: Double): View {

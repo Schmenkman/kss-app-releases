@@ -103,6 +103,24 @@ object Ui {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 1))
     }
 
+    /** ScrollView mit Hoechsthoehe: waechst mit dem Inhalt, scrollt erst ab [maxHeightPx]. */
+    class MaxHeightScroll(ctx: Context) : android.widget.ScrollView(ctx) {
+        var maxHeightPx = Int.MAX_VALUE
+            set(v) {
+                if (field != v) {
+                    field = v
+                    requestLayout()
+                }
+            }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val mode = MeasureSpec.getMode(heightMeasureSpec)
+            val size = MeasureSpec.getSize(heightMeasureSpec)
+            val limit = if (mode == MeasureSpec.UNSPECIFIED) maxHeightPx else minOf(size, maxHeightPx)
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(limit, MeasureSpec.AT_MOST))
+        }
+    }
+
     fun minutes(sec: Double): String {
         val m = (sec / 60).roundToInt()
         return if (m < 60) "$m Min." else "${m / 60} Std. ${m % 60} Min."

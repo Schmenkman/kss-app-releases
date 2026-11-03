@@ -42,10 +42,12 @@ interface PanelHost {
     fun toast(s: String)
     fun openSettings()
     fun closePanels()
+    /** Spracheingabe (Google-Spracherkennung); [onResult] bekommt den erkannten Text. */
+    fun startVoice(prompt: String, onResult: (String) -> Unit)
 }
 
 /** Gemeinsamer Rahmen: Karte mit Kopfzeile, Inhalt scrollbar. */
-abstract class Panel(protected val host: PanelHost, fullScreen: Boolean) {
+abstract class Panel(protected val host: PanelHost, private val fullScreen: Boolean) {
     protected val ctx: Context = host.context
     val view: FrameLayout = FrameLayout(ctx)
     protected val card: LinearLayout = Ui.vbox(ctx)
@@ -88,6 +90,22 @@ abstract class Panel(protected val host: PanelHost, fullScreen: Boolean) {
 
     val isShown: Boolean get() = view.visibility == View.VISIBLE
 
+    /** Hochkant: Blatt von unten (2/3 Hoehe). Quer: Leiste links ueber die volle Hoehe. */
+    fun applyLayout(landscape: Boolean, sideWidthPx: Int) {
+        if (fullScreen) return
+        val lp = card.layoutParams as? FrameLayout.LayoutParams ?: return
+        if (landscape) {
+            lp.width = sideWidthPx
+            lp.height = ViewGroup.LayoutParams.MATCH_PARENT
+            lp.gravity = Gravity.START or Gravity.BOTTOM
+        } else {
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            lp.height = (ctx.resources.displayMetrics.heightPixels * 0.66).toInt()
+            lp.gravity = Gravity.BOTTOM
+        }
+        card.layoutParams = lp
+    }
+
     open fun show() {
         view.visibility = View.VISIBLE
         view.bringToFront()
@@ -121,8 +139,13 @@ abstract class Panel(protected val host: PanelHost, fullScreen: Boolean) {
 // =============================================================================================
 
 class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
+    enum class Target { DESTINATION, ORIGIN }
+
     private val input = EditText(ctx)
     private var job: Job? = null
+    private var target = Target.DESTINATION
+    /** Gesprochener Fahrbefehl ("Navigiere zu …"): bestes Ergebnis direkt nehmen. */
+    private var autoPick = false
 
     init {
         titleView.text = "Wohin?"
@@ -144,17 +167,48 @@ class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
                 true
             } else false
         }
-        extras.addView(input, Ui.linLp().margins(ctx, t = 10))
+        val row = Ui.hbox(ctx)
+        row.addView(input, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(Ui.iconButton(ctx, Icons.glyph(Icons.Glyph.MIC, Ui.dp(ctx, 26), Color.WHITE), Ui.BLUE, 50, "Spracheingabe") { listen() }.apply {
+            (layoutParams as LinearLayout.LayoutParams).apply { topMargin = 0; leftMargin = Ui.dp(ctx, 8) }
+        })
+        extras.addView(row, Ui.linLp().margins(ctx, t = 10))
     }
 
-    override fun show() {
+    override fun show() = open(Target.DESTINATION, voice = false)
+
+    /** Suche fuer das Ziel oder den Startpunkt oeffnen; voice = sofort zuhoeren. */
+    fun open(t: Target, voice: Boolean) {
         super.show()
+        target = t
+        autoPick = false
+        titleView.text = if (t == Target.ORIGIN) "Von wo?" else "Wohin?"
+        input.hint = if (t == Target.ORIGIN) "Startadresse, Ort oder Firma" else "Adresse, Ort oder Firma"
         input.setText("")
         showHistory()
-        input.requestFocus()
-        input.postDelayed({
-            ctx.getSystemService(InputMethodManager::class.java)?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
-        }, 150)
+        if (voice) {
+            listen()
+        } else {
+            input.requestFocus()
+            input.postDelayed({
+                ctx.getSystemService(InputMethodManager::class.java)?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            }, 150)
+        }
+    }
+
+    private fun listen() {
+        ctx.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(input.windowToken, 0)
+        host.startVoice(if (target == Target.ORIGIN) "Von wo soll es losgehen?" else "Wohin soll es gehen?") { spoken -> onVoice(spoken) }
+    }
+
+    /** Erkannter Text: Befehlswoerter weg, suchen; bei "Navigiere zu …" direkt das beste Ergebnis. */
+    fun onVoice(spoken: String) {
+        if (!isShown) super.show()
+        val r = de.sascha.kssmaps.core.VoiceQuery.clean(spoken)
+        autoPick = r.command
+        input.setText(r.query)
+        input.setSelection(input.text.length)
+        onQuery(r.query, 0)
     }
 
     override fun hide() {
@@ -165,9 +219,15 @@ class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
 
     private fun showHistory() {
         content.removeAllViews()
+        if (target == Target.ORIGIN) {
+            content.addView(row("Mein Standort", "Route ab der aktuellen Position", "📍", onClick = {
+                hide()
+                host.engine.setOrigin(null)
+            }))
+        }
         val h = host.engine.prefs.history
         if (h.isEmpty()) {
-            content.addView(info("Noch keine Ziele. Tipp: Lange auf die Karte drücken, um einen Punkt direkt anzufahren."))
+            if (target == Target.DESTINATION) content.addView(info("Noch keine Ziele. Tipp: Lange auf die Karte drücken, um einen Punkt direkt anzufahren."))
             return
         }
         content.addView(Ui.text(ctx, "Zuletzt (${h.size} von 20)", 14f, Ui.TEXT2, bold = true).apply { setPadding(Ui.dp(ctx, 8), Ui.dp(ctx, 4), 0, Ui.dp(ctx, 4)) })
@@ -186,6 +246,7 @@ class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
             if (q.isBlank()) showHistory()
             return
         }
+        val pick = autoPick
         job = host.engine.scope.launch {
             delay(delayMs)
             content.removeAllViews()
@@ -194,6 +255,12 @@ class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
                 val res = host.services.search(q.trim(), host.engine.position ?: host.engine.prefs.lastPosition)
                 content.removeAllViews()
                 if (res.isEmpty()) content.addView(info("Nichts gefunden."))
+                if (pick && res.isNotEmpty()) {
+                    autoPick = false
+                    host.toast("${res[0].name}${if (res[0].address.isNotBlank()) ", " + res[0].address else ""}")
+                    choose(res[0])
+                    return@launch
+                }
                 for (p in res) content.addView(row(p.name, p.address, if (p.houseNumber != null) "🏠" else "📍", onClick = { choose(p) }))
             } catch (e: CancellationException) {
                 throw e
@@ -206,7 +273,70 @@ class SearchPanel(host: PanelHost) : Panel(host, fullScreen = true) {
 
     private fun choose(p: Place) {
         hide()
-        host.engine.setDestination(p)
+        if (target == Target.ORIGIN) host.engine.setOrigin(p) else host.engine.setDestination(p)
+    }
+}
+
+// =============================================================================================
+// Wegbeschreibung: alle Abbiegungen der Route mit Entfernungen (auch bei eigenem Startpunkt)
+// =============================================================================================
+
+class StepsPanel(host: PanelHost) : Panel(host, fullScreen = false) {
+    private val summary = Ui.text(ctx, "", 15f, Ui.TEXT2, maxLines = 2)
+
+    init {
+        titleView.text = "Wegbeschreibung"
+        extras.addView(summary, Ui.linLp().margins(ctx, t = 2))
+    }
+
+    fun showRoute(r: de.sascha.kssmaps.core.Route) {
+        super.show()
+        val e = host.engine
+        val from = e.origin?.name ?: "Mein Standort"
+        val to = e.destination?.name ?: "Ziel"
+        summary.text = "$from → $to\n${Instructions.formatDistance(r.distanceM)} · ${Ui.minutes(r.durationSec)}" +
+            (if (r.trafficDelaySec >= 60) " (inkl. ${Ui.minutes(r.trafficDelaySec)} Stau)" else "")
+        content.removeAllViews()
+        val from0 = if (e.mode == NavEngine.Mode.NAVIGATING && e.activeRoute === r) e.state?.along ?: 0.0 else 0.0
+        // Abbiegungen und Meldungen (Stau, Baustelle, Sperrung) in Fahrtreihenfolge
+        val items = ArrayList<Pair<Double, () -> View>>()
+        val shown = r.maneuvers.filter { (it.kind.significant || it.kind == de.sascha.kssmaps.core.ManeuverKind.DEPART) && it.along >= from0 - 1 }
+        for ((i, m) in shown.withIndex()) {
+            val next = shown.getOrNull(i + 1)
+            items.add(m.along to { stepRow(m, next?.let { it.along - m.along }) })
+        }
+        for (rh in r.hazards) {
+            val t = rh.hazard.type
+            if (!(t.isTraffic || t == de.sascha.kssmaps.core.HazardType.ROADWORKS || t == de.sascha.kssmaps.core.HazardType.CLOSURE)) continue
+            if (rh.endAlong < from0) continue
+            items.add(rh.startAlong + 0.5 to {
+                Ui.text(ctx, Icons.hazardEmoji(t) + "  " + Instructions.hazardShort(rh.hazard) + " · bei km " + km(rh.startAlong), 14f, Icons.hazardColor(t), bold = true).apply {
+                    setPadding(Ui.dp(ctx, 52), Ui.dp(ctx, 2), Ui.dp(ctx, 8), Ui.dp(ctx, 6))
+                }
+            })
+        }
+        items.sortBy { it.first }
+        for (it in items) content.addView(it.second())
+        if (items.isEmpty()) content.addView(info("Keine Abbiegungen – der Straße folgen."))
+    }
+
+    private fun km(m: Double): String = String.format(java.util.Locale.GERMANY, "%.1f", m / 1000.0)
+
+    private fun stepRow(m: de.sascha.kssmaps.core.Maneuver, toNext: Double?): View {
+        val r = Ui.hbox(ctx)
+        r.setPadding(Ui.dp(ctx, 6), Ui.dp(ctx, 8), Ui.dp(ctx, 8), Ui.dp(ctx, 8))
+        val iv = android.widget.ImageView(ctx)
+        iv.setImageBitmap(Icons.maneuver(m.kind, Ui.dp(ctx, 30), Ui.TEXT, roundaboutExit = m.roundaboutExit, angleHint = m.turnAngle))
+        r.addView(iv, LinearLayout.LayoutParams(Ui.dp(ctx, 34), Ui.dp(ctx, 34)))
+        val col = Ui.vbox(ctx)
+        col.addView(Ui.text(ctx, if (m.kind == de.sascha.kssmaps.core.ManeuverKind.DEPART) "Start" + (m.street?.let { " auf $it" } ?: "") else Instructions.text(m), 16f, Ui.TEXT, bold = true, maxLines = 2))
+        val sub = buildString {
+            append("km ").append(km(m.along))
+            if (toNext != null && toNext > 1) append(" · dann ").append(Instructions.formatDistance(toNext))
+        }
+        col.addView(Ui.text(ctx, sub, 13f, Ui.TEXT2, maxLines = 1))
+        r.addView(col, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).margins(ctx, l = 12))
+        return r
     }
 }
 
@@ -320,9 +450,10 @@ class FuelPanel(host: PanelHost) : Panel(host, fullScreen = false) {
         r.setPadding(Ui.dp(ctx, 10), Ui.dp(ctx, 10), Ui.dp(ctx, 10), Ui.dp(ctx, 10))
         Ui.clickable(ctx, r, if (i == 0) Color.parseColor("#E8F5E9") else Color.WHITE, 12)
         val priceCol = Ui.vbox(ctx)
+        // Nur die gewaehlte Sorte: frueher stand darunter die jeweils andere Sorte ("E5 …" bei
+        // Diesel), das las sich wie ein falscher Preis.
         priceCol.addView(Ui.text(ctx, Tankerkoenig.formatPrice(s.price(fuel)), 20f, Ui.GREEN_DARK, bold = true))
-        val other = if (fuel == FuelType.DIESEL) "E5 " + Tankerkoenig.formatPrice(s.e5) else "Diesel " + Tankerkoenig.formatPrice(s.diesel)
-        priceCol.addView(Ui.text(ctx, other, 13f, Ui.TEXT2))
+        priceCol.addView(Ui.text(ctx, if (s.price(fuel) == null) "${fuel.label}: kein Preis" else fuel.label, 13f, Ui.TEXT2))
         // Ohne Tankerkoenig-Schluessel gibt es keine Preise – dann keine leere Preisspalte
         if (!host.engine.services.fuelWithoutPrices) {
             r.addView(priceCol, LinearLayout.LayoutParams(Ui.dp(ctx, 112), ViewGroup.LayoutParams.WRAP_CONTENT))

@@ -151,6 +151,9 @@ class NavEngine(
         private set
     var destination: Place? = null
         private set
+    /** Eigener Startpunkt fuer die Planung (null = aktueller Standort). */
+    var origin: Place? = null
+        private set
     var fuelStop: FuelStation? = null
         private set
     var routes: List<Route> = emptyList()
@@ -220,6 +223,8 @@ class NavEngine(
     private var overspeedSince = 0L
     private var lastOverspeedBeep = 0L
     private var pendingRouteCalc = false
+    /** "Los" bei eigenem Startpunkt: erst ab dem Standort neu berechnen, dann automatisch starten. */
+    private var startWhenReady = false
     private var fuelArrivalSpoken = false
     private var lastSavedPos = 0L
 
@@ -384,10 +389,36 @@ class NavEngine(
         mode = Mode.IDLE
         routes = emptyList()
         destination = null
+        origin = null
+        startWhenReady = false
         building = null
         fuelStop = null
         loading = false
         message = null
+        changed()
+    }
+
+    /** Startpunkt setzen (null = wieder ab dem eigenen Standort) und die Routen neu berechnen. */
+    fun setOrigin(place: Place?) {
+        origin = place
+        startWhenReady = false
+        if (place != null) prefs.addToHistory(place)
+        if (mode == Mode.PREVIEW) computePreview()
+        changed()
+    }
+
+    /** Start und Ziel tauschen (Rueckweg planen). Ohne eigenen Start wird der Standort zum Ziel. */
+    fun swapOriginDestination() {
+        val d = destination ?: return
+        val from = origin ?: (position ?: prefs.lastPosition)?.let { Place("Mein Standort", it.fmt(), it.lat, it.lon) } ?: return
+        origin = d
+        destination = from
+        fuelStop = null
+        building = null
+        startWhenReady = false
+        if (mode != Mode.PREVIEW) mode = Mode.PREVIEW
+        computePreview()
+        loadBuilding(from)
         changed()
     }
 
@@ -405,7 +436,7 @@ class NavEngine(
     /** Routen berechnen. avoidJams = Variante, die alle Staus/Sperrungen der gewaehlten Route umfaehrt. */
     fun computePreview(avoidJams: Boolean = false) {
         val dest = destination ?: return
-        val start = position ?: prefs.lastPosition
+        val start = origin?.pos ?: position ?: prefs.lastPosition
         if (start == null) {
             pendingRouteCalc = true
             message = "Warte auf GPS-Standort …"
@@ -420,7 +451,8 @@ class NavEngine(
         routeJob = scope.launch {
             try {
                 val pts = listOfNotNull(start, fuelStop?.pos, dest.pos)
-                val hd = heading.takeIf { speedKmh > 10 }
+                // Fahrtrichtung nur, wenn die Route am eigenen Standort beginnt
+                val hd = heading.takeIf { speedKmh > 10 && origin == null }
                 if (jamBase != null) {
                     val avoid = jamAvoidPoints(jamBase)
                     if (avoid.isEmpty()) {
@@ -474,6 +506,10 @@ class NavEngine(
             } finally {
                 loading = false
                 changed()
+            }
+            if (startWhenReady && origin == null && mode == Mode.PREVIEW) {
+                startWhenReady = false
+                if (routes.isNotEmpty()) startNavigation(0)
             }
         }
     }
@@ -624,6 +660,15 @@ class NavEngine(
     var onRouteActivated: ((Route) -> Unit)? = null
 
     fun startNavigation(index: Int = selectedIndex) {
+        if (origin != null) {
+            // Geplant wurde ab einem anderen Ort – gefahren wird ab dem eigenen Standort.
+            origin = null
+            startWhenReady = true
+            voice.say("Route ab Ihrem Standort wird berechnet.")
+            computePreview()
+            changed()
+            return
+        }
         val r = routes.getOrNull(index) ?: return
         logRoute(r)
         onRouteActivated?.invoke(r)

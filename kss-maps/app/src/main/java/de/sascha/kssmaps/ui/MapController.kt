@@ -1,13 +1,16 @@
 package de.sascha.kssmaps.ui
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.util.Log
+import android.view.Choreographer
 import de.sascha.kssmaps.NaviApp
 import de.sascha.kssmaps.core.Bavaria
 import de.sascha.kssmaps.core.Geo
 import de.sascha.kssmaps.core.HazardType
 import de.sascha.kssmaps.core.LatLon
+import de.sascha.kssmaps.core.PuckSmoother
 import de.sascha.kssmaps.core.RankedStation
 import de.sascha.kssmaps.core.Route
 import de.sascha.kssmaps.core.RouteHazard
@@ -40,6 +43,8 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import org.maplibre.geojson.Polygon
+import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.roundToInt
 
 /**
@@ -77,14 +82,31 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
     private var styleUrl: String? = null
     var onStyleLoaded: (() -> Unit)? = null
 
-    /** Karte folgt der Position (aus, sobald man selbst schiebt). */
+    /** Karte folgt der Position (aus, sobald man selbst schiebt). Beim Einschalten weicher Uebergang. */
     var following = true
+        set(v) {
+            if (v && !field) beginTransition()
+            field = v
+            if (v) scheduleFrame()
+        }
     /** Zeitpunkt der letzten Kamera-Bewegung durch Programm (Uebersicht, Punkt zeigen, Zoom). */
     var lastManualMove = 0L
         private set
     /** Zusaetzlicher Rand (px) fuer Bedienelemente: links, oben, rechts, unten. */
     var uiPadding = doubleArrayOf(0.0, 0.0, 0.0, 0.0)
+        set(v) {
+            field = v
+            scheduleFrame()
+        }
     var viewHeightPx = 0
+    /** false, solange die Karte nicht sichtbar ist: dann werden keine Bilder berechnet. */
+    var active = true
+        set(v) {
+            field = v
+            if (v) scheduleFrame() else cancelFrame()
+        }
+    private var disposed = false
+    private val debuggable = (ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     private var fuelResults: List<RankedStation> = emptyList()
     private var hiddenBaseLayers = ArrayList<String>()
     private var satVisible = false
@@ -182,6 +204,7 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
     }
 
     private fun install(st: Style) {
+        lastPuckPos = null
         st.addImage("puck", img(Icons.puck(px(if (forCar) 52 else 46))))
         for (t in HazardType.values()) st.addImage("hz-" + t.name, img(Icons.hazard(t, px(if (forCar) 36 else 34))))
         st.addImage("dest-pin", img(Icons.destinationPin(px(if (forCar) 46 else 42))))
@@ -344,13 +367,33 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
     // Luftbild & Verkehrsfluss
     // ---------------------------------------------------------------------------------------
 
+    private var lastIdleWork = 0L
+    private var satKey = ""
+
+    /**
+     * Vom Besitzer bei Kamera-Stillstand aufrufen. Die Kamera folgt dem Pfeil Bild fuer Bild, MapLibre
+     * meldet dann nach jedem Bild "Stillstand" – Luftbild-Umschaltung und Gebaeudesuche darum hoechstens
+     * zweimal pro Sekunde.
+     */
+    fun onCameraIdle() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastIdleWork < 500) return
+        lastIdleWork = now
+        updateSatellite()
+        tryBuildingFromMap()
+    }
+
     fun updateSatellite() {
         val st = style ?: return
         val on = prefs.mapMode == 1
         val center = map.cameraPosition.target
         val inBavaria = center != null && Bavaria.contains(LatLon(center.latitude, center.longitude))
-        st.getLayer("nav-sat-by")?.setProperties(PropertyFactory.visibility(if (on && inBavaria) Property.VISIBLE else Property.NONE))
-        st.getLayer("nav-sat-esri")?.setProperties(PropertyFactory.visibility(if (on && !inBavaria) Property.VISIBLE else Property.NONE))
+        val key = "$on/$inBavaria/${System.identityHashCode(st)}"
+        if (key != satKey) {
+            satKey = key
+            st.getLayer("nav-sat-by")?.setProperties(PropertyFactory.visibility(if (on && inBavaria) Property.VISIBLE else Property.NONE))
+            st.getLayer("nav-sat-esri")?.setProperties(PropertyFactory.visibility(if (on && !inBavaria) Property.VISIBLE else Property.NONE))
+        }
         if (on != satVisible) {
             satVisible = on
             if (on) {
@@ -418,11 +461,19 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
             NavEngine.Mode.NAVIGATING -> {
                 val r = engine.activeRoute
                 if (r != null) {
-                    val along = engine.state?.along ?: 0.0
-                    if (!force && r === lastRouteObj && along - lastRouteUpdateAlong < 40.0) return
+                    // Ab dem angezeigten (geglaetteten) Pfeil, mit kurzem Rest dahinter: sonst endet
+                    // die Linie zwischen zwei GPS-Punkten sichtbar vor oder hinter dem Pfeil.
+                    noteState()
+                    val along = when {
+                        lineIsActive(r) -> smoother.along ?: 0.0
+                        // Zustand gehoert noch zur alten Route (gerade neu berechnet): neue beginnt hier
+                        stateRoute === r -> engine.state?.along ?: 0.0
+                        else -> 0.0
+                    }
+                    if (!force && r === lastRouteObj && abs(along - lastRouteUpdateAlong) < 30.0) return
                     lastRouteObj = r
                     lastRouteUpdateAlong = along
-                    val rest = r.geometry.slice(along, r.geometry.length)
+                    val rest = r.geometry.slice(maxOf(0.0, along - 12.0), r.geometry.length)
                     if (rest.size >= 2) feats.add(Feature.fromGeometry(line(rest)).also { it.addBooleanProperty("sel", true) })
                     addTraffic(traffic, r, along)
                 }
@@ -619,57 +670,267 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         src.setGeoJson(FeatureCollection.fromFeatures(feats))
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Eigene Position: fluessig zwischen den GPS-Punkten (siehe PuckSmoother)
+    // ---------------------------------------------------------------------------------------
+
+    private val smoother = PuckSmoother()
+    private val choreographer: Choreographer = Choreographer.getInstance()
+    private var frameQueued = false
+    private val frameCallback = Choreographer.FrameCallback { ns ->
+        frameQueued = false
+        onFrame(ns / 1e9)
+    }
+    private var lastFixLoc: Any? = null
+    private var lastFixState: Any? = null
+    private var lastFixRoute: Any? = null
+    private var lastPuckPos: LatLon? = null
+    private var lastPuckBearing = Double.NaN
+    private var lastFrameT = Double.NaN
+
+    private fun nowSec(): Double = System.nanoTime() / 1e9
+
+    private fun lineIsActive(r: Route): Boolean = engine.mode == NavEngine.Mode.NAVIGATING && lastFixRoute === r && smoother.along != null
+
+    // Zu welcher Route gehoert engine.state? Ein neuer Zustand entsteht nur bei einem GPS-Punkt,
+    // synchron mit der dann aktiven Route. Nach einer Neuberechnung ist der alte Zustand bis zum
+    // naechsten Punkt noch der der alten Route.
+    private var stateSeen: Any? = null
+    private var stateRoute: Route? = null
+
+    private fun noteState() {
+        val st = engine.state
+        if (st !== stateSeen) {
+            stateSeen = st
+            stateRoute = if (st != null) engine.activeRoute else null
+        }
+    }
+
+    /** Neuer GPS-Punkt bzw. neuer Zustand: Ziel fuer die Anzeige setzen, gezeichnet wird pro Bild. */
     fun updatePosition() {
         val st = style ?: return
-        val src = st.getSourceAs<GeoJsonSource>(SRC_POS) ?: return
-        val p = (if (engine.mode == NavEngine.Mode.NAVIGATING) engine.state?.takeIf { it.onRoute }?.snapped else null) ?: engine.position
-        if (p == null) {
-            src.setGeoJson(FeatureCollection.fromFeatures(emptyList<Feature>()))
+        val loc = engine.location
+        if (loc == null) {
+            smoother.reset()
+            lastPuckPos = null
+            st.getSourceAs<GeoJsonSource>(SRC_POS)?.setGeoJson(FeatureCollection.fromFeatures(emptyList<Feature>()))
             return
         }
+        noteState()
+        val nav = if (engine.mode == NavEngine.Mode.NAVIGATING) engine.state else null
+        val r = engine.activeRoute
+        // Nur echte neue Punkte/Zustaende. Nach einer Neuberechnung gehoert der alte Zustand noch zur
+        // alten Route (seine Lage passt nicht zur neuen) – dann bis zum naechsten GPS-Punkt warten.
+        if (loc !== lastFixLoc || nav !== lastFixState) {
+            lastFixLoc = loc
+            lastFixState = nav
+            val t = nowSec()
+            val sp = engine.speedKmh / 3.6
+            if (nav != null && nav.onRoute && r != null && stateRoute === r) {
+                lastFixRoute = r
+                smoother.fixOnRoute(t, r.geometry, r, nav.along, sp)
+            } else {
+                lastFixRoute = null
+                smoother.fixFree(t, LatLon(loc.latitude, loc.longitude), engine.heading, sp)
+            }
+        }
+        if (lastPuckPos == null) {
+            smoother.advance(nowSec())
+            drawPuck()
+        }
+        scheduleFrame()
+    }
+
+    private fun drawPuck() {
+        val st = style ?: return
+        val p = smoother.pos ?: return
+        val b = smoother.bearing
+        val lp = lastPuckPos
+        if (lp != null && Geo.distance(lp, p) < 0.02 && abs(Geo.signedAngle(lastPuckBearing, b)) < 0.05) return
+        val src = st.getSourceAs<GeoJsonSource>(SRC_POS) ?: return
         val f = Feature.fromGeometry(pt(p))
-        val b = if (engine.mode == NavEngine.Mode.NAVIGATING && engine.state?.onRoute == true) engine.state?.routeBearing else engine.heading
-        f.addNumberProperty("b", (b ?: 0.0).toFloat())
-        src.setGeoJson(FeatureCollection.fromFeature(f))
+        f.addNumberProperty("b", b.toFloat())
+        src.setGeoJson(f)
+        lastPuckPos = p
+        lastPuckBearing = b
+    }
+
+    private fun scheduleFrame() {
+        if (frameQueued || !active || disposed) return
+        frameQueued = true
+        choreographer.postFrameCallback(frameCallback)
+    }
+
+    private fun cancelFrame() {
+        if (!frameQueued) return
+        choreographer.removeFrameCallback(frameCallback)
+        frameQueued = false
+        lastFrameT = Double.NaN
+    }
+
+    /** Besitzer (Activity, Android-Auto-Flaeche) ruft das vor dem Zerstoeren der Karte auf. */
+    fun dispose() {
+        disposed = true
+        cancelFrame()
+    }
+
+    private fun onFrame(t: Double) {
+        if (!active || disposed || style == null) {
+            lastFrameT = Double.NaN
+            return
+        }
+        val fdt = if (lastFrameT.isNaN()) 1.0 / 60 else (t - lastFrameT).coerceIn(0.0, 0.25)
+        lastFrameT = t
+        smoother.advance(t)
+        drawPuck()
+        val camBusy = following && cameraFrame(t, fdt)
+        if (debuggable) smoothStats(t, fdt)
+        if (!smoother.isSettled(t) || camBusy) scheduleFrame() else lastFrameT = Double.NaN
+    }
+
+    // ---- Messung fuer die Testfahrt: wie gleichmaessig laeuft der Pfeil? (nur Test-Builds) ----
+    private var statT0 = Double.NaN
+    private var statPrev: LatLon? = null
+    private var statN = 0
+    private var statMin = Double.MAX_VALUE
+    private var statMax = 0.0
+    private var statSum = 0.0
+
+    private fun smoothStats(t: Double, fdt: Double) {
+        val p = smoother.pos ?: return
+        val prev = statPrev
+        statPrev = p
+        val v = engine.speedKmh / 3.6
+        if (prev == null || fdt <= 0.0 || v < 3.0 || engine.mode != NavEngine.Mode.NAVIGATING) return
+        if (statT0.isNaN()) statT0 = t
+        val sp = Geo.distance(prev, p) / fdt
+        statN++
+        statSum += sp
+        statMin = minOf(statMin, sp)
+        statMax = maxOf(statMax, sp)
+        if (t - statT0 >= 10.0) {
+            Log.i("KSSMaps", String.format(java.util.Locale.ROOT, "PUCK_SMOOTH %s bilder=%d fps=%.0f tempo=%.1f pfeil_min=%.1f pfeil_mittel=%.1f pfeil_max=%.1f m/s",
+                if (forCar) "auto" else "handy", statN, statN / (t - statT0), v, statMin, statSum / statN, statMax))
+            statT0 = t
+            statN = 0
+            statMin = Double.MAX_VALUE
+            statMax = 0.0
+            statSum = 0.0
+        }
     }
 
     // ---------------------------------------------------------------------------------------
     // Kamera
     // ---------------------------------------------------------------------------------------
 
-    fun zoomForSpeed(kmh: Double): Double = when {
-        kmh < 25 -> 17.0
-        kmh < 55 -> 16.3
-        kmh < 85 -> 15.5
-        kmh < 115 -> 14.9
-        else -> 14.4
+    private var zoomBand = -1
+
+    /** Zoom nach Tempo, mit etwas Spielraum an den Grenzen (sonst pendelt der Zoom bei 55 km/h). */
+    private fun zoomForSpeedSteady(kmh: Double): Double {
+        val bounds = doubleArrayOf(25.0, 55.0, 85.0, 115.0)
+        var band = bounds.count { kmh >= it }
+        val cur = zoomBand
+        if (cur >= 0 && band != cur) {
+            val edge = if (band > cur) bounds[band - 1] else bounds[cur - 1]
+            if (abs(kmh - edge) < 4.0) band = cur
+        }
+        zoomBand = band
+        return when (band) {
+            0 -> 17.0
+            1 -> 16.3
+            2 -> 15.5
+            3 -> 14.9
+            else -> 14.4
+        }
     }
 
-    /** Karte mitfuehren: beim Navigieren in Fahrtrichtung gedreht und geneigt, sonst genordet. */
-    fun follow(animate: Boolean = true) {
-        if (!following) return
+    // Kamera folgt dem geglaetteten Pfeil Bild fuer Bild (keine 1-Sekunden-Animationen mehr).
+    private var camZoom = Double.NaN
+    private var camTilt = Double.NaN
+    private var camPad: DoubleArray? = null
+    private var idleZoom = 16.0
+    private var trFrom: CameraPosition? = null
+    private var trStart = 0.0
+    private val trDuration = 0.9
+
+    private fun ease(cur: Double, want: Double, dt: Double, tau: Double): Double =
+        if (cur.isNaN()) want else cur + (want - cur) * (1.0 - exp(-dt / tau))
+
+    private fun beginTransition() {
+        trFrom = map.cameraPosition
+        trStart = nowSec()
+        camZoom = Double.NaN
+        camTilt = Double.NaN
+        camPad = null
+        idleZoom = maxOf(map.cameraPosition.zoom, 15.0)
+        scheduleFrame()
+    }
+
+    /** Ein Bild der Verfolgerkamera. true = noch in Bewegung (Uebergang, Zoom, Rand). */
+    private fun cameraFrame(t: Double, fdt: Double): Boolean {
+        val p = smoother.pos
+        if (p == null) {
+            if (trFrom != null) trStart = t
+            return false
+        }
         val navigating = engine.mode == NavEngine.Mode.NAVIGATING
-        val p = (if (navigating) engine.state?.takeIf { it.onRoute }?.snapped else null) ?: engine.position ?: return
-        val bearing = if (navigating) (engine.state?.takeIf { it.onRoute }?.routeBearing ?: engine.heading ?: map.cameraPosition.bearing) else 0.0
-        val zoom = if (navigating) zoomForSpeed(engine.speedKmh) else maxOf(map.cameraPosition.zoom, 15.0)
-        val pad = uiPadding.copyOf()
-        if (navigating && viewHeightPx > 0) {
-            // Position ins untere Drittel schieben, damit man mehr von der Strecke voraus sieht
-            pad[1] = maxOf(pad[1], viewHeightPx * 0.42)
+        val wantZoom = if (navigating) zoomForSpeedSteady(engine.speedKmh) else idleZoom
+        val wantTilt = if (navigating) 50.0 else 0.0
+        val wantBearing = if (navigating) smoother.bearing else 0.0
+        val wantPad = uiPadding.copyOf()
+        // Beim Navigieren die Position ins untere Drittel schieben: mehr Strecke voraus sichtbar
+        if (navigating && viewHeightPx > 0) wantPad[1] = maxOf(wantPad[1], viewHeightPx * 0.42)
+        camZoom = ease(camZoom, wantZoom, fdt, 1.0)
+        camTilt = ease(camTilt, wantTilt, fdt, 0.5)
+        val pad = camPad ?: wantPad.copyOf()
+        for (i in 0..3) pad[i] = ease(pad[i], wantPad[i], fdt, 0.3)
+        camPad = pad
+        var busy = abs(camZoom - wantZoom) > 0.005 || abs(camTilt - wantTilt) > 0.05 || (0..3).any { abs(pad[it] - wantPad[it]) > 0.5 }
+        var lat = p.lat
+        var lon = p.lon
+        var zoom = camZoom
+        var bearing = wantBearing
+        var tilt = camTilt
+        val padding = pad.copyOf()
+        val from = trFrom
+        if (from != null) {
+            val k = ((t - trStart) / trDuration).coerceIn(0.0, 1.0)
+            if (k >= 1.0) trFrom = null
+            else {
+                busy = true
+                val e = k * k * (3 - 2 * k)
+                from.target?.let { ft ->
+                    lat = ft.latitude + (lat - ft.latitude) * e
+                    lon = ft.longitude + (lon - ft.longitude) * e
+                }
+                zoom = from.zoom + (zoom - from.zoom) * e
+                bearing = from.bearing + Geo.signedAngle(from.bearing, bearing) * e
+                tilt = from.tilt + (tilt - from.tilt) * e
+                val fp = from.padding
+                if (fp != null && fp.size == 4) for (i in 0..3) padding[i] = fp[i] + (padding[i] - fp[i]) * e
+            }
         }
         val cp = CameraPosition.Builder()
-            .target(LatLng(p.lat, p.lon))
+            .target(LatLng(lat, lon))
             .zoom(zoom)
             .bearing(bearing)
-            .tilt(if (navigating) 50.0 else 0.0)
-            .padding(pad[0], pad[1], pad[2], pad[3])
+            .tilt(tilt)
+            .padding(padding[0], padding[1], padding[2], padding[3])
             .build()
-        if (animate) map.animateCamera(CameraUpdateFactory.newCameraPosition(cp), 950) else map.moveCamera(CameraUpdateFactory.newCameraPosition(cp))
+        map.moveCamera(CameraUpdateFactory.newCameraPosition(cp))
+        return busy
+    }
+
+    /** Karte mitfuehren (beim Navigieren gedreht und geneigt, sonst genordet) – Bild fuer Bild. */
+    @Suppress("UNUSED_PARAMETER")
+    fun follow(animate: Boolean = true) {
+        if (following) scheduleFrame()
     }
 
     fun recenter() {
+        beginTransition()
         following = true
-        follow(animate = true)
+        scheduleFrame()
     }
 
     /** Alle Routen der Vorschau ins Bild. */

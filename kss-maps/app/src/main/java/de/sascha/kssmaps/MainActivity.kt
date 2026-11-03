@@ -3,16 +3,19 @@ package de.sascha.kssmaps
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.speech.RecognizerIntent
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -43,6 +46,7 @@ import de.sascha.kssmaps.ui.RoutePanel
 import de.sascha.kssmaps.ui.SearchPanel
 import de.sascha.kssmaps.ui.SettingsPanel
 import de.sascha.kssmaps.ui.SpeedWidget
+import de.sascha.kssmaps.ui.StepsPanel
 import de.sascha.kssmaps.ui.Ui
 import de.sascha.kssmaps.ui.Ui.margins
 import de.sascha.kssmaps.ui.frameMatch
@@ -52,6 +56,7 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
+import kotlin.math.roundToInt
 
 class MainActivity : Activity(), NavEngine.Listener, PanelHost {
 
@@ -83,6 +88,9 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     private lateinit var btnReport: ImageView
     private lateinit var btnAvoid: ImageView
     private lateinit var speed: SpeedWidget
+    private lateinit var speedRow: LinearLayout
+    private lateinit var alertCol: LinearLayout
+    private lateinit var bottomCol: LinearLayout
     private lateinit var bottom: FrameLayout
     private lateinit var routePanel: RoutePanel
     private lateinit var navBar: NavBar
@@ -93,7 +101,15 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     private lateinit var avoid: AvoidPanel
     private lateinit var hazardList: HazardListPanel
     private lateinit var settings: SettingsPanel
+    private lateinit var steps: StepsPanel
     private val panels = ArrayList<Panel>()
+
+    /** Querformat: Bedienung links (wie Google Maps in Android Auto), Karte rechts frei. */
+    private var landscape = false
+    /** Breite der linken Spalte im Querformat (px). */
+    private var sideW = 0
+    private var voiceCallback: ((String) -> Unit)? = null
+    private val reqVoice = 4711
 
     private var lastMode: NavEngine.Mode? = null
     private var lastGesture = 0L
@@ -138,6 +154,10 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         searchBar.addView(searchText, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         searchBar.setOnClickListener { openSearch() }
         searchText.setOnClickListener { openSearch() }
+        searchBar.addView(Ui.iconButton(this, Icons.glyph(Icons.Glyph.MIC, dp(24), Ui.BLUE), Color.WHITE, 46, "Spracheingabe") { openSearch(voice = true) }.apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = 0
+            elevation = 0f
+        })
         searchBar.addView(Ui.iconButton(this, Icons.glyph(Icons.Glyph.SETTINGS, dp(24), Ui.TEXT2), Color.WHITE, 46, "Einstellungen") { openSettings() }.apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = 0
             elevation = 0f
@@ -148,8 +168,9 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         topCol.addView(maneuver.view, Ui.linLp())
         maneuver.view.setOnClickListener { hazardList.show() }
 
+        alertCol = Ui.vbox(this)
         hazardBanner = HazardBanner(this)
-        topCol.addView(hazardBanner.view, Ui.linLp().margins(this, t = 8))
+        alertCol.addView(hazardBanner.view, Ui.linLp().margins(this, t = 8))
         hazardBanner.view.setOnClickListener { hazardList.show() }
 
         betterBanner = Ui.hbox(this)
@@ -160,13 +181,14 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         betterBanner.addView(betterText, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         betterBanner.addView(Ui.button(this, "Übernehmen", Color.WHITE, Ui.BLUE) { engine.acceptBetterRoute() })
         betterBanner.addView(Ui.button(this, "Nein", Ui.BLUE_DARK) { engine.dismissBetterRoute() }, Ui.linLp(ViewGroup.LayoutParams.WRAP_CONTENT).margins(this, l = 6))
-        topCol.addView(betterBanner, Ui.linLp().margins(this, t = 8))
+        alertCol.addView(betterBanner, Ui.linLp().margins(this, t = 8))
 
         msgBanner = Ui.text(this, "", 15f, Color.WHITE, maxLines = 3)
         msgBanner.background = Ui.bg(this, Color.parseColor("#E6202124"), 14)
         msgBanner.setPadding(dp(14), dp(10), dp(14), dp(10))
         msgBanner.setOnClickListener { engine.clearMessage() }
-        topCol.addView(msgBanner, Ui.linLp().margins(this, t = 8))
+        alertCol.addView(msgBanner, Ui.linLp().margins(this, t = 8))
+        topCol.addView(alertCol, Ui.linLp())
 
         root.addView(topCol, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP).apply {
             setMargins(dp(10), dp(10), dp(10), 0)
@@ -202,8 +224,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
 
         // ---- unten: Tempo, Strassenname, Routen-/Navigationsleiste ----
         bottom = FrameLayout(this)
-        val bottomCol = Ui.vbox(this)
-        val speedRow = Ui.hbox(this)
+        bottomCol = Ui.vbox(this)
+        speedRow = Ui.hbox(this)
         speed = SpeedWidget(this)
         speedRow.addView(speed.view)
         roadLabel = Ui.text(this, "", 15f, Color.WHITE, bold = true, maxLines = 1)
@@ -218,6 +240,11 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             onAvoidJams = { engine.avoidJamsNow() },
             onFuel = { openFuel() },
             onClose = { engine.cancelPreview() },
+            onPickOrigin = { closePanels(); search.open(SearchPanel.Target.ORIGIN, voice = false) },
+            onPickDestination = { closePanels(); search.open(SearchPanel.Target.DESTINATION, voice = false) },
+            onSwap = { engine.swapOriginDestination() },
+            onOriginHere = { engine.setOrigin(null) },
+            onSteps = { openSteps() },
         )
         bottomCol.addView(routePanel.view, Ui.linLp())
         navBar = NavBar(this, onStop = { confirmStop() }, onFuel = { openFuel() }, onList = { hazardList.show() })
@@ -238,11 +265,74 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         avoid = AvoidPanel(this)
         hazardList = HazardListPanel(this)
         settings = SettingsPanel(this, onChanged = { onSettingsChanged() }, onCheckUpdate = { checkUpdate(manual = true) })
-        panels.addAll(listOf(search, fuel, avoid, hazardList, settings))
+        steps = StepsPanel(this)
+        panels.addAll(listOf(search, fuel, avoid, hazardList, steps, settings))
         for (p in panels) root.addView(p.view, frameMatch())
 
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateMapPadding() }
         setContentView(root)
+        applyLayout()
+    }
+
+    /**
+     * Hochkant: Banner oben, Leiste unten ueber die ganze Breite (wie bisher).
+     * Quer: alles in einer Spalte links – Abbiege-Banner oben, Ankunft/Knoepfe unten –, die Karte
+     * rechts bleibt frei; Tempo und Strassenname unten links auf der Karte, Warnungen oben.
+     */
+    private fun applyLayout() {
+        val cfg = resources.configuration
+        landscape = cfg.screenWidthDp > 0 && cfg.screenWidthDp > cfg.screenHeightDp * 1.2
+        sideW = if (landscape) dp((cfg.screenWidthDp * 0.40).roundToInt().coerceIn(290, 420)) else 0
+        val m = dp(10)
+        val wrap = ViewGroup.LayoutParams.WRAP_CONTENT
+        val match = ViewGroup.LayoutParams.MATCH_PARENT
+        topCol.layoutParams = FrameLayout.LayoutParams(if (landscape) sideW else match, wrap, Gravity.TOP or Gravity.START).apply {
+            setMargins(m, m, if (landscape) 0 else m, 0)
+        }
+        bottom.layoutParams = FrameLayout.LayoutParams(if (landscape) sideW else match, wrap, Gravity.BOTTOM or Gravity.START).apply {
+            setMargins(m, 0, if (landscape) 0 else m, m)
+        }
+        (alertCol.parent as? ViewGroup)?.removeView(alertCol)
+        if (landscape) {
+            root.addView(alertCol, root.indexOfChild(rightCol), FrameLayout.LayoutParams(match, wrap, Gravity.TOP or Gravity.START).apply {
+                setMargins(sideW + 2 * m, 0, dp(76), 0)
+            })
+        } else topCol.addView(alertCol, Ui.linLp())
+        (speedRow.parent as? ViewGroup)?.removeView(speedRow)
+        if (landscape) {
+            root.addView(speedRow, root.indexOfChild(rightCol), FrameLayout.LayoutParams(wrap, wrap, Gravity.BOTTOM or Gravity.START).apply {
+                setMargins(sideW + 2 * m, 0, dp(76), m)
+            })
+        } else bottomCol.addView(speedRow, 0, Ui.linLp().margins(this, b = 8))
+        maneuver.setCompact(landscape)
+        navBar.setCompact(landscape)
+        val h = dp(cfg.screenHeightDp)
+        routePanel.setListMaxHeight(if (landscape) (h - dp(250)).coerceAtLeast(dp(80)) else (h * 0.32).roundToInt())
+        val sheetW = maxOf(sideW, dp((cfg.screenWidthDp * 0.5).roundToInt()))
+        for (p in panels) p.applyLayout(landscape, sheetW)
+        mapCtl?.let { applyMapUi(it.map) }
+    }
+
+    /** Kompass und Copyright-Hinweis dorthin, wo sie nichts verdecken. */
+    private fun applyMapUi(map: MapLibreMap) {
+        val ui = map.uiSettings
+        if (landscape) {
+            ui.compassGravity = Gravity.BOTTOM or Gravity.END
+            ui.setCompassMargins(0, 0, dp(14), dp(52))
+            ui.attributionGravity = Gravity.BOTTOM or Gravity.END
+            ui.setAttributionMargins(0, 0, dp(12), dp(10))
+        } else {
+            ui.compassGravity = Gravity.TOP or Gravity.START
+            ui.setCompassMargins(dp(14), dp(170), 0, 0)
+            ui.attributionGravity = Gravity.BOTTOM or Gravity.START
+            ui.setAttributionMargins(dp(8), 0, 0, dp(8))
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyLayout()
+        renderAll(false)
     }
 
     private fun setupMap(map: MapLibreMap) {
@@ -251,9 +341,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         map.uiSettings.isCompassEnabled = true
         map.uiSettings.isLogoEnabled = false
         map.uiSettings.isAttributionEnabled = true
-        map.uiSettings.setAttributionMargins(dp(8), 0, 0, dp(8))
-        map.uiSettings.compassGravity = Gravity.TOP or Gravity.START
-        map.uiSettings.setCompassMargins(dp(14), dp(170), 0, 0)
+        applyMapUi(map)
         val start = engine.position ?: prefs.lastPosition
         val c = start ?: Bavaria.CENTER
         map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(c.lat, c.lon), if (start != null) 15.0 else 7.0))
@@ -281,26 +369,31 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
                 updateRecenter()
             }
         }
-        map.addOnCameraIdleListener {
-            ctl.updateSatellite()
-            ctl.tryBuildingFromMap()
-        }
+        map.addOnCameraIdleListener { ctl.onCameraIdle() }
         mapView.addOnDidFailLoadingMapListener { ctl.onStyleFailed() }
         updateMapPadding()
     }
 
     private fun updateMapPadding() {
-        val wantTop = topCol.bottom + dp(4)
+        val m = dp(10)
+        // Knopfspalte: hochkant unter Suchleiste/Banner, quer ganz oben (die Spalte links ist frei)
+        val wantTop = if (landscape) m else topCol.bottom + dp(4)
         (rightCol.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
-            if (lp.topMargin != wantTop && topCol.height > 0) {
+            if (lp.topMargin != wantTop && (landscape || topCol.height > 0)) {
                 lp.topMargin = wantTop
                 rightCol.layoutParams = lp
             }
         }
         val ctl = mapCtl ?: return
-        val topH = if (topCol.visibility == View.VISIBLE) topCol.height + dp(10) else 0
-        val bottomH = bottom.height + dp(10)
-        ctl.uiPadding = doubleArrayOf(dp(10).toDouble(), topH.toDouble(), (rightCol.width + dp(10)).toDouble(), bottomH.toDouble())
+        val pad = if (landscape) {
+            val panel = topCol.height > 0 || bottom.height > 0
+            doubleArrayOf((if (panel) sideW + 2 * m else m).toDouble(), m.toDouble(), (rightCol.width + m).toDouble(), m.toDouble())
+        } else {
+            val topH = if (topCol.visibility == View.VISIBLE) topCol.height + m else 0
+            val bottomH = bottom.height + m
+            doubleArrayOf(m.toDouble(), topH.toDouble(), (rightCol.width + m).toDouble(), bottomH.toDouble())
+        }
+        if (!pad.contentEquals(ctl.uiPadding)) ctl.uiPadding = pad
         ctl.viewHeightPx = root.height
     }
 
@@ -319,7 +412,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     private fun renderAll(forceCamera: Boolean) {
         val e = engine
         val mode = e.mode
-        searchBar.visibility = if (mode == NavEngine.Mode.NAVIGATING) View.GONE else View.VISIBLE
+        // Quer in der Vorschau ohne Suchleiste: Start und Ziel stehen in der Routenleiste links.
+        searchBar.visibility = if (mode == NavEngine.Mode.NAVIGATING || (landscape && mode == NavEngine.Mode.PREVIEW)) View.GONE else View.VISIBLE
         searchText.text = e.destination?.name ?: "Wohin?"
         searchText.setTextColor(if (e.destination != null) Ui.TEXT else Ui.TEXT2)
         maneuver.view.visibility = if (mode == NavEngine.Mode.NAVIGATING) View.VISIBLE else View.GONE
@@ -329,7 +423,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         btnJam.visibility = if (mode == NavEngine.Mode.NAVIGATING) View.VISIBLE else View.GONE
         btnMute.visibility = if (mode == NavEngine.Mode.PREVIEW) View.GONE else View.VISIBLE
         btnAvoid.visibility = if (mode == NavEngine.Mode.NAVIGATING) View.GONE else View.VISIBLE
-        btnFuel.visibility = if (mode == NavEngine.Mode.PREVIEW) View.GONE else View.VISIBLE
+        // Quer beim Fahren ist Tanken in der Leiste links – rechts Platz sparen.
+        btnFuel.visibility = if (mode == NavEngine.Mode.PREVIEW || (landscape && mode == NavEngine.Mode.NAVIGATING)) View.GONE else View.VISIBLE
         btnReport.visibility = if (mode == NavEngine.Mode.PREVIEW || !prefs.camerasEnabled) View.GONE else View.VISIBLE
         if (mode == NavEngine.Mode.PREVIEW) routePanel.render(e)
         if (mode == NavEngine.Mode.NAVIGATING) navBar.render(e)
@@ -428,9 +523,50 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     // Aktionen
     // =======================================================================================
 
-    private fun openSearch() {
+    private fun openSearch(voice: Boolean = false) {
         closePanels()
-        search.show()
+        search.open(SearchPanel.Target.DESTINATION, voice)
+    }
+
+    private fun openSteps() {
+        val r = (if (engine.mode == NavEngine.Mode.NAVIGATING) engine.activeRoute else engine.selectedRoute) ?: run {
+            toast("Noch keine Route")
+            return
+        }
+        closePanels()
+        steps.showRoute(r)
+    }
+
+    /** Google-Spracherkennung (Deutsch); das Ergebnis kommt in onActivityResult an. */
+    override fun startVoice(prompt: String, onResult: (String) -> Unit) {
+        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "de-DE")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+        }
+        voiceCallback = onResult
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(i, reqVoice)
+        } catch (e: ActivityNotFoundException) {
+            voiceCallback = null
+            toast("Spracheingabe nicht verfügbar – bitte die Google-App bzw. „Spracherkennung von Google“ aktivieren")
+        } catch (e: Exception) {
+            voiceCallback = null
+            toast("Spracheingabe nicht möglich: ${e.message}")
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != reqVoice) return
+        val cb = voiceCallback
+        voiceCallback = null
+        val text = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (resultCode == RESULT_OK && !text.isNullOrBlank()) cb?.invoke(text)
     }
 
     private fun openFuel() {
@@ -580,6 +716,19 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
                 engine.reportHere(if (t == "distance") HazardType.DISTANCE_CHECK else HazardType.SPEED_CAMERA, permanent = false)
             }
             if (i.getBooleanExtra("test_open_fuel", false)) openFuel()
+            // Startpunkt setzen ("Breite,Laenge") bzw. zuruecksetzen ("here")
+            i.getStringExtra("test_origin")?.let { o ->
+                if (o == "here") engine.setOrigin(null)
+                else Geocoding.parseCoordinates(o)?.let { p -> engine.setOrigin(de.sascha.kssmaps.core.Place("Teststart", o, p.lat, p.lon)) }
+            }
+            if (i.getBooleanExtra("test_open_steps", false)) openSteps()
+            if (i.getBooleanExtra("test_open_origin_search", false)) search.open(SearchPanel.Target.ORIGIN, voice = false)
+            // Wie ein erkannter Sprachbefehl (ohne Mikrofon): Suche oeffnen und Text verarbeiten
+            i.getStringExtra("test_voice")?.let { t ->
+                closePanels()
+                search.open(SearchPanel.Target.DESTINATION, voice = false)
+                search.onVoice(t)
+            }
             if (i.getBooleanExtra("test_close_panels", false)) closePanels()
             if (i.getBooleanExtra("test_open_settings", false)) openSettings()
             // Android-Auto-Karte auf unsichtbarer Flaeche zeichnen und als Bild sichern (Testfahrt)
@@ -667,6 +816,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     override fun onStart() {
         super.onStart()
         mapView.onStart()
+        mapCtl?.active = true
         engine.acquireLocation()
     }
 
@@ -684,6 +834,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
 
     override fun onStop() {
         engine.releaseLocation()
+        mapCtl?.active = false
         mapView.onStop()
         super.onStop()
     }
@@ -701,6 +852,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     override fun onDestroy() {
         engine.removeListener(this)
         handler.removeCallbacksAndMessages(null)
+        mapCtl?.dispose()
         mapView.onDestroy()
         super.onDestroy()
     }

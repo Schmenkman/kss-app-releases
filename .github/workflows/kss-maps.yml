@@ -175,8 +175,8 @@ jobs:
           echo "Download: https://github.com/${R}/releases/download/${TAG}/kss-maps.apk" >> "$GITHUB_STEP_SUMMARY"
 
   # Automatische Testfahrt im Emulator: nur auf Anforderung (Commit-Nachricht mit "[testfahrt]"
-  # oder manuell gestartet). Screenshots und Protokoll haengen danach als "testfahrt_*" am
-  # Release (der naechste normale Build entfernt sie wieder).
+  # oder manuell gestartet). Screenshots und Protokoll haengen danach als "testfahrt_*" an der
+  # eigenen Vorabversion "kssmaps-testfahrt" (nicht am Release – das bleibt sauber).
   testfahrt:
     needs: build
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[testfahrt]')
@@ -241,11 +241,11 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: bash kss-maps/tools/smoketest.sh
 
-      - name: Ergebnisse an das Release haengen
+      - name: Ergebnisse an die Testfahrt-Vorabversion haengen
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.build.outputs.tag }}
+          TAG: kssmaps-testfahrt
         run: |
           if [ ! -d smoke ]; then echo "keine Ergebnisse"; exit 0; fi
           ls -la smoke
@@ -253,4 +253,14 @@ jobs:
           for f in smoke/*; do cp "$f" "upload/testfahrt_$(basename "$f")"; done
           # Grosses Volllog nicht hochladen, nur die gefilterte Fassung
           rm -f upload/testfahrt_logcat.txt
-          gh release upload "$TAG" upload/* --clobber --repo "$GITHUB_REPOSITORY"
+          R="$GITHUB_REPOSITORY"
+          if ! gh release view "$TAG" --repo "$R" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$R" --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "KSS-Maps Testfahrt (nur Testergebnisse – nicht installieren)" \
+              --notes "Screenshots und Protokoll der letzten automatischen Testfahrt im Emulator. Die App gibt es unter den normalen Versionen (kssmaps-v…)."
+          fi
+          # Ergebnisse der vorigen Testfahrt entfernen, damit sich nichts vermischt
+          for a in $(gh release view "$TAG" --repo "$R" --json assets --jq '.assets[].name' || true); do
+            gh release delete-asset "$TAG" "$a" --yes --repo "$R" || true
+          done
+          gh release upload "$TAG" upload/* --clobber --repo "$R"

@@ -97,10 +97,7 @@ class CarMapRenderer(
                 c.nightOverride = darkMode
                 ctl = c
                 c.onStyleLoaded = { refreshAll(forceCamera = true) }
-                map.addOnCameraIdleListener {
-                    c.updateSatellite()
-                    c.tryBuildingFromMap()
-                }
+                map.addOnCameraIdleListener { c.onCameraIdle() }
                 applyPadding()
                 val p = engine.position ?: engine.prefs.lastPosition
                 if (p != null) map.moveCamera(CameraUpdateFactory.newLatLngZoom(org.maplibre.android.geometry.LatLng(p.lat, p.lon), 15.0))
@@ -263,6 +260,7 @@ class CarMapRenderer(
             engine.removeListener(this)
             listening = false
         }
+        ctl?.dispose()
         try {
             mapView?.let {
                 it.onPause()

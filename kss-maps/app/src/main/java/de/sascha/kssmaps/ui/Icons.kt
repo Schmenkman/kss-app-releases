@@ -273,7 +273,7 @@ object Icons {
     // Knopf-Symbole (weiss, fuer Handy-Knoepfe und Android Auto)
     // -----------------------------------------------------------------------------------
 
-    enum class Glyph { SEARCH, FUEL, VOLUME_ON, VOLUME_OFF, CLOSE, PLUS, MINUS, RECENTER, HISTORY, AVOID, LAYERS, TRAFFIC, SETTINGS, LIST, REFRESH, NAVIGATE, PAN, JAM_AVOID, REPORT, MORE }
+    enum class Glyph { SEARCH, FUEL, VOLUME_ON, VOLUME_OFF, CLOSE, PLUS, MINUS, RECENTER, HISTORY, AVOID, LAYERS, TRAFFIC, SETTINGS, LIST, REFRESH, NAVIGATE, PAN, JAM_AVOID, REPORT, MORE, MIC, SWAP }
 
     fun glyph(g: Glyph, size: Int, color: Int = Color.WHITE): Bitmap {
         val b = bmp(size)
@@ -396,6 +396,20 @@ object Icons {
             }
             Glyph.MORE -> {
                 for (i in 0 until 3) c.drawCircle((0.22f + i * 0.28f) * s, 0.5f * s, 0.08f * s, f)
+            }
+            Glyph.MIC -> {
+                // Mikrofon: Kapsel, Buegel, Fuss
+                c.drawRoundRect(RectF(0.37f * s, 0.10f * s, 0.63f * s, 0.58f * s), 0.13f * s, 0.13f * s, f)
+                c.drawArc(RectF(0.24f * s, 0.26f * s, 0.76f * s, 0.70f * s), 0f, 180f, false, stroke(color, 0.07f * s))
+                c.drawLine(0.5f * s, 0.70f * s, 0.5f * s, 0.86f * s, stroke(color, 0.07f * s))
+                c.drawLine(0.36f * s, 0.88f * s, 0.64f * s, 0.88f * s, stroke(color, 0.07f * s))
+            }
+            Glyph.SWAP -> {
+                // zwei gegenlaeufige Pfeile (Start und Ziel tauschen)
+                c.drawLine(0.34f * s, 0.26f * s, 0.34f * s, 0.84f * s, stroke(color, 0.08f * s))
+                arrowHead(c, s, 0.34f * s, 0.16f * s, 0.0, f)
+                c.drawLine(0.66f * s, 0.16f * s, 0.66f * s, 0.74f * s, stroke(color, 0.08f * s))
+                arrowHead(c, s, 0.66f * s, 0.84f * s, 180.0, f)
             }
             Glyph.JAM_AVOID -> {
                 // Bogen um ein Hindernis
