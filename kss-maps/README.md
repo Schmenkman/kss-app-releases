@@ -173,5 +173,5 @@ beim Download-Link.
 `.github/workflows/kss-maps.yml`: Tests → signierte APK → GitHub-Release
 `kssmaps-v<version>` mit `kss-maps.apk`. `version.json` ist die einzige Versionsquelle
 (`versionCode = major*10000 + minor*100 + patch`). Die App prüft beim Start
-`kss-maps/version.json` auf `main` und bietet neue Versionen zum Download an.
+die GitHub-Releases (neuestes `kssmaps-v…` mit `kss-maps.apk`) und bietet neue Versionen zum Download an (Installation über KingInstaller für Android Auto).
 Beim Release: Version in `version.json` hochzählen, `notes` pflegen, `apkUrl` anpassen, pushen.

@@ -39,6 +39,8 @@ android {
         versionName = appVersion
         buildConfigField("String", "BUILTIN_TOMTOM", "\"" + builtinKey("KSSMAPS_TOMTOM_KEY") + "\"")
         buildConfigField("String", "BUILTIN_TANKERKOENIG", "\"" + builtinKey("KSSMAPS_TANKERKOENIG_KEY") + "\"")
+        // CI ohne eigene Signier-Secrets: temporaerer Schluessel -> Updates nur nach Deinstallation
+        buildConfigField("boolean", "TEMP_SIGNING_KEY", (System.getenv("KSSMAPS_TEMP_KEY") == "1").toString())
         ndk {
             // Nur echte Handys – halbiert die APK-Groesse (MapLibre bringt native Bibliotheken mit).
             // -PallAbis=true (Emulator-Test in der CI) baut zusaetzlich x86/x86_64.

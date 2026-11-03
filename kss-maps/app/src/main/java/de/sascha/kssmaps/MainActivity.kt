@@ -787,29 +787,27 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             .setNegativeButton("Später", null).show()
     }
 
-    private fun cmpVer(a: String, b: String): Int {
-        val pa = a.split('.').map { it.toIntOrNull() ?: 0 }
-        val pb = b.split('.').map { it.toIntOrNull() ?: 0 }
-        for (i in 0 until maxOf(pa.size, pb.size)) {
-            val d = (pa.getOrNull(i) ?: 0) - (pb.getOrNull(i) ?: 0)
-            if (d != 0) return if (d > 0) 1 else -1
-        }
-        return 0
-    }
-
     private fun checkUpdate(manual: Boolean) {
         if (!manual && System.currentTimeMillis() - prefs.lastUpdateCheck < 6 * 3600_000L) return
         prefs.lastUpdateCheck = System.currentTimeMillis()
         engine.scope.launch {
             val info = services.checkUpdate()
             if (info == null) {
-                if (manual) toast("Update-Prüfung nicht möglich (Internet?)")
+                if (manual) toast("Update-Prüfung nicht möglich (kein Internet oder GitHub nicht erreichbar)")
                 return@launch
             }
-            if (cmpVer(info.version, NaviApp.versionName) > 0) {
-                AlertDialog.Builder(this@MainActivity).setTitle("Update verfügbar 🎉")
-                    .setMessage("Neue Version ${info.version} (du hast ${NaviApp.versionName}).\n\n" + info.notes.joinToString("\n") { "• $it" })
-                    .setPositiveButton("Herunterladen & installieren") { _, _ ->
+            if (de.sascha.kssmaps.core.UpdateCheck.compare(info.version, NaviApp.versionName) > 0) {
+                // Fuer Android Auto muss die neue Version ueber KingInstaller installiert werden; mit dem
+                // temporaeren Test-Schluessel (ohne eigene Signier-Secrets) vorher deinstallieren.
+                val steps = buildString {
+                    append("\n\nSo installierst du es:\n")
+                    append("1. „Herunterladen“ tippen (lädt kss-maps.apk).\n")
+                    if (BuildConfig.TEMP_SIGNING_KEY) append("2. KSS-Maps deinstallieren (diese Version hat einen anderen Signierschlüssel).\n3. ") else append("2. ")
+                    append("Die heruntergeladene kss-maps.apk mit KingInstaller installieren – nur so erscheint KSS-Maps in Android Auto.")
+                }
+                AlertDialog.Builder(this@MainActivity).setTitle("Update verfügbar: ${info.version}")
+                    .setMessage("Du hast ${NaviApp.versionName}.\n\n" + info.notes.take(6).joinToString("\n") { "• $it" } + steps)
+                    .setPositiveButton("Herunterladen") { _, _ ->
                         try {
                             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.apkUrl)))
                         } catch (e: Exception) {

@@ -4,6 +4,7 @@
     "Neu: Startpunkt direkt in der Suche – oben „Von … ändern ›“ antippen, dann das Ziel",
     "Neu: TomTom- und Tankerkönig-Schlüssel sind eingebaut – nichts mehr eintragen",
     "Behoben: Im Stand (z. B. drinnen) zeigt die App 0 km/h und der Pfeil wandert nicht mehr umher",
+    "Behoben: Update-Prüfung in der App (fragt jetzt die GitHub-Releases ab) – mit Anleitung für die Installation über KingInstaller",
     "Querformat wie Google Maps in Android Auto – Abbiege-Hinweis links oben, Ankunft und Knöpfe links unten, die Karte rechts bleibt frei",
     "Flüssiger Positionspfeil – zwischen den GPS-Punkten wird die Position für jedes Bild berechnet, Pfeil und Karte laufen gleichmäßig statt ruckweise",
     "Spracheingabe – Mikrofon in der Suchleiste; „Navigiere zum Marienplatz 7 in Freising“ öffnet direkt die Route",

@@ -539,18 +539,13 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
 
     data class UpdateInfo(val version: String, val notes: List<String>, val apkUrl: String)
 
+    /** Neuestes veroeffentlichtes KSS-Maps-Release (GitHub-Releases), null = nicht erreichbar. */
     suspend fun checkUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
         try {
-            val o = org.json.JSONObject(
-                Http.get("https://raw.githubusercontent.com/Schmenkman/kss-app-releases/main/kss-maps/version.json?t=" + System.currentTimeMillis(), 10_000)
-            )
-            val notes = o.optJSONArray("notes")
-            UpdateInfo(
-                o.optString("version"),
-                (0 until (notes?.length() ?: 0)).map { notes!!.optString(it) },
-                o.optString("apkUrl"),
-            )
+            val json = Http.get(de.sascha.kssmaps.core.UpdateCheck.RELEASES_URL, 12_000, mapOf("Accept" to "application/vnd.github+json"))
+            de.sascha.kssmaps.core.UpdateCheck.latest(json)?.let { UpdateInfo(it.version, it.notes, it.apkUrl) }
         } catch (e: Exception) {
+            android.util.Log.w("KSSMaps", "Update-Pruefung: ${e.message}")
             null
         }
     }
