@@ -334,9 +334,16 @@ class NavEngine(
         location = loc
         val now = SystemClock.elapsedRealtime()
         var sp = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
-        if (!loc.hasSpeed() && prev != null) {
+        if (prev != null) {
+            // Ohne Tempoangabe (oder unplausibel 0 trotz deutlicher Bewegung): aus den Positionen
             val dt = (loc.time - prev.time) / 1000.0
-            if (dt in 0.5..10.0) sp = prev.distanceTo(loc) / dt
+            if (dt in 0.5..10.0) {
+                val d = prev.distanceTo(loc).toDouble()
+                val calc = d / dt
+                val acc = maxOf(loc.accuracy, prev.accuracy).toDouble()
+                if (!loc.hasSpeed()) sp = calc
+                else if (sp < 0.5 && calc > 3.0 && acc < 25.0 && d > 2 * acc) sp = calc
+            }
         }
         speedKmh = sp * 3.6
         if (loc.hasBearing() && sp > 1.5) heading = loc.bearing.toDouble()
