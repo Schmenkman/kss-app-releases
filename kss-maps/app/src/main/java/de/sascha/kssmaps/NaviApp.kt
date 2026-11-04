@@ -3,8 +3,10 @@ package de.sascha.kssmaps
 import android.app.Application
 import android.util.Log
 import de.sascha.kssmaps.core.Route
+import de.sascha.kssmaps.data.CompAppointmentSource
 import de.sascha.kssmaps.data.Http
 import de.sascha.kssmaps.data.Prefs
+import de.sascha.kssmaps.data.SecretStore
 import de.sascha.kssmaps.data.Services
 import de.sascha.kssmaps.nav.NavEngine
 import de.sascha.kssmaps.nav.Voice
@@ -22,6 +24,9 @@ open class NaviApp : Application() {
         private set
     lateinit var engine: NavEngine
         private set
+    /** Termine aus COMP (eigener Zugang, verschluesselt gespeichert). */
+    lateinit var comp: CompAppointmentSource
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -38,6 +43,8 @@ open class NaviApp : Application() {
         voice = Voice(this)
         engine = NavEngine(this, prefs, services, voice)
         engine.onRouteActivated = { r -> prefetchRoute(r) }
+        comp = CompAppointmentSource(prefs, SecretStore(this))
+        engine.appointmentSource = comp
     }
 
     /** Karten-Bibliothek starten (native). In Tests ohne Geraet ueberschrieben. */

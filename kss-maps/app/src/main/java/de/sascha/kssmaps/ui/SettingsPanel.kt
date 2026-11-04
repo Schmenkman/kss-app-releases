@@ -176,10 +176,28 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
         }
         action("UTA-Marken bearbeiten") { editBrands() }
 
-        section("Termine & Kunden")
-        note("Die Termine des Tages kommen aus dem Auftragssystem (Knopf „Termine“ rechts auf der Karte, nur lesend). Die Anbindung wird gerade eingebaut.")
+        section("Termine & Kunden (COMP)")
+        val comp = NaviApp.instance.comp
+        note("Die Termine des Tages kommen aus COMP – nur lesend, KSS-Maps ändert dort nichts. Jeder meldet sich mit seinem eigenen COMP-Zugang an. Benutzer und Passwort liegen verschlüsselt nur auf diesem Handy.")
+        textField("COMP-Benutzer", comp.user, "Benutzername", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) { comp.setUser(it) }
+        textField(
+            "COMP-Passwort", "",
+            if (comp.hasPassword) "gespeichert – nur zum Ändern eintippen" else "Passwort",
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
+        ) { if (it.isNotEmpty()) comp.setPassword(it) }
+        val compStatus = Ui.text(ctx, "", 14f, Ui.TEXT2)
+        val compRow = Ui.hbox(ctx)
+        compRow.addView(Ui.button(ctx, "Anmelden & testen", Ui.BLUE) { checkComp(compStatus) }, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).margins(ctx, r = 4))
+        compRow.addView(Ui.button(ctx, "Abmelden", Ui.LIGHT, Ui.TEXT) {
+            comp.signOut()
+            e.clearAppointments()
+            render()
+            host.toast("COMP-Zugang auf diesem Handy gelöscht")
+        }, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).margins(ctx, l = 4))
+        content.addView(compRow, Ui.linLp().margins(ctx, t = 6))
+        content.addView(compStatus, Ui.linLp().margins(ctx, t = 4))
         textField("Eigene Telefonnummern", prefs.ownPhoneNumbersText, "z. B. Büro, Firmenhandy – mit Komma getrennt", InputType.TYPE_CLASS_PHONE) { prefs.ownPhoneNumbersText = it }
-        note("Diese Nummern zeigt „Kunde“ nie als Ansprechpartner an, auch wenn sie im Terminzusatz stehen.")
+        note("Diese Nummern (und die der Techniker aus COMP) zeigt „Kunde“ nie als Ansprechpartner an, auch wenn sie im Terminzusatz stehen.")
 
         section("Warnungen & Ton")
         toggle("Sprachansagen (Ton)", !prefs.voiceMuted) { e.setMuted(!it) }
@@ -242,6 +260,39 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
         action("Nach App-Update suchen") { onCheckUpdate() }
         note("Version ${NaviApp.versionName} (Android ${Build.VERSION.RELEASE})")
         note("Quellen: Karte © OpenStreetMap-Mitwirkende, OpenFreeMap · Luftbild © Bayerische Vermessungsverwaltung (CC BY 4.0), Esri · Routing Valhalla/FOSSGIS bzw. TomTom · Verkehr Autobahn GmbH des Bundes · Suche Photon/Nominatim · Preise Tankerkönig/MTS-K (CC BY 4.0) · Blitzer OpenStreetMap (ODbL).")
+    }
+
+    /** COMP-Zugang pruefen: anmelden, Techniker und heutige Termine holen, Ergebnis anzeigen. */
+    private fun checkComp(status: TextView) {
+        val comp = NaviApp.instance.comp
+        status.setTextColor(Ui.TEXT2)
+        if (!comp.configured) {
+            status.text = "Erst Benutzer und Passwort eintragen."
+            return
+        }
+        status.text = "Melde bei COMP an …"
+        host.engine.scope.launch {
+            try {
+                val day = comp.today()
+                val t = day.technician
+                status.setTextColor(Ui.GREEN_DARK)
+                status.text = when {
+                    t != null -> "✓ Angemeldet. Heute ${day.appointments.size} Termin(e) für ${t.name}." +
+                        (if (day.technicians.size > 1) " Techniker wechseln: im Knopf „Termine“." else "")
+                    day.technicians.size > 1 -> "✓ Angemeldet. Dieser Zugang sieht ${day.technicians.size} Techniker – unter „Termine“ einmal auswählen, wessen Termine angezeigt werden."
+                    else -> "Angemeldet, aber COMP nennt für heute keinen Techniker."
+                }
+                host.engine.loadAppointments()
+            } catch (ex: kotlinx.coroutines.CancellationException) {
+                throw ex
+            } catch (ex: java.io.IOException) {
+                status.setTextColor(Ui.RED)
+                status.text = ex.message ?: "COMP nicht erreichbar"
+            } catch (ex: Exception) {
+                status.setTextColor(Ui.RED)
+                status.text = "COMP-Antwort nicht lesbar (${ex.javaClass.simpleName})"
+            }
+        }
     }
 
     private fun editBrands() {

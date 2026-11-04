@@ -187,6 +187,12 @@ class CarScreensTest {
         val demo = de.sascha.kssmaps.data.DemoAppointments.list()
         engine.setAppointmentsForTest(demo)
         assertTrue(CarAppointmentsScreen(car).onGetTemplate() is ListTemplate)
+        // Chef-Zugang ohne Auswahl: erst "Wessen Termine?"
+        val techs = listOf(de.sascha.kssmaps.core.Technician(101, "Test Techniker A"), de.sascha.kssmaps.core.Technician(102, "Test Techniker B"))
+        engine.setAppointmentsForTest(emptyList(), techs, null)
+        assertEquals("Wessen Termine?", (CarAppointmentsScreen(car).onGetTemplate() as ListTemplate).title?.toCharSequence().toString())
+        engine.setAppointmentsForTest(demo, techs, techs[0])
+        assertTrue(CarAppointmentsScreen(car).onGetTemplate() is ListTemplate)
 
         // Kunde: ohne Termin, mit einem / zwei Ansprechpartnern, ohne Nummer, ohne Terminzusatz
         assertTrue(CarCustomerScreen(car).onGetTemplate() is ListTemplate)

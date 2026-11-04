@@ -140,6 +140,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         handleIntent(intent)
         firstRunDialogs()
         checkUpdate(manual = false)
+        // Termine schon im Hintergrund holen, damit "Termine" (Handy und Auto) sofort etwas zeigt
+        if (engine.appointmentSource.configured && engine.appointments.isEmpty() && !engine.appointmentsLoading) engine.loadAppointments()
     }
 
     private fun dp(v: Int) = Ui.dp(this, v)
@@ -640,7 +642,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         val a = engine.activeAppointment ?: return
         closePanels()
         layoutDrawer()
-        drawer.show(a, prefs.ownPhoneNumbers)
+        drawer.show(a, engine.ownNumbers)
         updateMapPadding()
         refitPreview()
     }

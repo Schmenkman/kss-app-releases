@@ -652,6 +652,9 @@ class HazardListPanel(host: PanelHost) : Panel(host, fullScreen = false) {
 
 class AppointmentsPanel(host: PanelHost, private val onSetup: () -> Unit) : Panel(host, fullScreen = false) {
     private val sub = Ui.text(ctx, "", 14f, Ui.TEXT2, maxLines = 1)
+    /** Chef-Zugang: wessen Termine (Auswahl wird gespeichert). */
+    private val techRow = Ui.hbox(ctx)
+    private val techScroll = android.widget.HorizontalScrollView(ctx)
 
     init {
         titleView.text = "Termine heute"
@@ -659,6 +662,28 @@ class AppointmentsPanel(host: PanelHost, private val onSetup: () -> Unit) : Pane
         row.addView(sub, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row.addView(Ui.button(ctx, "Aktualisieren", Ui.LIGHT, Ui.TEXT) { host.engine.loadAppointments() })
         extras.addView(row, Ui.linLp().margins(ctx, t = 4))
+        techScroll.isHorizontalScrollBarEnabled = false
+        techScroll.addView(techRow)
+        techScroll.visibility = View.GONE
+        extras.addView(techScroll, Ui.linLp().margins(ctx, t = 6))
+    }
+
+    private fun renderTechnicians() {
+        val e = host.engine
+        val techs = e.appointmentTechnicians
+        techRow.removeAllViews()
+        techScroll.visibility = if (techs.size > 1) View.VISIBLE else View.GONE
+        if (techs.size <= 1) return
+        val chosen = e.appointmentTechnician?.id
+        for (t in techs) {
+            val on = t.id == chosen
+            val tv = Ui.text(ctx, t.name, 15f, if (on) Color.WHITE else Ui.TEXT, bold = on, maxLines = 1)
+            tv.setPadding(Ui.dp(ctx, 14), Ui.dp(ctx, 8), Ui.dp(ctx, 14), Ui.dp(ctx, 8))
+            Ui.clickable(ctx, tv, if (on) Ui.BLUE else Ui.LIGHT, 18)
+            tv.contentDescription = "Termine von ${t.name}"
+            tv.setOnClickListener { if (!on) e.chooseTechnician(t) }
+            techRow.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).margins(ctx, r = 8))
+        }
     }
 
     override fun show() {
@@ -681,17 +706,24 @@ class AppointmentsPanel(host: PanelHost, private val onSetup: () -> Unit) : Pane
         val day = java.text.SimpleDateFormat("EEEE, d. MMMM", java.util.Locale.GERMANY).apply {
             timeZone = java.util.TimeZone.getTimeZone("Europe/Berlin")
         }.format(java.util.Date())
-        sub.text = listOf(day, e.prefs.appointmentTechnicianName).filter { it.isNotBlank() }.joinToString(" · ")
+        val tech = e.appointmentTechnician?.name ?: e.prefs.appointmentTechnicianName.takeIf { e.appointmentSource.configured }
+        sub.text = listOfNotNull(day, tech).filter { it.isNotBlank() }.joinToString(" · ")
+        renderTechnicians()
         when {
             !e.appointmentSource.configured && e.appointments.isEmpty() -> {
-                content.addView(info("Noch kein Zugang zum Auftragssystem eingerichtet. Die Anbindung folgt – dann erscheinen hier die Termine des Tages."))
+                content.addView(info("Noch kein COMP-Zugang eingetragen. In den Einstellungen unter „Termine & Kunden“ Benutzer und Passwort eintragen – dann erscheinen hier die Termine des Tages."))
                 content.addView(Ui.button(ctx, "Einstellungen", Ui.BLUE) { hide(); onSetup() }, Ui.linLp().margins(ctx, t = 6))
             }
             e.appointmentsLoading && e.appointments.isEmpty() -> content.addView(info("Termine werden geladen …"))
-            e.appointmentsError != null && e.appointments.isEmpty() -> content.addView(info("Termine konnten nicht geladen werden: ${e.appointmentsError}", Ui.RED))
+            e.appointmentsError != null && e.appointments.isEmpty() -> {
+                content.addView(info("Termine konnten nicht geladen werden: ${e.appointmentsError}", Ui.RED))
+                content.addView(Ui.button(ctx, "Einstellungen", Ui.LIGHT, Ui.TEXT) { hide(); onSetup() }, Ui.linLp().margins(ctx, t = 6))
+            }
+            e.appointmentTechnician == null && e.appointmentTechnicians.size > 1 ->
+                content.addView(info("Bitte oben auswählen, wessen Termine angezeigt werden sollen. Die Auswahl wird gespeichert."))
             e.appointments.isEmpty() -> content.addView(info("Heute keine Termine."))
             else -> {
-                val own = e.prefs.ownPhoneNumbers
+                val own = e.ownNumbers
                 val now = System.currentTimeMillis()
                 for (a in e.appointments) content.addView(appointmentRow(a, own, now, a.id == e.activeAppointment?.id), Ui.linLp().margins(ctx, b = 6))
             }

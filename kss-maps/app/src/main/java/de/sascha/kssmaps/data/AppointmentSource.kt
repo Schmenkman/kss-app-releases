@@ -1,19 +1,20 @@
 package de.sascha.kssmaps.data
 
 import de.sascha.kssmaps.core.Appointment
+import de.sascha.kssmaps.core.AppointmentDay
 
 /** Woher die Termine des Tages kommen (Auftragssystem). KSS-Maps liest nur. */
 interface AppointmentSource {
     /** Zugang eingerichtet? Sonst zeigt die App einen Hinweis statt einer leeren Liste. */
     val configured: Boolean
     /** Termine des aktuellen Tages fuer den gewaehlten Techniker, nach Beginn sortiert. */
-    suspend fun today(): List<Appointment>
+    suspend fun today(): AppointmentDay
 }
 
 /** Noch kein Zugang eingerichtet. */
 object NoAppointmentSource : AppointmentSource {
     override val configured = false
-    override suspend fun today(): List<Appointment> = emptyList()
+    override suspend fun today(): AppointmentDay = AppointmentDay(emptyList())
 }
 
 /**

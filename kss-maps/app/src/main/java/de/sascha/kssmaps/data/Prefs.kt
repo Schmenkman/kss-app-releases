@@ -156,7 +156,11 @@ class Prefs(ctx: Context) {
         set(v) = putStr("own_phone_numbers", v)
     val ownPhoneNumbers: List<String>
         get() = ownPhoneNumbersText.split(',', ';', '\n').map { it.trim() }.filter { it.isNotBlank() }
-    /** Name des gewaehlten Technikers (Anzeige in "Termine heute"), leer = eigener Zugang. */
+    /** Gewaehlter Techniker (COMP-Techniker-ID), 0 = noch keiner. */
+    var appointmentTechnicianId: Int
+        get() = int("appt_technician_id", 0)
+        set(v) = putInt("appt_technician_id", v)
+    /** Name des gewaehlten Technikers (Anzeige in "Termine heute"). */
     var appointmentTechnicianName: String
         get() = str("appt_technician_name")
         set(v) = putStr("appt_technician_name", v)

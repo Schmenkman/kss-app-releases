@@ -72,6 +72,16 @@ object ContactParser {
         return d
     }
 
+    /** Alle Rufnummern in einem Text als Waehlziffern (z. B. die eigenen Nummern eines Technikers). */
+    fun numbersIn(text: String): List<String> {
+        val out = ArrayList<String>()
+        for (m in phoneRx.findAll(text)) for ((_, raw) in splitPhones(m.value, m.range.first)) {
+            val d = normalize(raw)
+            if (d.length in 7..13 && d.startsWith("0") && d !in out) out.add(d)
+        }
+        return out
+    }
+
     private fun displayOf(raw: String): String =
         raw.trim(' ', '-', '/', '.').replace(Regex("\\s{2,}"), " ")
 

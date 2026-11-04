@@ -163,6 +163,16 @@ class NavEngine(
         private set
     var appointmentsError: String? = null
         private set
+    /** Techniker, die der Zugang sieht (mehr als einer: Auswahl anbieten). */
+    var appointmentTechnicians: List<de.sascha.kssmaps.core.Technician> = emptyList()
+        private set
+    /** Fuer wen die Termine gelten (null = bei mehreren noch nicht gewaehlt). */
+    var appointmentTechnician: de.sascha.kssmaps.core.Technician? = null
+        private set
+    /** Eigene Nummern (Einstellungen und Techniker aus COMP): nie als Kunde anzeigen. */
+    val ownNumbers: List<String>
+        get() = prefs.ownPhoneNumbers + appointmentTechnicians.flatMap { it.phones }
+    private var appointmentsJob: Job? = null
     /** Termin, zu dem gerade gefahren wird (fuer den Knopf "Kunde"). */
     var activeAppointment: de.sascha.kssmaps.core.Appointment? = null
         private set
@@ -443,33 +453,68 @@ class NavEngine(
     fun loadAppointments() {
         val src = appointmentSource
         if (!src.configured) {
+            appointmentsJob?.cancel()
             appointments = emptyList()
+            appointmentTechnicians = emptyList()
+            appointmentTechnician = null
             appointmentsError = null
+            appointmentsLoading = false
             changed()
             return
         }
+        appointmentsJob?.cancel()
         appointmentsLoading = true
         appointmentsError = null
         changed()
-        scope.launch {
+        appointmentsJob = scope.launch {
             try {
-                appointments = src.today()
+                val day = src.today()
+                appointments = day.appointments
+                appointmentTechnicians = day.technicians
+                appointmentTechnician = day.technician
+                appointmentsLoading = false
+                changed()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // Nur die Fehlerart melden – Kundendaten nie ins Protokoll
+                // Nur die Fehlerart melden – Zugangs- und Kundendaten nie ins Protokoll
                 Log.w(TAG, "Termine laden: ${e.javaClass.simpleName}")
-                appointmentsError = e.message ?: "Termine konnten nicht geladen werden"
-            } finally {
+                appointmentsError = if (e is java.io.IOException && e.message != null) e.message else "Termine konnten nicht geladen werden"
                 appointmentsLoading = false
                 changed()
             }
         }
     }
 
+    /** Wessen Termine (Chef-Zugang sieht mehrere Techniker) – wird gespeichert. */
+    fun chooseTechnician(t: de.sascha.kssmaps.core.Technician) {
+        prefs.appointmentTechnicianId = t.id
+        prefs.appointmentTechnicianName = t.name
+        appointmentTechnician = t
+        appointments = emptyList()
+        loadAppointments()
+    }
+
+    /** Nach dem Abmelden: alles vergessen. */
+    fun clearAppointments() {
+        appointmentsJob?.cancel()
+        appointments = emptyList()
+        appointmentTechnicians = emptyList()
+        appointmentTechnician = null
+        appointmentsError = null
+        appointmentsLoading = false
+        changed()
+    }
+
     /** Nur Tests: Termine direkt setzen. */
-    internal fun setAppointmentsForTest(list: List<de.sascha.kssmaps.core.Appointment>) {
+    internal fun setAppointmentsForTest(
+        list: List<de.sascha.kssmaps.core.Appointment>,
+        technicians: List<de.sascha.kssmaps.core.Technician> = emptyList(),
+        technician: de.sascha.kssmaps.core.Technician? = null,
+    ) {
         appointments = list
+        appointmentTechnicians = technicians
+        appointmentTechnician = technician
         appointmentsError = null
         appointmentsLoading = false
         changed()

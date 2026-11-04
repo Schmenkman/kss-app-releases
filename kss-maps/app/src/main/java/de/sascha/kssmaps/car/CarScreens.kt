@@ -586,6 +586,14 @@ class CarAppointmentsScreen(carContext: CarContext) : EngineScreen(carContext) {
         val e = engine
         val b = ListTemplate.Builder().setTitle("Termine heute").setHeaderAction(Action.BACK)
         if (pendingId != null || (e.appointmentsLoading && e.appointments.isEmpty())) return b.setLoading(true).build()
+        // Chef-Zugang ohne Auswahl: zuerst waehlen, wessen Termine (wird gespeichert)
+        if (e.appointmentTechnician == null && e.appointmentTechnicians.size > 1) {
+            val tl = ItemList.Builder()
+            for (t in e.appointmentTechnicians.take(CarUtil.listLimit(carContext, 10))) {
+                tl.addItem(Row.Builder().setTitle(t.name).addText("Termine von heute anzeigen").setOnClickListener { e.chooseTechnician(t) }.build())
+            }
+            return b.setTitle("Wessen Termine?").setSingleList(tl.build()).build()
+        }
         val il = ItemList.Builder().setNoItemsMessage(
             when {
                 !e.appointmentSource.configured -> "Noch kein Zugang zum Auftragssystem – in KSS-Maps am Handy einrichten"
@@ -593,7 +601,7 @@ class CarAppointmentsScreen(carContext: CarContext) : EngineScreen(carContext) {
                 else -> "Heute keine Termine"
             }
         )
-        val own = e.prefs.ownPhoneNumbers
+        val own = e.ownNumbers
         for (a in e.appointments.take(CarUtil.listLimit(carContext, 20))) {
             val first = a.contacts(own).contacts.firstOrNull()
             val row = Row.Builder()
@@ -637,7 +645,7 @@ class CarCustomerScreen(carContext: CarContext) : EngineScreen(carContext) {
             return b.setTitle("Kunde").setSingleList(ItemList.Builder().setNoItemsMessage("Kein Termin ausgewählt").build()).build()
         }
         b.setTitle(a.customerName.ifBlank { "Kunde" })
-        val contacts = a.contacts(engine.prefs.ownPhoneNumbers).contacts
+        val contacts = a.contacts(engine.ownNumbers).contacts
         val il = ItemList.Builder()
         // eine Zeile fuer den Terminzusatz frei lassen
         val limit = (CarUtil.listLimit(carContext, 12) - 1).coerceAtLeast(1)

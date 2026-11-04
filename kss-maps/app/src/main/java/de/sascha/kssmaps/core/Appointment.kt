@@ -27,6 +27,18 @@ data class Appointment(
     fun contacts(ownNumbers: Collection<String>): ContactParser.Result = ContactParser.parse(note, ownNumbers)
 }
 
+/** Techniker der Schicht (aus dem Auftragssystem); [phones] als Waehlziffern. */
+data class Technician(val id: Int, val name: String, val phones: List<String> = emptyList())
+
+/** Ergebnis einer Abfrage: die Termine des Tages fuer [technician]. */
+data class AppointmentDay(
+    val appointments: List<Appointment>,
+    /** Alle Techniker, die der Zugang sieht (mehr als einer: Auswahl anbieten). */
+    val technicians: List<Technician> = emptyList(),
+    /** Fuer wen die Termine gelten; null = bei mehreren noch nicht gewaehlt. */
+    val technician: Technician? = null,
+)
+
 object Appointments {
     /** Nach Beginn sortiert, nur die des gewuenschten Technikers (null = alle). */
     fun forTechnician(list: List<Appointment>, technicianId: Int?): List<Appointment> =

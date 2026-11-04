@@ -27,7 +27,7 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 | Tankstellen mit Preisen, UTA | ⛽-Knopf: Diesel/Super E5/E10, Filter **„nur UTA“**. Reihenfolge: **zuerst die auf dem Weg zum Ziel liegenden, dann nach Preis**; danach Tankstellen mit Umweg. Ohne Tankerkönig-Schlüssel erscheinen die Tankstellen trotzdem sofort (Liste aller Tankstellen Bayerns aus OpenStreetMap ist in der App, mit UTA-Kennzeichnung) – nur ohne Preise |
 | Erst zur Tankstelle, dann automatisch weiter | Tankstelle antippen → wird Zwischenstopp, danach geht es ohne neue Eingabe weiter zum Ziel |
 | Sprachnavigation, Ton abschaltbar | Deutsche Ansagen in 3 Stufen (Vorankündigung, nah, „Jetzt …“), Lautsprecher-Knopf (Handy und Auto) |
-| Termine des Tages | 📅-Knopf **„Termine“**: die Termine von heute nach Uhrzeit (Kunde, Adresse, wen anrufen); antippen = Route zur Adresse. Kommt aus dem Auftragssystem, nur lesend – die Anbindung folgt. In Android Auto als Liste über die Leiste |
+| Termine des Tages | 📅-Knopf **„Termine“**: die Termine von heute aus **COMP** nach Uhrzeit (Kunde, Adresse, wen anrufen); antippen = Route zur Adresse. Jeder mit seinem eigenen COMP-Zugang; sieht ein Zugang mehrere Techniker (Chef), oben einmal auswählen – die Wahl bleibt gespeichert. In Android Auto als Liste über die Leiste |
 | Kunde anrufen | Während der Fahrt zu einem Termin erscheint der grüne ☎-Knopf **„Kunde“**: Leiste rollt seitlich heraus (die Karte rückt nach links, Pfeil und Fahrweg bleiben frei) mit den Ansprechpartnern aus dem **Terminzusatz** – wer „vorher anzurufen“ ist, steht oben als „ZUERST ANRUFEN“ –, allen Nummern und dem vollständigen Terminzusatz. Nummer antippen → **„Anrufen?“ Ja/Nein**, Ja wählt direkt. Eigene Nummern (Büro, Firmenhandy) in den Einstellungen werden nie als Kunde angezeigt |
 | Funklöcher | Beim Start der Navigation wird die Karte entlang der Route automatisch offline gespeichert (bis 250 km), dazu ein großer Kartenspeicher (600 MB) für oft gefahrene Gegenden |
 
@@ -72,6 +72,23 @@ installieren die APK so, dass Android den Play Store als Installer einträgt:
 **B) Google Play (interner Test)** – offizieller Weg mit automatischen Updates: eigenes
 Play-Console-Konto (einmalig 25 $, Identitätsprüfung), App als *interner Test* hochladen,
 eigenes Google-Konto als Tester eintragen und KSS-Maps aus dem Play Store installieren.
+
+## Termine aus COMP
+
+Einstellungen → **„Termine & Kunden (COMP)“**: COMP-Benutzer und -Passwort eintragen →
+**„Anmelden & testen“** zeigt, ob es klappt und wie viele Termine heute anstehen. Danach
+erscheinen die Termine unter dem 📅-Knopf (Handy und Android Auto).
+
+- **Nur lesend:** KSS-Maps holt die Techniker der Schicht und die Termine des Tages – genau wie
+  die KSS-Dispo-App. Es öffnet keine Auftragsbearbeitung (die würde den Auftrag in COMP sperren)
+  und ändert nichts.
+- **Zugangsdaten** liegen verschlüsselt (Android Keystore) nur auf dem Handy, nie im Code, im
+  Repo oder im Protokoll. „Abmelden“ löscht sie. Termine und Kundendaten bleiben nur im Speicher
+  der App (nichts auf der Speicherkarte, nichts im Log).
+- **Chef-Zugang** (sieht mehrere Techniker): unter „Termine“ oben den Techniker wählen – wird
+  gespeichert. Ein Zugang, der nur einen Techniker sieht, zeigt keine Auswahl.
+- Die **Telefonnummern der Techniker** aus COMP und die eigenen Nummern aus den Einstellungen
+  werden nie als Kunden-Nummer angezeigt.
 
 ## Blitzer
 
@@ -135,8 +152,10 @@ ohne erkennbare Marke stehen auf „UTA unbekannt“ und erscheinen bei „nur U
 app/src/main/java/de/sascha/kssmaps/
   core/      reine Logik ohne Android (auf der JVM getestet):
              Geo, Model, RouteTracker, HazardMatcher, Instructions (deutsche Ansagen),
-             Valhalla/TomTom/Autobahn/Tankerkoenig/Geocoding/Overpass-Parser, Fuel (Sortierung, UTA)
-  data/      Http, Prefs (Einstellungen, Verlauf, gesperrte Abschnitte), Services (alle Netzaufrufe)
+             Valhalla/TomTom/Autobahn/Tankerkoenig/Geocoding/Overpass-Parser, Fuel (Sortierung, UTA),
+             Comp (COMP-Seiten/-Antworten), ContactParser (Ansprechpartner aus dem Terminzusatz)
+  data/      Http, Prefs (Einstellungen, Verlauf, gesperrte Abschnitte), Services (alle Netzaufrufe),
+             CompClient + CompAppointmentSource (Termine aus COMP, nur lesend), SecretStore (Keystore)
   nav/       NavEngine (EIN Zustand für Handy und Auto), Voice (TTS über Navigations-Audiokanal)
   ui/        MapController (Karte für Handy UND Auto), Icons (alle Symbole gezeichnet), Panels
   car/       Android Auto: NaviCarAppService, CarMapRenderer (VirtualDisplay + MapLibre), Screens
