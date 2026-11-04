@@ -32,7 +32,9 @@ import de.sascha.kssmaps.core.Instructions
 import de.sascha.kssmaps.core.LatLon
 import de.sascha.kssmaps.data.Services
 import de.sascha.kssmaps.nav.NavEngine
+import de.sascha.kssmaps.ui.AppointmentsPanel
 import de.sascha.kssmaps.ui.AvoidPanel
+import de.sascha.kssmaps.ui.CustomerDrawer
 import de.sascha.kssmaps.ui.FuelPanel
 import de.sascha.kssmaps.ui.HazardBanner
 import de.sascha.kssmaps.ui.HazardListPanel
@@ -87,6 +89,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     private lateinit var btnFuel: ImageView
     private lateinit var btnReport: ImageView
     private lateinit var btnAvoid: ImageView
+    private lateinit var btnAppointments: ImageView
+    private lateinit var btnCustomer: ImageView
     private lateinit var speed: SpeedWidget
     private lateinit var speedRow: LinearLayout
     private lateinit var alertCol: LinearLayout
@@ -102,6 +106,9 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     private lateinit var hazardList: HazardListPanel
     private lateinit var settings: SettingsPanel
     private lateinit var steps: StepsPanel
+    private lateinit var appointmentsPanel: AppointmentsPanel
+    /** Seitliche Kunden-Leiste (Termin, zu dem gefahren wird). */
+    private lateinit var drawer: CustomerDrawer
     private val panels = ArrayList<Panel>()
 
     /** Querformat: Bedienung links (wie Google Maps in Android Auto), Karte rechts frei. */
@@ -110,6 +117,9 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     private var sideW = 0
     private var voiceCallback: ((String) -> Unit)? = null
     private val reqVoice = 4711
+    private val reqCall = 43
+    /** Nummer, die nach der Anruf-Berechtigung gewaehlt wird. */
+    private var pendingCall: String? = null
 
     private var lastMode: NavEngine.Mode? = null
     private var lastGesture = 0L
@@ -196,8 +206,13 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
 
         // ---- rechts: Knoepfe ----
         rightCol = Ui.vbox(this)
+        // Kunde anrufen: nur sichtbar, wenn zu einem Termin gefahren wird
+        btnCustomer = Ui.iconButton(this, Icons.glyph(Icons.Glyph.PHONE, dp(26), Color.WHITE), Ui.GREEN_DARK, desc = "Kunde") { toggleCustomer() }
+        rightCol.addView(btnCustomer)
         btnLayers = Ui.iconButton(this, Icons.glyph(Icons.Glyph.LAYERS, dp(26), Ui.TEXT), Color.WHITE, desc = "Luftbild") { toggleSatellite() }
         rightCol.addView(btnLayers)
+        btnAppointments = Ui.iconButton(this, Icons.glyph(Icons.Glyph.CALENDAR, dp(26), Ui.BLUE), Color.WHITE, desc = "Termine") { openAppointments() }
+        rightCol.addView(btnAppointments)
         btnMute = Ui.iconButton(this, Icons.glyph(Icons.Glyph.VOLUME_ON, dp(26), Ui.TEXT), Color.WHITE, desc = "Ton") { engine.toggleMuted() }
         rightCol.addView(btnMute)
         btnReport = Ui.iconButton(this, Icons.glyph(Icons.Glyph.REPORT, dp(26), Ui.RED), Color.WHITE, desc = "Blitzer melden") { reportDialog() }
@@ -266,7 +281,11 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         hazardList = HazardListPanel(this)
         settings = SettingsPanel(this, onChanged = { onSettingsChanged() }, onCheckUpdate = { checkUpdate(manual = true) })
         steps = StepsPanel(this)
-        panels.addAll(listOf(search, fuel, avoid, hazardList, steps, settings))
+        appointmentsPanel = AppointmentsPanel(this, onSetup = { openSettings() })
+        // Kunden-Leiste rechts ueber den Knoepfen; Groesse/Abstaende in layoutDrawer()
+        drawer = CustomerDrawer(this, onCall = { name, display, digits -> confirmCall(name, display, digits) }, onClose = { hideCustomer() })
+        root.addView(drawer.view, FrameLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END or Gravity.TOP))
+        panels.addAll(listOf(search, fuel, avoid, hazardList, steps, appointmentsPanel, settings))
         for (p in panels) root.addView(p.view, frameMatch())
 
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateMapPadding() }
@@ -389,17 +408,40 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
                 rightCol.layoutParams = lp
             }
         }
+        layoutDrawer()
         val ctl = mapCtl ?: return
+        // Offene Kunden-Leiste: Karte nach links ruecken, damit Pfeil und Fahrweg frei bleiben
+        val right = maxOf(rightCol.width + m, if (drawer.isOpen) drawer.widthPx + 2 * m else 0)
         val pad = if (landscape) {
             val panel = topCol.height > 0 || bottom.height > 0
-            doubleArrayOf((if (panel) sideW + 2 * m else m).toDouble(), m.toDouble(), (rightCol.width + m).toDouble(), m.toDouble())
+            doubleArrayOf((if (panel) sideW + 2 * m else m).toDouble(), m.toDouble(), right.toDouble(), m.toDouble())
         } else {
             val topH = if (topCol.visibility == View.VISIBLE) topCol.height + m else 0
             val bottomH = bottom.height + m
-            doubleArrayOf(m.toDouble(), topH.toDouble(), (rightCol.width + m).toDouble(), bottomH.toDouble())
+            doubleArrayOf(m.toDouble(), topH.toDouble(), right.toDouble(), bottomH.toDouble())
         }
         if (!pad.contentEquals(ctl.uiPadding)) ctl.uiPadding = pad
         ctl.viewHeightPx = root.height
+    }
+
+    /**
+     * Kunden-Leiste: hochkant rechts zwischen Banner oben und Leiste unten (gut 60 % breit),
+     * quer rechts ueber die volle Hoehe (die Bedienung links und die Karte dazwischen bleiben frei).
+     */
+    private fun layoutDrawer() {
+        val m = dp(10)
+        val cfg = resources.configuration
+        val w = if (landscape) dp(320) else dp((cfg.screenWidthDp * 0.62).roundToInt().coerceIn(250, 340))
+        val top = if (landscape) m else (topCol.bottom - root.paddingTop + dp(6)).coerceAtLeast(m)
+        val bottomM = if (landscape) m else (root.height - root.paddingBottom - bottom.top + dp(6)).coerceAtLeast(m)
+        val lp = drawer.view.layoutParams as? FrameLayout.LayoutParams ?: return
+        if (lp.width != w || lp.topMargin != top || lp.bottomMargin != bottomM || lp.rightMargin != m) {
+            lp.width = w
+            lp.height = ViewGroup.LayoutParams.MATCH_PARENT
+            lp.gravity = Gravity.END or Gravity.TOP
+            lp.setMargins(0, top, m, bottomM)
+            drawer.view.layoutParams = lp
+        }
     }
 
     // =======================================================================================
@@ -431,6 +473,11 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         // Quer beim Fahren ist Tanken in der Leiste links – rechts Platz sparen.
         btnFuel.visibility = if (mode == NavEngine.Mode.PREVIEW || (landscape && mode == NavEngine.Mode.NAVIGATING)) View.GONE else View.VISIBLE
         btnReport.visibility = if (mode == NavEngine.Mode.PREVIEW || !prefs.camerasEnabled) View.GONE else View.VISIBLE
+        // Termine: vor der Fahrt; Kunde: sobald ein Termin angefahren wird (auch nach der Ankunft)
+        btnAppointments.visibility = if (mode == NavEngine.Mode.NAVIGATING) View.GONE else View.VISIBLE
+        btnCustomer.visibility = if (e.activeAppointment != null) View.VISIBLE else View.GONE
+        if (e.activeAppointment == null && drawer.isOpen) hideCustomer()
+        if (appointmentsPanel.isShown) appointmentsPanel.render()
         if (mode == NavEngine.Mode.PREVIEW) routePanel.render(e)
         if (mode == NavEngine.Mode.NAVIGATING) navBar.render(e)
         val br = e.betterRoute
@@ -579,6 +626,68 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         fuel.show()
     }
 
+    private fun openAppointments() {
+        closePanels()
+        hideCustomer()
+        appointmentsPanel.show()
+    }
+
+    private fun toggleCustomer() {
+        if (drawer.isOpen) hideCustomer() else showCustomer()
+    }
+
+    private fun showCustomer() {
+        val a = engine.activeAppointment ?: return
+        closePanels()
+        layoutDrawer()
+        drawer.show(a, prefs.ownPhoneNumbers)
+        updateMapPadding()
+        refitPreview()
+    }
+
+    private fun hideCustomer() {
+        if (!drawer.isOpen) return
+        drawer.hide()
+        updateMapPadding()
+        refitPreview()
+    }
+
+    /** In der Vorschau die Routen neu einpassen, wenn sich der freie Kartenbereich aendert. */
+    private fun refitPreview() {
+        if (engine.mode == NavEngine.Mode.PREVIEW && engine.routes.isNotEmpty()) handler.postDelayed({ mapCtl?.showRoutesOverview() }, 250)
+    }
+
+    /** Nummer angetippt: "Anrufen?" – bei Ja wird direkt gewaehlt. */
+    private fun confirmCall(name: String, display: String, digits: String) {
+        AlertDialog.Builder(this).setTitle("Anrufen?")
+            .setMessage("$name\n$display")
+            .setPositiveButton("Ja") { _, _ -> placeCall(digits) }
+            .setNegativeButton("Nein", null)
+            .show()
+    }
+
+    private fun placeCall(digits: String) {
+        if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+            pendingCall = digits
+            requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), reqCall)
+            return
+        }
+        try {
+            startActivity(Intent(Intent.ACTION_CALL, Uri.fromParts("tel", digits, null)))
+        } catch (e: Exception) {
+            dial(digits)
+        }
+    }
+
+    /** Ohne Anruf-Berechtigung: Telefon-App mit der Nummer oeffnen (dort nur noch auf Anrufen tippen). */
+    private fun dial(digits: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", digits, null)))
+        } catch (e: Exception) {
+            toast("Keine Telefon-App gefunden")
+        }
+    }
+
     override fun openSettings() {
         closePanels()
         settings.show()
@@ -681,6 +790,12 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == reqCall) {
+            val n = pendingCall ?: return
+            pendingCall = null
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) placeCall(n) else dial(n)
+            return
+        }
         engine.startLocation()
     }
 
@@ -737,6 +852,20 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
                 search.onVoice(t)
             }
             if (i.getBooleanExtra("test_close_panels", false)) closePanels()
+            // Termine: erfundene Beispieltermine (nie echte Kunden), Liste, Termin anfahren, Kunden-Leiste
+            if (i.getBooleanExtra("test_demo_appointments", false)) {
+                engine.setAppointmentsForTest(de.sascha.kssmaps.data.DemoAppointments.list())
+                android.util.Log.i("KSSMaps", "TEST_APPOINTMENTS ${engine.appointments.size}")
+            }
+            if (i.getBooleanExtra("test_open_appointments", false)) openAppointments()
+            if (i.hasExtra("test_pick_appointment")) {
+                engine.appointments.getOrNull(i.getIntExtra("test_pick_appointment", 0))?.let {
+                    closePanels()
+                    engine.startAppointment(it)
+                }
+            }
+            if (i.getBooleanExtra("test_open_customer", false)) showCustomer()
+            if (i.getBooleanExtra("test_close_customer", false)) hideCustomer()
             if (i.getBooleanExtra("test_open_settings", false)) openSettings()
             // Android-Auto-Karte auf unsichtbarer Flaeche zeichnen und als Bild sichern (Testfahrt)
             try {
@@ -872,6 +1001,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         val open = panels.firstOrNull { it.isShown }
         when {
             open != null -> open.hide()
+            drawer.isOpen -> hideCustomer()
             engine.mode == NavEngine.Mode.PREVIEW -> engine.cancelPreview()
             engine.mode == NavEngine.Mode.NAVIGATING -> moveTaskToBack(true)
             else -> @Suppress("DEPRECATION") super.onBackPressed()

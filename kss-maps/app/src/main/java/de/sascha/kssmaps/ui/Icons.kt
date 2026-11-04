@@ -273,7 +273,7 @@ object Icons {
     // Knopf-Symbole (weiss, fuer Handy-Knoepfe und Android Auto)
     // -----------------------------------------------------------------------------------
 
-    enum class Glyph { SEARCH, FUEL, VOLUME_ON, VOLUME_OFF, CLOSE, PLUS, MINUS, RECENTER, HISTORY, AVOID, LAYERS, TRAFFIC, SETTINGS, LIST, REFRESH, NAVIGATE, PAN, JAM_AVOID, REPORT, MORE, MIC, SWAP }
+    enum class Glyph { SEARCH, FUEL, VOLUME_ON, VOLUME_OFF, CLOSE, PLUS, MINUS, RECENTER, HISTORY, AVOID, LAYERS, TRAFFIC, SETTINGS, LIST, REFRESH, NAVIGATE, PAN, JAM_AVOID, REPORT, MORE, MIC, SWAP, CALENDAR, PHONE }
 
     fun glyph(g: Glyph, size: Int, color: Int = Color.WHITE): Bitmap {
         val b = bmp(size)
@@ -403,6 +403,29 @@ object Icons {
                 c.drawArc(RectF(0.24f * s, 0.26f * s, 0.76f * s, 0.70f * s), 0f, 180f, false, stroke(color, 0.07f * s))
                 c.drawLine(0.5f * s, 0.70f * s, 0.5f * s, 0.86f * s, stroke(color, 0.07f * s))
                 c.drawLine(0.36f * s, 0.88f * s, 0.64f * s, 0.88f * s, stroke(color, 0.07f * s))
+            }
+            Glyph.CALENDAR -> {
+                // Kalenderblatt mit zwei Ringen und Terminpunkten
+                c.drawRoundRect(RectF(0.14f * s, 0.22f * s, 0.86f * s, 0.86f * s), 0.08f * s, 0.08f * s, stroke(color, 0.07f * s))
+                c.drawRect(0.14f * s, 0.22f * s, 0.86f * s, 0.38f * s, f)
+                c.drawLine(0.34f * s, 0.12f * s, 0.34f * s, 0.30f * s, stroke(color, 0.07f * s))
+                c.drawLine(0.66f * s, 0.12f * s, 0.66f * s, 0.30f * s, stroke(color, 0.07f * s))
+                for (r in 0 until 2) for (k in 0 until 3) c.drawCircle((0.32f + k * 0.18f) * s, (0.54f + r * 0.16f) * s, 0.045f * s, f)
+            }
+            Glyph.PHONE -> {
+                // Telefonhoerer
+                val p = Path().apply {
+                    moveTo(0.26f * s, 0.14f * s)
+                    lineTo(0.40f * s, 0.30f * s)
+                    lineTo(0.32f * s, 0.40f * s)
+                    quadTo(0.40f * s, 0.58f * s, 0.60f * s, 0.68f * s)
+                    lineTo(0.70f * s, 0.60f * s)
+                    lineTo(0.86f * s, 0.74f * s)
+                    lineTo(0.76f * s, 0.86f * s)
+                    quadTo(0.40f * s, 0.84f * s, 0.14f * s, 0.26f * s)
+                    close()
+                }
+                c.drawPath(p, f)
             }
             Glyph.SWAP -> {
                 // zwei gegenlaeufige Pfeile (Start und Ziel tauschen)

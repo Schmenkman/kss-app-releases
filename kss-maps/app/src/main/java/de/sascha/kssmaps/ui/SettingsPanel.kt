@@ -133,6 +133,23 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
         content.addView(status, Ui.linLp().margins(ctx, t = 4))
     }
 
+    private fun textField(label: String, value: String, hint: String, type: Int = InputType.TYPE_CLASS_TEXT, set: (String) -> Unit) {
+        content.addView(Ui.text(ctx, label, 16f, Ui.TEXT).apply { setPadding(Ui.dp(ctx, 4), Ui.dp(ctx, 8), 0, Ui.dp(ctx, 4)) })
+        val et = EditText(ctx)
+        et.setText(value)
+        et.hint = hint
+        et.setSingleLine(true)
+        et.inputType = type
+        et.background = Ui.bg(ctx, Ui.LIGHT, 12)
+        et.setPadding(Ui.dp(ctx, 12), Ui.dp(ctx, 10), Ui.dp(ctx, 12), Ui.dp(ctx, 10))
+        et.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) = set(s?.toString() ?: "")
+        })
+        content.addView(et, Ui.linLp())
+    }
+
     private fun action(label: String, click: () -> Unit) {
         content.addView(Ui.button(ctx, label, Ui.LIGHT, Ui.TEXT) { click() }, Ui.linLp().margins(ctx, t = 6))
     }
@@ -158,6 +175,11 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
             prefs.fuelCorridorKm = when (it) { 0 -> 25; 2 -> 100; else -> 50 }
         }
         action("UTA-Marken bearbeiten") { editBrands() }
+
+        section("Termine & Kunden")
+        note("Die Termine des Tages kommen aus dem Auftragssystem (Knopf „Termine“ rechts auf der Karte, nur lesend). Die Anbindung wird gerade eingebaut.")
+        textField("Eigene Telefonnummern", prefs.ownPhoneNumbersText, "z. B. Büro, Firmenhandy – mit Komma getrennt", InputType.TYPE_CLASS_PHONE) { prefs.ownPhoneNumbersText = it }
+        note("Diese Nummern zeigt „Kunde“ nie als Ansprechpartner an, auch wenn sie im Terminzusatz stehen.")
 
         section("Warnungen & Ton")
         toggle("Sprachansagen (Ton)", !prefs.voiceMuted) { e.setMuted(!it) }

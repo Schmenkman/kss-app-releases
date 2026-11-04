@@ -645,3 +645,88 @@ class HazardListPanel(host: PanelHost) : Panel(host, fullScreen = false) {
         }
     }
 }
+
+// =============================================================================================
+// Termine des Tages (aus dem Auftragssystem): nach Uhrzeit, antippen = hinfahren
+// =============================================================================================
+
+class AppointmentsPanel(host: PanelHost, private val onSetup: () -> Unit) : Panel(host, fullScreen = false) {
+    private val sub = Ui.text(ctx, "", 14f, Ui.TEXT2, maxLines = 1)
+
+    init {
+        titleView.text = "Termine heute"
+        val row = Ui.hbox(ctx)
+        row.addView(sub, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(Ui.button(ctx, "Aktualisieren", Ui.LIGHT, Ui.TEXT) { host.engine.loadAppointments() })
+        extras.addView(row, Ui.linLp().margins(ctx, t = 4))
+    }
+
+    override fun show() {
+        super.show()
+        val e = host.engine
+        // Beim Oeffnen frisch laden (hoechstens alle 2 Minuten), sonst sofort die vorhandene Liste
+        if (e.appointmentSource.configured && !e.appointmentsLoading && System.currentTimeMillis() - lastLoad > 120_000) {
+            lastLoad = System.currentTimeMillis()
+            e.loadAppointments()
+        }
+        render()
+    }
+
+    private var lastLoad = 0L
+
+    fun render() {
+        if (!isShown) return
+        val e = host.engine
+        content.removeAllViews()
+        val day = java.text.SimpleDateFormat("EEEE, d. MMMM", java.util.Locale.GERMANY).apply {
+            timeZone = java.util.TimeZone.getTimeZone("Europe/Berlin")
+        }.format(java.util.Date())
+        sub.text = listOf(day, e.prefs.appointmentTechnicianName).filter { it.isNotBlank() }.joinToString(" · ")
+        when {
+            !e.appointmentSource.configured && e.appointments.isEmpty() -> {
+                content.addView(info("Noch kein Zugang zum Auftragssystem eingerichtet. Die Anbindung folgt – dann erscheinen hier die Termine des Tages."))
+                content.addView(Ui.button(ctx, "Einstellungen", Ui.BLUE) { hide(); onSetup() }, Ui.linLp().margins(ctx, t = 6))
+            }
+            e.appointmentsLoading && e.appointments.isEmpty() -> content.addView(info("Termine werden geladen …"))
+            e.appointmentsError != null && e.appointments.isEmpty() -> content.addView(info("Termine konnten nicht geladen werden: ${e.appointmentsError}", Ui.RED))
+            e.appointments.isEmpty() -> content.addView(info("Heute keine Termine."))
+            else -> {
+                val own = e.prefs.ownPhoneNumbers
+                val now = System.currentTimeMillis()
+                for (a in e.appointments) content.addView(appointmentRow(a, own, now, a.id == e.activeAppointment?.id), Ui.linLp().margins(ctx, b = 6))
+            }
+        }
+    }
+
+    private fun appointmentRow(a: de.sascha.kssmaps.core.Appointment, own: List<String>, now: Long, active: Boolean): View {
+        val r = Ui.hbox(ctx)
+        r.gravity = Gravity.TOP
+        r.setPadding(Ui.dp(ctx, 10), Ui.dp(ctx, 10), Ui.dp(ctx, 10), Ui.dp(ctx, 10))
+        val past = a.end in 1 until now
+        Ui.clickable(ctx, r, if (active) Color.parseColor("#E3F0FD") else Color.WHITE, 14, if (active) Ui.BLUE else Color.parseColor("#E0E0E0"), if (active) 2 else 1)
+        val tcol = Ui.vbox(ctx)
+        val range = de.sascha.kssmaps.core.Appointments.timeRange(a)
+        tcol.addView(Ui.text(ctx, range.substringBefore('–'), 20f, if (past) Ui.TEXT2 else Ui.BLUE_DARK, bold = true))
+        if (range.contains('–')) tcol.addView(Ui.text(ctx, "bis " + range.substringAfter('–'), 13f, Ui.TEXT2))
+        r.addView(tcol, LinearLayout.LayoutParams(Ui.dp(ctx, 72), ViewGroup.LayoutParams.WRAP_CONTENT))
+        val col = Ui.vbox(ctx)
+        val contacts = a.contacts(own).contacts
+        val first = contacts.firstOrNull()
+        col.addView(Ui.text(ctx, a.customerName.ifBlank { first?.name ?: "Termin" }, 17f, Ui.TEXT, bold = true, maxLines = 2))
+        col.addView(Ui.text(ctx, a.address, 14f, Ui.TEXT2, maxLines = 2))
+        if (first != null) {
+            col.addView(Ui.text(ctx, "☎ ${first.name}" + (first.hint?.let { " · $it" } ?: ""), 14f, if (first.callFirst) Ui.ORANGE else Ui.GREEN_DARK, bold = true, maxLines = 2))
+        }
+        if (a.condition.isNotBlank() || a.label.isNotBlank()) {
+            col.addView(Ui.text(ctx, listOf(a.condition, a.label).filter { it.isNotBlank() }.joinToString(" · "), 12f, Ui.TEXT2, maxLines = 1))
+        }
+        r.addView(col, Ui.linLp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).margins(ctx, l = 8))
+        r.contentDescription = "Termin $range ${a.customerName}"
+        r.setOnClickListener {
+            hide()
+            host.toast("Route zu ${a.address} wird berechnet …")
+            host.engine.startAppointment(a)
+        }
+        return r
+    }
+}

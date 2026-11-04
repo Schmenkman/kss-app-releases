@@ -154,6 +154,18 @@ class NavEngine(
     /** Eigener Startpunkt fuer die Planung (null = aktueller Standort). */
     var origin: Place? = null
         private set
+
+    // ---- Termine des Tages (aus dem Auftragssystem, nur lesend) ----
+    var appointmentSource: de.sascha.kssmaps.data.AppointmentSource = de.sascha.kssmaps.data.NoAppointmentSource
+    var appointments: List<de.sascha.kssmaps.core.Appointment> = emptyList()
+        private set
+    var appointmentsLoading = false
+        private set
+    var appointmentsError: String? = null
+        private set
+    /** Termin, zu dem gerade gefahren wird (fuer den Knopf "Kunde"). */
+    var activeAppointment: de.sascha.kssmaps.core.Appointment? = null
+        private set
     var fuelStop: FuelStation? = null
         private set
     var routes: List<Route> = emptyList()
@@ -399,6 +411,7 @@ class NavEngine(
 
     fun setDestination(place: Place) {
         if (mode == Mode.NAVIGATING) stopNavigation(keepDestination = false, silent = true)
+        activeAppointment = null
         destination = place
         fuelStop = null
         betterRoute = null
@@ -417,12 +430,72 @@ class NavEngine(
         routes = emptyList()
         destination = null
         origin = null
+        activeAppointment = null
         startWhenReady = false
         building = null
         fuelStop = null
         loading = false
         message = null
         changed()
+    }
+
+    /** Termine des Tages neu laden (Auftragssystem). */
+    fun loadAppointments() {
+        val src = appointmentSource
+        if (!src.configured) {
+            appointments = emptyList()
+            appointmentsError = null
+            changed()
+            return
+        }
+        appointmentsLoading = true
+        appointmentsError = null
+        changed()
+        scope.launch {
+            try {
+                appointments = src.today()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Nur die Fehlerart melden – Kundendaten nie ins Protokoll
+                Log.w(TAG, "Termine laden: ${e.javaClass.simpleName}")
+                appointmentsError = e.message ?: "Termine konnten nicht geladen werden"
+            } finally {
+                appointmentsLoading = false
+                changed()
+            }
+        }
+    }
+
+    /** Nur Tests: Termine direkt setzen. */
+    internal fun setAppointmentsForTest(list: List<de.sascha.kssmaps.core.Appointment>) {
+        appointments = list
+        appointmentsError = null
+        appointmentsLoading = false
+        changed()
+    }
+
+    /** Zu einem Termin fahren: Adresse suchen, Route berechnen, Termin fuer "Kunde" merken. */
+    fun startAppointment(a: de.sascha.kssmaps.core.Appointment) {
+        scope.launch {
+            try {
+                val res = services.search(a.address, position ?: prefs.lastPosition)
+                val best = res.firstOrNull()
+                if (best == null) {
+                    message = "Adresse nicht gefunden: ${a.address}"
+                    changed()
+                    return@launch
+                }
+                setDestination(best)
+                activeAppointment = a
+                changed()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                message = "Adresse konnte nicht gesucht werden (Internet?)"
+                changed()
+            }
+        }
     }
 
     /** Startpunkt setzen (null = wieder ab dem eigenen Standort) und die Routen neu berechnen. */
@@ -746,6 +819,7 @@ class NavEngine(
         if (!keepDestination) {
             destination = null
             building = null
+            activeAppointment = null
         }
         NavService.stop(ctx)
         if (locationUsers == 0) stopLocation()

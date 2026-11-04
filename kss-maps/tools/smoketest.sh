@@ -215,6 +215,47 @@ act --ez test_close_panels true
 act --ez test_clear true
 sleep 2
 
+# Termine des Tages (ERFUNDENE Beispieltermine, nie echte Kunden): Liste -> Termin anfahren ->
+# Knopf "Kunde" -> seitliche Leiste (Karte rueckt nach links) -> Nummer -> "Anrufen?" -> NEIN
+ensure_alive termine
+act --ez test_demo_appointments true
+sleep 2
+python3 $T/ui.py tap --desc "Termine" || act --ez test_open_appointments true
+sleep 4
+shot 13_termine_heute
+N=$(routes_n)
+python3 $T/ui.py tap --desc "Termin 11:00" --contains || act --ei test_pick_appointment 1
+wait_log "ROUTES " $((N + 1)) 150
+sleep 6
+shot 13b_termin_vorschau
+python3 $T/ui.py tap --desc "Kunde" || act --ez test_open_customer true
+sleep 3
+shot 13c_kunde_vorschau
+act --ez test_close_customer true
+sleep 1
+python3 $T/ui.py tap --text "Los" || act --ez test_start_navigation true
+sleep 8
+python3 $T/ui.py tap --desc "Kunde" || act --ez test_open_customer true
+sleep 3
+shot 13d_kunde_fahrt
+# Nummer antippen -> Abfrage "Anrufen?" (Screenshot) -> "Nein" (in der Testfahrt nie waehlen)
+if python3 $T/ui.py tap --desc "anrufen:" --contains; then
+  sleep 2
+  shot 13e_anrufen_frage
+  python3 $T/ui.py tap --text "Nein" --icase || adb shell input keyevent KEYCODE_BACK
+  sleep 2
+fi
+python3 $T/ui.py exists --text "Anrufen?" && { echo "Anruf-Abfrage noch offen"; adb shell input keyevent KEYCODE_BACK; }
+ensure_alive kunde_quer
+rotate 1
+sleep 3
+shot 13q_kunde_quer
+rotate 0
+sleep 2
+act --ez test_close_customer true
+act --ez test_clear true
+sleep 2
+
 # Einstellungen: Schluessel-Felder mit "Einfuegen" (Zwischenablage leer) und "Pruefen" (leer)
 ensure_alive einstellungen
 act --ez test_close_panels true

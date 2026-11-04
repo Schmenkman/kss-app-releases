@@ -149,6 +149,18 @@ class Prefs(ctx: Context) {
         get() = UserReport.listFromJson(sp.getString("user_reports", null))
         set(v) = putStr("user_reports", UserReport.listToJson(v))
 
+    // ---- Termine (Auftragssystem) ----
+    /** Eigene Nummern (Buero, Firmenhandy) – im Terminzusatz nie als Kunde anzeigen. */
+    var ownPhoneNumbersText: String
+        get() = str("own_phone_numbers")
+        set(v) = putStr("own_phone_numbers", v)
+    val ownPhoneNumbers: List<String>
+        get() = ownPhoneNumbersText.split(',', ';', '\n').map { it.trim() }.filter { it.isNotBlank() }
+    /** Name des gewaehlten Technikers (Anzeige in "Termine heute"), leer = eigener Zugang. */
+    var appointmentTechnicianName: String
+        get() = str("appt_technician_name")
+        set(v) = putStr("appt_technician_name", v)
+
     // ---- Sonstiges ----
     var lastUpdateCheck: Long
         get() = sp.getLong("last_update_check", 0L)
