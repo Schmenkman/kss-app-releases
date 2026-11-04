@@ -1,6 +1,7 @@
 {
-  "version": "1.2.0",
+  "version": "1.2.1",
   "notes": [
+    "Neu: Kurz vor dem Abbiegen, einer Ausfahrt oder einem Kreisverkehr zoomt die Karte etwas heran und schaut steiler von oben – so sieht man, welche Straße es ist; danach geht der Zoom wieder zurück (Handy und Android Auto)",
     "Neu: Termine des Tages aus COMP – Knopf „Termine“ (Kalender) rechts: nach Uhrzeit, antippen = Route zur Adresse",
     "Neu: Knopf „Kunde“ während der Fahrt zu einem Termin – Ansprechpartner aus dem Terminzusatz (wer zuerst anzurufen ist, steht oben), alle Nummern und der volle Terminzusatz; Nummer antippen → „Anrufen?“ Ja wählt direkt",
     "Neu: COMP-Zugang in den Einstellungen unter „Termine & Kunden“ (verschlüsselt nur auf dem Handy, KSS-Maps liest nur); Chef-Zugang: Techniker einmal auswählen",
@@ -16,5 +17,5 @@
     "Tankstellen mit Preisen (Diesel/Super) und UTA-Akzeptanz: erst auf dem Weg, dann Preis – Zwischenstopp ohne neue Eingabe",
     "Blitzerwarnungen standardmäßig aus (Blitzer.de Pro parallel) – Schalter in den Einstellungen und in Android Auto unter „Mehr“"
   ],
-  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.2.0/kss-maps.apk"
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.2.1/kss-maps.apk"
 }

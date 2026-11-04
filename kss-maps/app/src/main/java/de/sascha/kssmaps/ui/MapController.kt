@@ -15,6 +15,7 @@ import de.sascha.kssmaps.core.RankedStation
 import de.sascha.kssmaps.core.Route
 import de.sascha.kssmaps.core.RouteHazard
 import de.sascha.kssmaps.core.TomTom
+import de.sascha.kssmaps.core.TurnZoom
 import de.sascha.kssmaps.core.Tankerkoenig
 import de.sascha.kssmaps.core.UtaStatus
 import de.sascha.kssmaps.nav.NavEngine
@@ -837,6 +838,23 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
     }
 
     private var zoomBand = -1
+    private var turnZoomOn = false
+
+    /** Beim Navigieren: Abzweigung, Ausfahrt oder Kreisverkehr steht kurz bevor (siehe TurnZoom). */
+    private fun turnZoomActive(): Boolean {
+        val r = engine.activeRoute
+        noteState()
+        val along = when {
+            r == null || engine.arrived -> null
+            lineIsActive(r) -> smoother.along
+            stateRoute === r -> engine.state?.along
+            else -> null
+        }
+        val on = r != null && along != null && TurnZoom.active(r, along, engine.speedKmh / 3.6, turnZoomOn)
+        if (on != turnZoomOn && debuggable) Log.i("KSSMaps", "TURN_ZOOM ${if (on) "an" else "aus"} ${if (forCar) "auto" else "handy"} along=${along?.roundToInt()} kmh=${engine.speedKmh.roundToInt()}")
+        turnZoomOn = on
+        return on
+    }
 
     /** Zoom nach Tempo, mit etwas Spielraum an den Grenzen (sonst pendelt der Zoom bei 55 km/h). */
     private fun zoomForSpeedSteady(kmh: Double): Double {
@@ -887,8 +905,14 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
             return false
         }
         val navigating = engine.mode == NavEngine.Mode.NAVIGATING
-        val wantZoom = if (navigating) zoomForSpeedSteady(engine.speedKmh) else idleZoom
-        val wantTilt = if (navigating) 50.0 else 0.0
+        // Kurz vor Abzweigung/Ausfahrt naeher heran und steiler von oben, danach sanft zurueck
+        val turn = navigating && turnZoomActive()
+        val wantZoom = when {
+            !navigating -> idleZoom
+            turn -> minOf(zoomForSpeedSteady(engine.speedKmh) + TurnZoom.BOOST, TurnZoom.MAX_ZOOM)
+            else -> zoomForSpeedSteady(engine.speedKmh)
+        }
+        val wantTilt = if (navigating) 50.0 - (if (turn) TurnZoom.TILT_LESS else 0.0) else 0.0
         val wantBearing = if (navigating) smoother.bearing else 0.0
         val wantPad = uiPadding.copyOf()
         // Beim Navigieren die Position ins untere Drittel schieben: mehr Strecke voraus sichtbar
