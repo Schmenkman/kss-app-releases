@@ -58,9 +58,11 @@ class CompClient(val username: String, private val password: String, private val
         if (Comp.isLoginPage(home.url) || home.code == 401 || home.code == 403) {
             throw CompError("Anmeldung bei COMP fehlgeschlagen – Benutzer oder Passwort prüfen", badLogin = true)
         }
-        // Benutzer-ID aus dem Planer (die Seite wird nur danach durchsucht und sofort verworfen)
-        val sched = exchange("GET", "$base/${Comp.LOCALE}/unitscheduler", accept = HTML)
-        userId = Comp.userId(sched.body) ?: throw CompError("COMP-Benutzer-ID nicht gefunden – Seitenaufbau geändert?")
+        // Benutzer-ID aus dem Planer, sonst von der Startseite (Seiten werden nur danach durchsucht
+        // und sofort verworfen – dort steht auch ein Messaging-Kennwort)
+        userId = Comp.userId(exchange("GET", "$base/${Comp.LOCALE}/unitscheduler", accept = HTML).body)
+            ?: Comp.userId(home.body)
+            ?: throw CompError("COMP-Benutzer-ID nicht gefunden – Seitenaufbau geändert?")
     }
 
     // ---------------------------------------------------------------------------------------
