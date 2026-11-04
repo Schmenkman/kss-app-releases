@@ -528,13 +528,19 @@ class NavEngine(
         scope.launch {
             val ok = try {
                 val res = services.search(a.address, position ?: prefs.lastPosition)
-                val best = res.firstOrNull()
+                val best = de.sascha.kssmaps.core.Appointments.bestMatch(a, res)
                 if (best == null) {
                     message = "Adresse nicht gefunden: ${a.address}"
                     changed()
                     false
                 } else {
-                    setDestination(best)
+                    // Als Ziel die Adresse aus dem Auftrag zeigen (nicht eine Firma im selben Haus)
+                    setDestination(
+                        best.copy(
+                            name = a.street.trim().ifBlank { best.name },
+                            address = "${a.zip.trim()} ${a.city.trim()}".trim().ifBlank { best.address },
+                        ),
+                    )
                     activeAppointment = a
                     changed()
                     true

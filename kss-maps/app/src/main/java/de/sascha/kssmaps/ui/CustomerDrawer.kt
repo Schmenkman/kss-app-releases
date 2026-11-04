@@ -26,7 +26,7 @@ class CustomerDrawer(
     val view: FrameLayout = FrameLayout(ctx)
     private val card = Ui.vbox(ctx)
     private val content = Ui.vbox(ctx)
-    private val title = Ui.text(ctx, "Kunde", 20f, Ui.TEXT, bold = true, maxLines = 1)
+    private val title = Ui.text(ctx, "Kunde", 20f, Ui.TEXT, bold = true, maxLines = 2)
     private val subtitle = Ui.text(ctx, "", 14f, Ui.TEXT2, maxLines = 3)
     var isOpen = false
         private set

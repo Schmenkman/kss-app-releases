@@ -1,10 +1,12 @@
 {
-  "version": "1.1.1",
+  "version": "1.2.0",
   "notes": [
+    "Neu: Termine des Tages aus COMP – Knopf „Termine“ (Kalender) rechts: nach Uhrzeit, antippen = Route zur Adresse",
+    "Neu: Knopf „Kunde“ während der Fahrt zu einem Termin – Ansprechpartner aus dem Terminzusatz (wer zuerst anzurufen ist, steht oben), alle Nummern und der volle Terminzusatz; Nummer antippen → „Anrufen?“ Ja wählt direkt",
+    "Neu: COMP-Zugang in den Einstellungen unter „Termine & Kunden“ (verschlüsselt nur auf dem Handy, KSS-Maps liest nur); Chef-Zugang: Techniker einmal auswählen",
+    "Android Auto: „Termine“ und „Kunde“ in der Leiste; die letzten Ziele sind jetzt unter „Mehr“ und in der Suche",
     "Neu: Startpunkt direkt in der Suche – oben „Von … ändern ›“ antippen, dann das Ziel",
     "Neu: TomTom- und Tankerkönig-Schlüssel sind eingebaut – nichts mehr eintragen",
-    "Behoben: Im Stand (z. B. drinnen) zeigt die App 0 km/h und der Pfeil wandert nicht mehr umher",
-    "Behoben: Update-Prüfung in der App (fragt jetzt die GitHub-Releases ab) – mit Anleitung für die Installation über KingInstaller",
     "Querformat wie Google Maps in Android Auto – Abbiege-Hinweis links oben, Ankunft und Knöpfe links unten, die Karte rechts bleibt frei",
     "Flüssiger Positionspfeil – zwischen den GPS-Punkten wird die Position für jedes Bild berechnet, Pfeil und Karte laufen gleichmäßig statt ruckweise",
     "Spracheingabe – Mikrofon in der Suchleiste; „Navigiere zum Marienplatz 7 in Freising“ öffnet direkt die Route",
@@ -14,5 +16,5 @@
     "Tankstellen mit Preisen (Diesel/Super) und UTA-Akzeptanz: erst auf dem Weg, dann Preis – Zwischenstopp ohne neue Eingabe",
     "Blitzerwarnungen standardmäßig aus (Blitzer.de Pro parallel) – Schalter in den Einstellungen und in Android Auto unter „Mehr“"
   ],
-  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.1.1/kss-maps.apk"
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.2.0/kss-maps.apk"
 }

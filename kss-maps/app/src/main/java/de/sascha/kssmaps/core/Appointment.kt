@@ -45,6 +45,31 @@ object Appointments {
         list.filter { technicianId == null || it.technicianIds.isEmpty() || technicianId in it.technicianIds }
             .sortedWith(compareBy<Appointment>({ it.start }, { it.label }))
 
+    /**
+     * Aus den Suchtreffern fuer die Termin-Adresse den passenden waehlen: Strasse, Hausnummer und
+     * PLZ wie im Auftrag vor Firmen oder Orten in der Naehe (Reihenfolge der Suche bei Gleichstand).
+     */
+    fun bestMatch(a: Appointment, results: List<Place>): Place? {
+        if (results.isEmpty()) return null
+        val m = Regex("^(.*?)[\\s,]*(\\d+\\s*[a-zA-Z]?(?:\\s*[-/]\\s*\\d+\\s*[a-zA-Z]?)?)$").find(a.street.trim())
+        val street = norm(m?.groupValues?.get(1) ?: a.street)
+        val number = m?.groupValues?.get(2)?.lowercase()?.replace(Regex("\\s"), "")
+        fun score(p: Place): Int {
+            var s = 0
+            val ps = norm(p.street ?: p.name.replace(Regex("\\s*\\d.*$"), ""))
+            if (street.isNotEmpty() && ps == street) s += 4
+            val pn = (p.houseNumber ?: Regex("\\b(\\d+\\s*[a-zA-Z]?)\\b").find(p.name)?.value)?.lowercase()?.replace(Regex("\\s"), "")
+            if (number != null && pn == number) s += 3
+            if (a.zip.isNotBlank() && (p.postcode == a.zip.trim() || p.address.contains(a.zip.trim()))) s += 2
+            return s
+        }
+        return results.withIndex().maxWithOrNull(compareBy<IndexedValue<Place>>({ score(it.value) }, { -it.index }))?.value
+    }
+
+    private fun norm(s: String): String = s.lowercase()
+        .replace("straße", "str").replace("strasse", "str").replace("str.", "str")
+        .replace(Regex("[^a-z0-9äöüß]"), "")
+
     /** "09:00–10:30" in deutscher Ortszeit. */
     fun timeRange(a: Appointment, zone: java.util.TimeZone = java.util.TimeZone.getTimeZone("Europe/Berlin")): String {
         val f = java.text.SimpleDateFormat("HH:mm", java.util.Locale.GERMANY).apply { timeZone = zone }
