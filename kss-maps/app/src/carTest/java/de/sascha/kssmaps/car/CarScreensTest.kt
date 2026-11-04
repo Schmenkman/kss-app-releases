@@ -24,6 +24,7 @@ import de.sascha.kssmaps.core.RouteSource
 import de.sascha.kssmaps.core.RouteTracker
 import de.sascha.kssmaps.core.UtaStatus
 import de.sascha.kssmaps.nav.NavEngine
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -175,6 +176,43 @@ class CarScreensTest {
         assertTrue(s.onGetTemplate() is PlaceListNavigationTemplate)
         s.error = "Für Tankpreise wird ein Schlüssel benötigt"
         assertTrue(s.onGetTemplate() is MessageTemplate)
+    }
+
+    @Test
+    fun appointmentsCustomerAndCall() {
+        engine.testSetState(NavEngine.Mode.IDLE, null, emptyList())
+        engine.testSetActiveAppointment(null)
+        engine.setAppointmentsForTest(emptyList())
+        assertTrue(CarAppointmentsScreen(car).onGetTemplate() is ListTemplate) // noch nicht eingerichtet
+        val demo = de.sascha.kssmaps.data.DemoAppointments.list()
+        engine.setAppointmentsForTest(demo)
+        assertTrue(CarAppointmentsScreen(car).onGetTemplate() is ListTemplate)
+
+        // Kunde: ohne Termin, mit einem / zwei Ansprechpartnern, ohne Nummer, ohne Terminzusatz
+        assertTrue(CarCustomerScreen(car).onGetTemplate() is ListTemplate)
+        for (a in demo + demo[0].copy(note = "Termin bestätigt, Kunde öffnet selbst.") + demo[0].copy(note = "", customerName = "")) {
+            engine.testSetActiveAppointment(a)
+            assertTrue(CarCustomerScreen(car).onGetTemplate() is ListTemplate)
+        }
+
+        // Leisten mit Knopf "Kunde": frei, beim Navigieren; "Mehr" in beiden Faellen
+        engine.testSetActiveAppointment(demo[1])
+        assertTrue(CarMainScreen(car, NaviSession()).onGetTemplate() is NavigationTemplate)
+        assertTrue(CarMoreScreen(car).onGetTemplate() is ListTemplate)
+        val r = route()
+        engine.testSetState(NavEngine.Mode.NAVIGATING, dest(), listOf(r), r, null)
+        assertTrue(CarMainScreen(car, NaviSession()).onGetTemplate() is NavigationTemplate)
+        assertTrue(CarMoreScreen(car).onGetTemplate() is ListTemplate)
+        engine.testSetState(NavEngine.Mode.IDLE, null, emptyList())
+        engine.testSetActiveAppointment(null)
+
+        // "Anrufen?" -> Ja: Nummer geht an Android Auto (ohne Berechtigung als Waehl-Absicht)
+        val confirm = CarCallConfirmScreen(car, "Herr Probe", "08761/72345", "0876172345")
+        assertTrue(confirm.onGetTemplate() is MessageTemplate)
+        confirm.call()
+        val sent = car.startCarAppIntents.last()
+        assertEquals(android.content.Intent.ACTION_DIAL, sent.action)
+        assertEquals("tel:0876172345", sent.data.toString())
     }
 
     @Test

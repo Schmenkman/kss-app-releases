@@ -475,27 +475,40 @@ class NavEngine(
         changed()
     }
 
-    /** Zu einem Termin fahren: Adresse suchen, Route berechnen, Termin fuer "Kunde" merken. */
-    fun startAppointment(a: de.sascha.kssmaps.core.Appointment) {
+    /**
+     * Zu einem Termin fahren: Adresse suchen, Route berechnen, Termin fuer "Kunde" merken.
+     * [onDone] (Hauptthread): true = Vorschau laeuft, false = Adresse nicht gefunden (siehe [message]).
+     */
+    fun startAppointment(a: de.sascha.kssmaps.core.Appointment, onDone: ((Boolean) -> Unit)? = null) {
         scope.launch {
-            try {
+            val ok = try {
                 val res = services.search(a.address, position ?: prefs.lastPosition)
                 val best = res.firstOrNull()
                 if (best == null) {
                     message = "Adresse nicht gefunden: ${a.address}"
                     changed()
-                    return@launch
+                    false
+                } else {
+                    setDestination(best)
+                    activeAppointment = a
+                    changed()
+                    true
                 }
-                setDestination(best)
-                activeAppointment = a
-                changed()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 message = "Adresse konnte nicht gesucht werden (Internet?)"
                 changed()
+                false
             }
+            onDone?.invoke(ok)
         }
+    }
+
+    /** Nur Tests: Termin direkt als "wird angefahren" setzen. */
+    internal fun testSetActiveAppointment(a: de.sascha.kssmaps.core.Appointment?) {
+        activeAppointment = a
+        changed()
     }
 
     /** Startpunkt setzen (null = wieder ab dem eigenen Standort) und die Routen neu berechnen. */

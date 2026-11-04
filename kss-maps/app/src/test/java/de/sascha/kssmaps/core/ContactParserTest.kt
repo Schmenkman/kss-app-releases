@@ -70,6 +70,33 @@ class ContactParserTest {
     }
 
     @Test
+    fun hintGoesToTheNearestPersonInTheSentence() {
+        val r = p("Mieter: Familie Yilmaz 0176 12345678 (spricht wenig Deutsch), Vermieter Herr Gruber 0151 2345678 vorher informieren")
+        assertEquals(listOf("Herr Gruber", "Familie Yilmaz"), r.contacts.map { it.name })
+        assertTrue(r.contacts[0].callFirst)
+        assertEquals("vorher informieren", r.contacts[0].hint)
+        assertNull(r.contacts[1].hint)
+    }
+
+    @Test
+    fun reachableUnderIsNoCallFirst() {
+        // "unter …" allein heisst nicht "zuerst anrufen" – der mit "vorher" kommt nach vorn
+        val r = p("Termin mit Herr Müller unter 0171 2345678 vereinbart. Bitte vorher Herr Mader 30 min vorher unter 08761/72345 anrufen")
+        assertEquals(listOf("Herr Mader", "Herr Müller"), r.contacts.map { it.name })
+        assertFalse(p("Kunde erreichbar unter 0911 445566").contacts[0].callFirst)
+    }
+
+    @Test
+    fun hoursCapitalsAndJoinedNumbers() {
+        assertEquals("1 Std. vorher anrufen", p("Bitte 1 Std. vorher bei Hausmeister Herrn Wagner anrufen: 0160 1234567").contacts[0].hint)
+        val caps = p("TERMIN MIT HERRN KOCH 0151/22233344 BESTÄTIGT, 15 MIN VORHER ANRUFEN").contacts[0]
+        assertEquals("Herr Koch", caps.name)
+        assertEquals("15 Min. vorher anrufen", caps.hint)
+        assertEquals(listOf("01711234567", "01609876543"), p("Herr Weber Tel. 0171 1234567 / 0160 9876543").contacts[0].dial)
+        assertEquals(listOf("01711234567", "01609876543"), p("Herr Weber 0171 1234567 0160 9876543").contacts[0].dial)
+    }
+
+    @Test
     fun noNumbersNoContacts() {
         val r = p("Termin bestätigt, Kunde öffnet selbst.")
         assertTrue(r.contacts.isEmpty())

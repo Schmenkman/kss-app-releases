@@ -1,6 +1,9 @@
 package de.sascha.kssmaps.car
 
 import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.car.app.AppManager
 import androidx.car.app.CarContext
 import androidx.car.app.CarToast
@@ -25,6 +28,8 @@ import androidx.car.app.navigation.model.RoutingInfo
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import de.sascha.kssmaps.NaviApp
+import de.sascha.kssmaps.core.Appointment
+import de.sascha.kssmaps.core.Appointments
 import de.sascha.kssmaps.core.FuelType
 import de.sascha.kssmaps.core.Geo
 import de.sascha.kssmaps.core.HazardType
@@ -108,15 +113,19 @@ class CarMainScreen(carContext: CarContext, private val session: NaviSession) : 
         val muted = e.prefs.voiceMuted
         val muteAction = CarUtil.action(if (muted) Icons.Glyph.VOLUME_OFF else Icons.Glyph.VOLUME_ON, tint = if (muted) CarColor.RED else null) { e.toggleMuted() }
         val more = CarUtil.action(Icons.Glyph.MORE) { screenManager.push(CarMoreScreen(carContext)) }
+        val fuel = CarUtil.action(Icons.Glyph.FUEL) { screenManager.push(CarFuelScreen(carContext)) }
+        // Kunde anrufen, solange ein Termin angefahren wird (auch nach der Ankunft); Ton und
+        // Tanken gibt es dann unter "Mehr", die letzten Ziele immer dort und in der Suche.
+        val customer = if (e.activeAppointment != null) CarUtil.action(Icons.Glyph.PHONE, tint = CarColor.GREEN) { screenManager.push(CarCustomerScreen(carContext)) } else null
         if (e.mode == NavEngine.Mode.NAVIGATING) {
-            strip.addAction(CarUtil.action(Icons.Glyph.FUEL) { screenManager.push(CarFuelScreen(carContext)) })
-            strip.addAction(muteAction)
+            strip.addAction(fuel)
+            strip.addAction(customer ?: muteAction)
             strip.addAction(more)
             strip.addAction(CarUtil.textAction("Ende") { e.stopNavigation() })
         } else {
             strip.addAction(CarUtil.action(Icons.Glyph.SEARCH) { screenManager.push(CarSearchScreen(carContext)) })
-            strip.addAction(CarUtil.action(Icons.Glyph.HISTORY) { screenManager.push(CarHistoryScreen(carContext)) })
-            strip.addAction(CarUtil.action(Icons.Glyph.FUEL) { screenManager.push(CarFuelScreen(carContext)) })
+            strip.addAction(CarUtil.action(Icons.Glyph.CALENDAR) { screenManager.push(CarAppointmentsScreen(carContext)) })
+            strip.addAction(customer ?: fuel)
             strip.addAction(more)
         }
         b.setActionStrip(strip.build())
@@ -514,6 +523,16 @@ class CarMoreScreen(carContext: CarContext) : Screen(carContext) {
             if (!text.isNullOrBlank()) r.addText(text)
             il.addItem(r.build())
         }
+        fun openScreen(title: String, text: String?, screen: () -> Screen) {
+            val r = Row.Builder().setTitle(title).setOnClickListener {
+                screenManager.pop()
+                screenManager.push(screen())
+            }
+            if (!text.isNullOrBlank()) r.addText(text)
+            il.addItem(r.build())
+        }
+        if (e.mode != NavEngine.Mode.NAVIGATING) openScreen("Letzte Ziele", null) { CarHistoryScreen(carContext) }
+        if (e.mode != NavEngine.Mode.NAVIGATING && e.activeAppointment != null) openScreen("Tankstellen", "auf dem Weg und in der Nähe") { CarFuelScreen(carContext) }
         if (e.prefs.camerasEnabled) {
             row("Mobiler Blitzer hier", "merken und auf der Route warnen (4 Stunden)") {
                 toast(if (e.reportHere(HazardType.SPEED_CAMERA, false)) "Blitzer gespeichert" else "Kein GPS-Standort")
@@ -546,5 +565,131 @@ class CarMoreScreen(carContext: CarContext) : Screen(carContext) {
             .setHeaderAction(Action.BACK)
             .setSingleList(il.build())
             .build()
+    }
+}
+
+
+// =============================================================================================
+// Termine heute (Auftragssystem, nur lesend) und Kunde anrufen
+// =============================================================================================
+
+class CarAppointmentsScreen(carContext: CarContext) : EngineScreen(carContext) {
+    /** Termin, dessen Adresse gerade gesucht wird (dann "laedt"). */
+    private var pendingId: String? = null
+
+    init {
+        val e = engine
+        if (e.appointmentSource.configured && !e.appointmentsLoading) e.loadAppointments()
+    }
+
+    override fun onGetTemplate(): Template {
+        val e = engine
+        val b = ListTemplate.Builder().setTitle("Termine heute").setHeaderAction(Action.BACK)
+        if (pendingId != null || (e.appointmentsLoading && e.appointments.isEmpty())) return b.setLoading(true).build()
+        val il = ItemList.Builder().setNoItemsMessage(
+            when {
+                !e.appointmentSource.configured -> "Noch kein Zugang zum Auftragssystem – in KSS-Maps am Handy einrichten"
+                e.appointmentsError != null -> "Termine konnten nicht geladen werden"
+                else -> "Heute keine Termine"
+            }
+        )
+        val own = e.prefs.ownPhoneNumbers
+        for (a in e.appointments.take(CarUtil.listLimit(carContext, 20))) {
+            val first = a.contacts(own).contacts.firstOrNull()
+            val row = Row.Builder()
+                .setTitle(Appointments.timeRange(a).substringBefore('–') + "  " + a.customerName.ifBlank { first?.name ?: "Termin" })
+                .addText(a.address.ifBlank { "Adresse fehlt" })
+                .setOnClickListener { pick(a) }
+            if (first != null) row.addText("Tel. ${first.name}" + (first.hint?.let { " · $it" } ?: ""))
+            il.addItem(row.build())
+        }
+        b.setSingleList(il.build())
+        if (e.appointmentSource.configured) {
+            b.setActionStrip(ActionStrip.Builder().addAction(CarUtil.textAction("Aktualisieren") { e.loadAppointments() }).build())
+        }
+        return b.build()
+    }
+
+    private fun pick(a: Appointment) {
+        pendingId = a.id
+        invalidate()
+        engine.startAppointment(a) { ok ->
+            pendingId = null
+            when {
+                // Inzwischen zurueck zur Karte: dort oeffnet sich die Vorschau von selbst
+                screenManager.top !== this -> {}
+                ok -> screenManager.push(CarRoutePreviewScreen(carContext))
+                else -> {
+                    CarToast.makeText(carContext, engine.message ?: "Adresse nicht gefunden", CarToast.LENGTH_LONG).show()
+                    invalidate()
+                }
+            }
+        }
+    }
+}
+
+/** Ansprechpartner des angefahrenen Termins (aus dem Terminzusatz), wer zuerst anzurufen ist, oben. */
+class CarCustomerScreen(carContext: CarContext) : EngineScreen(carContext) {
+    override fun onGetTemplate(): Template {
+        val a = engine.activeAppointment
+        val b = ListTemplate.Builder().setHeaderAction(Action.BACK)
+        if (a == null) {
+            return b.setTitle("Kunde").setSingleList(ItemList.Builder().setNoItemsMessage("Kein Termin ausgewählt").build()).build()
+        }
+        b.setTitle(a.customerName.ifBlank { "Kunde" })
+        val contacts = a.contacts(engine.prefs.ownPhoneNumbers).contacts
+        val il = ItemList.Builder()
+        // eine Zeile fuer den Terminzusatz frei lassen
+        val limit = (CarUtil.listLimit(carContext, 12) - 1).coerceAtLeast(1)
+        var n = 0
+        for (c in contacts) for (i in c.dial.indices) {
+            if (n >= limit) break
+            val display = c.phones.getOrElse(i) { c.dial[i] }
+            val row = Row.Builder()
+                .setTitle(c.name)
+                .addText(display)
+                .setImage(CarUtil.glyph(Icons.Glyph.PHONE, if (c.callFirst) CarColor.GREEN else null))
+                .setOnClickListener { screenManager.push(CarCallConfirmScreen(carContext, c.name, display, c.dial[i])) }
+            val extra = c.hint ?: if (c.callFirst) "zuerst anrufen" else null
+            if (extra != null) row.addText(extra)
+            il.addItem(row.build())
+            n++
+        }
+        if (contacts.isEmpty()) il.addItem(Row.Builder().setTitle("Keine Telefonnummer im Terminzusatz").build())
+        if (a.note.isNotBlank()) il.addItem(Row.Builder().setTitle("Terminzusatz").addText(a.note).build())
+        return b.setSingleList(il.build()).build()
+    }
+}
+
+/** "Anrufen?" – bei Ja waehlt Android Auto die Nummer. */
+class CarCallConfirmScreen(
+    carContext: CarContext,
+    private val name: String,
+    private val display: String,
+    private val digits: String,
+) : Screen(carContext) {
+    override fun onGetTemplate(): Template =
+        MessageTemplate.Builder("$name\n$display")
+            .setTitle("Anrufen?")
+            .setHeaderAction(Action.BACK)
+            .setIcon(CarUtil.glyph(Icons.Glyph.PHONE, CarColor.GREEN))
+            .addAction(Action.Builder().setTitle("Ja").setBackgroundColor(CarColor.GREEN).setOnClickListener { call() }.build())
+            .addAction(CarUtil.textAction("Nein") { finish() })
+            .build()
+
+    internal fun call() {
+        val uri = Uri.fromParts("tel", digits, null)
+        // Mit Anruf-Berechtigung direkt waehlen, sonst ueber die Waehlfunktion von Android Auto
+        val direct = carContext.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+        try {
+            carContext.startCarApp(Intent(if (direct) Intent.ACTION_CALL else Intent.ACTION_DIAL, uri))
+        } catch (e: Exception) {
+            try {
+                carContext.startCarApp(Intent(Intent.ACTION_DIAL, uri))
+            } catch (e2: Exception) {
+                CarToast.makeText(carContext, "Anruf nicht möglich", CarToast.LENGTH_LONG).show()
+            }
+        }
+        screenManager.popToRoot()
     }
 }

@@ -27,6 +27,8 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 | Tankstellen mit Preisen, UTA | ⛽-Knopf: Diesel/Super E5/E10, Filter **„nur UTA“**. Reihenfolge: **zuerst die auf dem Weg zum Ziel liegenden, dann nach Preis**; danach Tankstellen mit Umweg. Ohne Tankerkönig-Schlüssel erscheinen die Tankstellen trotzdem sofort (Liste aller Tankstellen Bayerns aus OpenStreetMap ist in der App, mit UTA-Kennzeichnung) – nur ohne Preise |
 | Erst zur Tankstelle, dann automatisch weiter | Tankstelle antippen → wird Zwischenstopp, danach geht es ohne neue Eingabe weiter zum Ziel |
 | Sprachnavigation, Ton abschaltbar | Deutsche Ansagen in 3 Stufen (Vorankündigung, nah, „Jetzt …“), Lautsprecher-Knopf (Handy und Auto) |
+| Termine des Tages | 📅-Knopf **„Termine“**: die Termine von heute nach Uhrzeit (Kunde, Adresse, wen anrufen); antippen = Route zur Adresse. Kommt aus dem Auftragssystem, nur lesend – die Anbindung folgt. In Android Auto als Liste über die Leiste |
+| Kunde anrufen | Während der Fahrt zu einem Termin erscheint der grüne ☎-Knopf **„Kunde“**: Leiste rollt seitlich heraus (die Karte rückt nach links, Pfeil und Fahrweg bleiben frei) mit den Ansprechpartnern aus dem **Terminzusatz** – wer „vorher anzurufen“ ist, steht oben als „ZUERST ANRUFEN“ –, allen Nummern und dem vollständigen Terminzusatz. Nummer antippen → **„Anrufen?“ Ja/Nein**, Ja wählt direkt. Eigene Nummern (Büro, Firmenhandy) in den Einstellungen werden nie als Kunde angezeigt |
 | Funklöcher | Beim Start der Navigation wird die Karte entlang der Route automatisch offline gespeichert (bis 250 km), dazu ein großer Kartenspeicher (600 MB) für oft gefahrene Gegenden |
 
 ## Einrichtung auf dem Handy
@@ -152,12 +154,14 @@ tools/fetch_enforcement.py  Blitzer-Startbestand und Tankstellenliste für die A
 - **Logik-Tests** (JVM): Routen-Parser, Blitzer-/Stau-Abgleich, Ansagetexte, Tankstellen-Sortierung,
   Suche, Gebäude-Erkennung – bei jedem Build.
 - **Android-Auto-Tests** (Robolectric): jede Vorlage (Karte/Navigation, Routenauswahl, Suche, letzte
-  Ziele, Tanken, „Mehr“, Hinweise) in allen Zuständen – Android Auto wirft bei falsch gebauten
+  Ziele, Tanken, Termine, Kunde, „Anrufen?“, „Mehr“, Hinweise) in allen Zuständen – Android Auto wirft bei falsch gebauten
   Vorlagen Ausnahmen, die hier auffallen statt im Auto.
 - **Testfahrt im Emulator** (Commit-Nachricht mit `[testfahrt]`): Erststart-Hinweise, Ziel per
   geo-Link, Routen mit Baustellen, Luftbild, gesperrter Abschnitt, Navigation München →
   Freising mit Ansagen, Ankunft mit markiertem Zielhaus,
-  Tankstellen, Suche, Querformat, eigener Startpunkt mit Wegbeschreibung, Sprachbefehl – plus
+  Tankstellen, Suche, Querformat, eigener Startpunkt mit Wegbeschreibung, Sprachbefehl,
+  Termine mit Kunden-Leiste und „Anrufen?“-Abfrage (nur erfundene Beispieltermine, es wird nie
+  gewählt) – plus
   Bilder der Android-Auto-Karte und eine Messung, wie gleichmäßig der Positionspfeil läuft
   (`pfeil.txt`). Ergebnisse hängen als `testfahrt_*` an der Vorabversion `kssmaps-testfahrt`
   (nicht installieren – nur Testergebnisse). Der Emulator nutzt die ANGLE-Grafik
