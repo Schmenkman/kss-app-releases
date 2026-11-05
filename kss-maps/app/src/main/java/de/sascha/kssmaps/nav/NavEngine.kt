@@ -324,8 +324,12 @@ class NavEngine(
     private var locating = false
     private var lastGpsFix = 0L
 
+    /** Nur Testfahrt: GPS-Punkte bis zu diesem Zeitpunkt verwerfen (Tunnel ohne Empfang nachstellen). */
+    @Volatile var testGpsGapUntil = 0L
+
     private val gpsListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
+            if (testGpsGapUntil != 0L && SystemClock.elapsedRealtime() < testGpsGapUntil) return
             // Waehrend der Schaetzung (Tunnel): erst ein brauchbarer Punkt beendet sie
             if (deadReckoning && location.accuracy > 40f) return
             lastGpsFix = SystemClock.elapsedRealtime()
@@ -982,16 +986,20 @@ class NavEngine(
         if (stage == AnnouncePlan.Stage.NEAR && AnnouncePlan.Stage.NOW in done) return
         done.add(stage)
         val isFuel = m.kind == de.sascha.kssmaps.core.ManeuverKind.WAYPOINT && fuelStop != null
+        if (isFuel && stage == AnnouncePlan.Stage.NOW) fuelArrivalSpoken = true
+        voice.say(announceText(route, st, m, stage, isFuel), urgent = stage == AnnouncePlan.Stage.NOW)
+        // "Jetzt …" schon jetzt vorausberechnen (eingebaute Stimme): kommt dann ohne Rechenpause
+        if (stage != AnnouncePlan.Stage.NOW) voice.prepare(announceText(route, st, m, AnnouncePlan.Stage.NOW, isFuel))
+    }
+
+    private fun announceText(route: Route, st: RouteTracker.State, m: de.sascha.kssmaps.core.Maneuver, stage: AnnouncePlan.Stage, isFuel: Boolean): String {
         var text = if (stage == AnnouncePlan.Stage.NOW) Instructions.voice(m, null, isFuel) else Instructions.voice(m, st.distToNext, isFuel)
-        if (isFuel && stage == AnnouncePlan.Stage.NOW) {
-            text += " Danach geht es automatisch weiter zum Ziel."
-            fuelArrivalSpoken = true
-        }
+        if (isFuel && stage == AnnouncePlan.Stage.NOW) text += " Danach geht es automatisch weiter zum Ziel."
         if (stage != AnnouncePlan.Stage.FAR && st.afterIdx >= 0 && !m.kind.isArrival && m.kind != de.sascha.kssmaps.core.ManeuverKind.WAYPOINT) {
             val after = route.maneuvers[st.afterIdx]
             if (after.along - m.along < 250) text += " " + Instructions.thenText(after)
         }
-        voice.say(text, urgent = stage == AnnouncePlan.Stage.NOW)
+        return text
     }
 
     private fun checkHazards(route: Route, st: RouteTracker.State, sp: Double) {

@@ -888,6 +888,12 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             // Android-Auto-Karte auf unsichtbarer Flaeche zeichnen und als Bild sichern (Testfahrt)
             // Anruf-Erinnerung wie kurz vor der Ankunft ("Kunde anrufen?" – in der Testfahrt nur "Nein")
             if (i.getBooleanExtra("test_call_reminder", false)) engine.testCallReminder()
+            // Tunnel nachstellen: N Sekunden lang kommen keine GPS-Punkte bei der Navigation an
+            if (i.hasExtra("test_gps_gap")) {
+                val sec = i.getIntExtra("test_gps_gap", 0).coerceIn(0, 300)
+                engine.testGpsGapUntil = android.os.SystemClock.elapsedRealtime() + sec * 1000L
+                android.util.Log.i("KSSMaps", "TEST_GPS_GAP ${sec}s")
+            }
             // Hoerprobe der eingebauten Stimme als WAV (files/stimme_probe.wav, Testfahrt-Anhang)
             i.getStringExtra("test_voice_wav")?.let { t ->
                 val v = NaviApp.instance.voice

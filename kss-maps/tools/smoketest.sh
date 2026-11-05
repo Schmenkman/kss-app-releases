@@ -35,6 +35,9 @@ ensure_alive() {
     adb shell dumpsys activity exit-info $PKG 2>/dev/null | head -80 >> "$OUT/app_beendet.txt"
     act
     sleep 20
+    # Android-Auto-Flaeche gehoert zum alten Prozess: neu starten, sonst fehlen die Auto-Bilder
+    act --ez test_car_start true
+    sleep 10
   fi
 }
 # Anzahl der berechneten Routenvorschauen bisher
@@ -154,6 +157,7 @@ if [ -n "$CAM" ] && [ "$CAM" -gt 1500 ] && [ "$CAM" -lt 25000 ]; then
 else
   # mit "Tunnel" von 6000 bis 6750 m: 30 s keine GPS-Punkte, der Pfeil soll mit dem letzten Tempo weiterfahren
   python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from 0 --to 9000 --speed 25 --shot-every 50 --prefix 05_fahrt --gap-from 6000 --gap-to 6750
+  ensure_alive auto_fahrt
   car_shot fahrt auto_02_fahrt
 fi
 # Eigene Knoepfe auf der Android-Auto-Karte: Antippen trifft den richtigen Knopf (Probe ohne Auto -> Protokoll)

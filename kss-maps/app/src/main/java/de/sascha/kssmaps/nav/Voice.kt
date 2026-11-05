@@ -208,6 +208,11 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
         speakSystem(text, urgent)
     }
 
+    /** Ansage vorausberechnen, die gleich kommt ("Jetzt …") – nur die eingebaute Stimme braucht das. */
+    fun prepare(text: String) {
+        if (neuralReady && !muted && text.isNotBlank()) neural.prepare(SpeechText.normalize(text))
+    }
+
     private fun speakSystem(text: String, urgent: Boolean) {
         val t = tts
         if (!ready || t == null) {

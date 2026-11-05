@@ -89,7 +89,7 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
         var pause = 60_000L
         while (enabled) {
             try {
-                if (prepare()) return
+                if (prepareModel()) return
                 if (state == State.UNSUPPORTED) return
             } catch (e: Throwable) {
                 problem = e.message ?: e.javaClass.simpleName
@@ -108,7 +108,7 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
     }
 
     /** true = bereit. */
-    private fun prepare(): Boolean {
+    private fun prepareModel(): Boolean {
         if (!libraryOk()) return false
         if (BuildConfig.VOICE_URL.isBlank() || BuildConfig.VOICE_SHA256.isBlank()) {
             unsupported("In dieser Version nicht enthalten")
@@ -292,6 +292,22 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
                 false
             }
             done(ok)
+        }
+    }
+
+    /**
+     * Vorausberechnen (z. B. "Jetzt rechts abbiegen …" waehrend die Vorankuendigung laeuft). Kommt
+     * vorher eine dringende Ansage, entfaellt es – die rechnet dann selbst.
+     */
+    fun prepare(text: String) {
+        val g = generation.get()
+        worker.execute {
+            if (generation.get() != g || cache.containsKey(text)) return@execute
+            try {
+                pcm(text)
+            } catch (e: Throwable) {
+                // dann eben beim Sprechen
+            }
         }
     }
 

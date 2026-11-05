@@ -135,18 +135,16 @@ def main():
         gap = a.gap_from is not None and a.gap_to is not None and a.gap_from <= d < a.gap_to
         if gap != in_gap:
             print(("TUNNEL Anfang" if gap else "TUNNEL Ende") + f" bei {d:.0f} m", flush=True)
-            # Der Emulator meldet die letzte Position sonst von selbst weiter: Ortung ganz aus/an
-            on = "false" if gap else "true"
-            r = subprocess.run(["adb", "shell", "cmd", "location", "set-location-enabled", on], capture_output=True, text=True)
-            if r.returncode != 0:
-                subprocess.run(["adb", "shell", "settings", "put", "secure", "location_mode", "0" if gap else "3"], capture_output=True)
             if gap:
+                # Die App verwirft so lange alle GPS-Punkte (Test-Schalter) – wie im Tunnel. Ortung des
+                # ganzen Emulators aus/an brachte ihn unter Last zum Haengen (GNSS-Stopp, Watchdog).
+                secs = int(round((a.gap_to - a.gap_from) / a.speed))
+                subprocess.run(["adb", "shell", f"am start -n de.sascha.kssmaps/.MainActivity --ei test_gps_gap {secs}"], capture_output=True)
                 # Bild mitten im Tunnel: der Pfeil soll weiterfahren
                 mid = (a.gap_to - a.gap_from) / a.speed / 2
                 subprocess.Popen(f"sleep {mid:.0f}; adb exec-out screencap -p > {a.out}/{a.prefix}_tunnel.png", shell=True)
             in_gap = gap
-        if not gap:
-            fix(lat, lon, knots)
+        fix(lat, lon, knots)
         now = time.time()
         if now - last_shot >= a.shot_every:
             last_shot = now
