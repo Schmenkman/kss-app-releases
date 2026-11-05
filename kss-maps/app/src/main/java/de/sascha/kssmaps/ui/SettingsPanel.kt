@@ -220,6 +220,39 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
             prefs.overspeedTolerance = listOf(0, 3, 5, 10)[it]
         }
 
+        section("Stimme der Ansagen")
+        val voice = NaviApp.instance.voice
+        val engines = voice.engines()
+        if (engines.size > 1) {
+            val current = prefs.ttsEngine.ifBlank { engines.first().first }
+            choice("Sprachausgabe", engines.map { it.second }, engines.indexOfFirst { it.first == current }.coerceAtLeast(0)) { i ->
+                prefs.ttsEngine = engines[i].first
+                prefs.ttsVoice = ""
+                voice.reconfigure()
+                host.toast("Sprachausgabe: ${engines[i].second}")
+                content.postDelayed({ if (isShown) render() }, 1500)
+            }
+        }
+        val voices = voice.voices()
+        val cur = voices.indexOfFirst { it.name == voice.currentVoice }
+        action(if (voices.isEmpty()) "Stimme: Standard" else "Stimme wählen (${if (cur >= 0) voices[cur].label.substringBefore(" ·") else "automatisch"})") {
+            if (voices.isEmpty()) {
+                host.toast("Keine deutsche Stimme gefunden – in den Android-Einstellungen unter Sprachausgabe installieren")
+                return@action
+            }
+            AlertDialog.Builder(ctx).setTitle("Stimme wählen – antippen zum Anhören")
+                .setSingleChoiceItems(voices.map { it.label }.toTypedArray(), cur) { _, w -> voice.selectVoice(voices[w].name) }
+                .setPositiveButton("Fertig") { _, _ -> render() }
+                .setNeutralButton("Automatisch") { _, _ ->
+                    prefs.ttsVoice = ""
+                    voice.reconfigure()
+                    render()
+                }
+                .show()
+        }
+        action("Probe hören") { voice.sample() }
+        note("Natürlicher klingen neuronale Stimmen: in Android unter Einstellungen → Sprachausgabe die Google-Sprachdaten „Deutsch“ in hoher Qualität laden, oder die kostenlose App SherpaTTS (F-Droid) mit einer deutschen Stimme installieren und oben als Sprachausgabe wählen. „Offline“-Stimmen sprechen auch im Funkloch.")
+
         section("Route")
         toggle("Mautstraßen meiden", prefs.avoidTolls) { prefs.avoidTolls = it }
         toggle("Autobahnen meiden (komplett)", prefs.avoidMotorways) { prefs.avoidMotorways = it }

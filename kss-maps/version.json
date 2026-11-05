@@ -2,6 +2,7 @@
   "version": "1.3.0",
   "notes": [
     "Android Auto: immer sichtbare Knöpfe rechts – Kunde anrufen, Termine, Übersicht mit Alternativen (eine staufrei), Tag/Nacht, Stau-Korrektur, Tanken, Einstellungen, Zentrieren; Zoom und Beenden unten",
+    "Stimme der Ansagen wählbar (Sprachausgabe-Programm und Stimme, mit Hörprobe) – automatisch die beste deutsche Offline-Stimme; Lautsprecher-Knopf auch in Android Auto",
     "Android Auto: Tag/Nacht folgt jetzt der App (Automatisch nach Sonnenstand) statt dem Nachtmodus des Autos",
     "Abbiegepfeile direkt auf der Route; Warnbanner „Baustelle in 800 m“ / „Baustelle noch 1,2 km“, im Auto ohne blockierende Hinweiskarte",
     "Baustellen nur, solange sie gelten (Tagesbaustellen im Zeitfenster), keine Meldungen der Gegenfahrbahn; Verkehr alle 2 Minuten",

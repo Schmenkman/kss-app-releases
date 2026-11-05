@@ -45,7 +45,7 @@ class CarMapRenderer(
     private val customButtons: Boolean = true,
 ) : SurfaceCallback, NavEngine.Listener {
 
-    enum class Btn { CALL, APPOINTMENTS, OVERVIEW, DAYNIGHT, TRAFFIC_FIX, FUEL, SETTINGS, RECENTER, ZOOM_OUT, ZOOM_IN, END }
+    enum class Btn { CALL, APPOINTMENTS, OVERVIEW, DAYNIGHT, TRAFFIC_FIX, FUEL, MUTE, SETTINGS, RECENTER, ZOOM_OUT, ZOOM_IN, END }
 
     /** Knopf angetippt – der Bildschirm im Auto oeffnet dann die passende Ansicht. */
     var onButton: ((Btn) -> Unit)? = null
@@ -181,7 +181,7 @@ class CarMapRenderer(
 
     private fun buildButtons(ctx: Context, ov: FrameLayout) {
         val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        for (b in listOf(Btn.CALL, Btn.APPOINTMENTS, Btn.OVERVIEW, Btn.DAYNIGHT, Btn.TRAFFIC_FIX, Btn.FUEL, Btn.SETTINGS, Btn.RECENTER)) {
+        for (b in COLUMN) {
             val v = ImageView(ctx).apply {
                 scaleType = ImageView.ScaleType.CENTER
                 elevation = Ui.dpf(ctx, 4f)
@@ -208,10 +208,15 @@ class CarMapRenderer(
 
     private fun density(): Float = presentation?.context?.resources?.displayMetrics?.density ?: 1f
 
+    companion object {
+        /** Rechte Knopfspalte von oben nach unten. */
+        private val COLUMN = listOf(Btn.CALL, Btn.APPOINTMENTS, Btn.OVERVIEW, Btn.DAYNIGHT, Btn.TRAFFIC_FIX, Btn.FUEL, Btn.MUTE, Btn.SETTINGS, Btn.RECENTER)
+    }
+
     private fun buttonSizePx(): Int {
         val d = density()
         val sa = stableArea ?: visibleArea ?: Rect(0, 0, width, height)
-        val n = 8
+        val n = COLUMN.size
         val m = 8 * d
         val gap = 6 * d
         return ((sa.height() - 2 * m - (n - 1) * gap) / n).coerceIn(28 * d, 56 * d).toInt()
@@ -240,6 +245,7 @@ class CarMapRenderer(
                 Btn.DAYNIGHT -> Triple(when (e.prefs.nightMode) { 1 -> Icons.Glyph.SUN; 2 -> Icons.Glyph.MOON; else -> Icons.Glyph.DAYNIGHT }, fg, bg)
                 Btn.TRAFFIC_FIX -> Triple(Icons.Glyph.JAM_AVOID, if (navigating) fg else off, bg)
                 Btn.FUEL -> Triple(Icons.Glyph.FUEL, fg, bg)
+                Btn.MUTE -> if (e.prefs.voiceMuted) Triple(Icons.Glyph.VOLUME_OFF, Color.WHITE, Ui.RED) else Triple(Icons.Glyph.VOLUME_ON, fg, bg)
                 Btn.SETTINGS -> Triple(Icons.Glyph.SETTINGS, fg, bg)
                 Btn.RECENTER -> Triple(Icons.Glyph.RECENTER, if (ctl?.following == false) Color.WHITE else fg, if (ctl?.following == false) Ui.BLUE else bg)
                 Btn.ZOOM_OUT -> Triple(Icons.Glyph.MINUS, fg, bg)

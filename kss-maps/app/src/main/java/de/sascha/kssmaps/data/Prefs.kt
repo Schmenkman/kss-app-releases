@@ -37,6 +37,14 @@ class Prefs(ctx: Context) {
     var voiceMuted: Boolean
         get() = bool("muted", false)
         set(v) = putBool("muted", v)
+    /** Sprachausgabe-Programm (Paketname), leer = Standard des Systems. */
+    var ttsEngine: String
+        get() = str("tts_engine")
+        set(v) = putStr("tts_engine", v)
+    /** Gewaehlte Stimme (Name), leer = automatisch die beste deutsche. */
+    var ttsVoice: String
+        get() = str("tts_voice")
+        set(v) = putStr("tts_voice", v)
     /**
      * Blitzer-, Abstands- und Ueberwachungswarnungen der App. Standard AUS – Blitzer.de Pro laeuft
      * parallel. Schalter in den Einstellungen und in Android Auto unter "Mehr".

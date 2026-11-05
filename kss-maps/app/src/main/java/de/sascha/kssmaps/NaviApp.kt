@@ -40,7 +40,7 @@ open class NaviApp : Application() {
         initMaps()
         prefs = Prefs(this)
         services = Services(this, prefs)
-        voice = Voice(this)
+        voice = Voice(this, prefs)
         engine = NavEngine(this, prefs, services, voice)
         engine.onRouteActivated = { r -> prefetchRoute(r) }
         comp = CompAppointmentSource(prefs, SecretStore(this))

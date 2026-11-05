@@ -142,6 +142,10 @@ class NaviSession : Session(), NavEngine.Listener {
                 toast("Suche Route ohne Stau …")
             } else toast("Keine aktive Route")
             CarMapRenderer.Btn.FUEL -> sm.push(CarFuelScreen(carContext))
+            CarMapRenderer.Btn.MUTE -> {
+                e.toggleMuted()
+                toast(if (e.prefs.voiceMuted) "Ansagen stumm" else "Ansagen an")
+            }
             CarMapRenderer.Btn.SETTINGS -> sm.push(CarSettingsScreen(carContext))
             CarMapRenderer.Btn.RECENTER -> renderer.recenter()
             CarMapRenderer.Btn.ZOOM_OUT -> renderer.zoom(-1.0)
