@@ -86,23 +86,38 @@ jobs:
             echo "::warning::Kein Signier-Secret – Test-Schluessel. Siehe kss-maps/README.md (Einmalige Einrichtung)."
           fi
 
+      - name: Letzten guten OpenStreetMap-Stand bereithalten
+        # Sind alle Overpass-Server ueberlastet, kommt der Stand des letzten erfolgreichen Builds in
+        # die APK statt gar keiner (tools/fetch_enforcement.py, KSSMAPS_SNAPSHOT_CACHE).
+        uses: actions/cache@v4
+        with:
+          path: kss-maps/.osm-cache
+          key: kssmaps-osm-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: kssmaps-osm-
+
       - name: Blitzer-Startbestand laden (OpenStreetMap)
         # Feste Blitzer + Abstandsmessungen fuer Bayern direkt in die APK – sofort verfuegbar,
         # sobald die (standardmaessig ausgeschalteten) Blitzerwarnungen eingeschaltet werden.
         continue-on-error: true
         timeout-minutes: 20
+        env:
+          KSSMAPS_SNAPSHOT_CACHE: .osm-cache
         run: python3 tools/fetch_enforcement.py app/src/main/assets/enforcement blitzer
 
       - name: Tankstellenliste laden (OpenStreetMap)
         # Alle Tankstellen Bayerns mit UTA-Tag: Liste ohne Tankerkoenig-Schluessel, UTA-Abgleich.
         continue-on-error: true
         timeout-minutes: 8
+        env:
+          KSSMAPS_SNAPSHOT_CACHE: .osm-cache
         run: python3 tools/fetch_enforcement.py app/src/main/assets/enforcement tankstellen
 
       - name: Wechselverkehrszeichen und Tempolimits nach Uhrzeit laden (OpenStreetMap)
         # Autobahn-Abschnitte mit LED-Anzeigen: dort "Anzeige beachten" statt "frei".
         continue-on-error: true
-        timeout-minutes: 8
+        timeout-minutes: 12
+        env:
+          KSSMAPS_SNAPSHOT_CACHE: .osm-cache
         run: python3 tools/fetch_enforcement.py app/src/main/assets/enforcement tempo
 
       - name: Startbestand fuer die Testfahrt weitergeben

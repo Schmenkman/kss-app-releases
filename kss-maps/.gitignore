@@ -22,3 +22,4 @@ __pycache__/
 
 # Native Bibliotheken der eingebauten Stimme (laedt die CI, tools/fetch_voice.sh)
 app/src/main/jniLibs/
+.osm-cache/

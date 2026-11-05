@@ -10,6 +10,7 @@ Aufruf: python3 tools/fetch_enforcement.py app/src/main/assets/enforcement
 """
 import json
 import os
+import shutil
 import sys
 import time
 import urllib.parse
@@ -40,14 +41,46 @@ FUEL_QUERY = (
 
 # Autobahn-/Schnellstrassen-Abschnitte mit Wechselverkehrszeichen (LED-Anzeigen) oder Tempolimit
 # nach Uhrzeit: dort zeigt die App "Anzeige beachten" statt "frei" bzw. das zur Uhrzeit gueltige Limit.
-TEMPO_QUERY = (
-    '[out:json][timeout:170];'
-    '('
-    'way["highway"~"^(motorway|motorway_link|trunk|trunk_link)$"]["maxspeed:variable"]{bb};'
-    'way["highway"~"^(motorway|motorway_link|trunk|trunk_link)$"]["maxspeed"="signals"]{bb};'
-    'way["highway"~"^(motorway|trunk)$"]["maxspeed:conditional"]{bb};'
-    ');out tags geom;'
-).format(bb=BB)
+# Der seltene Schluessel zuerst (schnell ueber den Index), Strassenart wird hier im Skript geprueft.
+def tempo_query(bb: str, timeout: int) -> str:
+    return (
+        '[out:json][timeout:{t}];'
+        '('
+        'way["maxspeed:variable"]{bb};'
+        'way["maxspeed"="signals"]{bb};'
+        'way["maxspeed:conditional"]["highway"~"^(motorway|trunk)$"]{bb};'
+        ');out tags geom;'
+    ).format(t=timeout, bb=bb)
+
+
+FAST_ROADS = ("motorway", "motorway_link", "trunk", "trunk_link")
+
+# Bayern in 4 Teilen (Rueckfallebene bei ueberlasteten Servern)
+_S, _W, _N, _E = 47.20, 8.90, 50.60, 13.90
+_MS, _MW = (_S + _N) / 2, (_W + _E) / 2
+TILES = [(_S, _W, _MS, _MW), (_S, _MW, _MS, _E), (_MS, _W, _N, _MW), (_MS, _MW, _N, _E)]
+
+# Letzter guter Stand (GitHub-Cache der CI): sind alle Overpass-Server ueberlastet, kommt der
+# Stand des letzten erfolgreichen Builds in die APK statt gar keiner.
+CACHE = os.environ.get("KSSMAPS_SNAPSHOT_CACHE", "")
+
+
+def remember(out_dir: str, name: str) -> None:
+    if not CACHE:
+        return
+    os.makedirs(CACHE, exist_ok=True)
+    shutil.copyfile(os.path.join(out_dir, name), os.path.join(CACHE, name))
+
+
+def restore(out_dir: str, name: str, what: str) -> bool:
+    src = os.path.join(CACHE, name) if CACHE else ""
+    if not src or not os.path.isfile(src):
+        return False
+    os.makedirs(out_dir, exist_ok=True)
+    shutil.copyfile(src, os.path.join(out_dir, name))
+    age = (time.time() - os.path.getmtime(src)) / 86400
+    print("%s: Stand des letzten erfolgreichen Builds aus dem Zwischenspeicher (%.1f Tage alt)" % (what, age))
+    return True
 
 
 def fetch(ep: str, query: str = QUERY, timeout: int = 150) -> bytes:
@@ -74,49 +107,96 @@ def fetch_fuel(out_dir: str) -> None:
             os.makedirs(out_dir, exist_ok=True)
             with open(os.path.join(out_dir, "tankstellen.json"), "wb") as f:
                 f.write(body)
+            remember(out_dir, "tankstellen.json")
             print("Tankstellen: %d, %d kB, %s, %.0f s" % (n, len(body) // 1024, ep, time.time() - t0))
             return
         except Exception as e:
             print("Tankstellen: Fehler bei %s: %s" % (ep, e))
+    if restore(out_dir, "tankstellen.json", "Tankstellen"):
+        return
     print("Keine Tankstellenliste - die App fragt OpenStreetMap bei Bedarf direkt.")
+
+
+def tempo_ways(elements, into: dict) -> None:
+    for e in elements:
+        g = e.get("geometry") or []
+        if e.get("type") != "way" or len(g) < 2:
+            continue
+        t = e.get("tags", {})
+        var = "maxspeed:variable" in t or t.get("maxspeed") == "signals"
+        hw = t.get("highway", "")
+        if not ((var and hw in FAST_ROADS) or (t.get("maxspeed:conditional") and hw in ("motorway", "trunk"))):
+            continue
+        flat = []
+        for pt in g:
+            flat += [round(pt["lat"], 5), round(pt["lon"], 5)]
+        into[e.get("id")] = {
+            "ms": t.get("maxspeed", ""),
+            "var": 1 if var else 0,
+            "cond": t.get("maxspeed:conditional", ""),
+            "ow": 0 if t.get("oneway") == "no" else 1,
+            "g": flat,
+        }
+
+
+def write_tempo(out_dir: str, ways: list, how: str, t0: float) -> None:
+    body = json.dumps({"ways": ways}, separators=(",", ":")).encode()
+    os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, "tempo.json"), "wb") as f:
+        f.write(body)
+    remember(out_dir, "tempo.json")
+    var = sum(1 for w in ways if w["var"])
+    print("Tempo: %d Abschnitte (%d mit Wechselverkehrszeichen), %d kB, %s, %.0f s"
+          % (len(ways), var, len(body) // 1024, how, time.time() - t0))
 
 
 def fetch_tempo(out_dir: str) -> None:
     """Kompakt fuer die App: {"ways":[{"ms":"none","var":1,"cond":"...","ow":1,"g":[lat,lon,...]}]}."""
+    t0 = time.time()
+    deadline = t0 + 9 * 60
+    # 1. ganz Bayern auf einmal
     for ep in ENDPOINTS:
         try:
-            t0 = time.time()
-            d = json.loads(fetch(ep, TEMPO_QUERY, 150))
+            d = json.loads(fetch(ep, tempo_query(BB, 120), 140))
             if "error" in d.get("remark", "").lower():
                 raise ValueError(d["remark"])
-            ways = []
-            for e in d.get("elements", []):
-                g = e.get("geometry") or []
-                if e.get("type") != "way" or len(g) < 2:
-                    continue
-                t = e.get("tags", {})
-                flat = []
-                for pt in g:
-                    flat += [round(pt["lat"], 5), round(pt["lon"], 5)]
-                ways.append({
-                    "ms": t.get("maxspeed", ""),
-                    "var": 1 if ("maxspeed:variable" in t or t.get("maxspeed") == "signals") else 0,
-                    "cond": t.get("maxspeed:conditional", ""),
-                    "ow": 0 if t.get("oneway") == "no" else 1,
-                    "g": flat,
-                })
+            ways = {}
+            tempo_ways(d.get("elements", []), ways)
             if len(ways) < 20:
                 raise ValueError("unplausibel wenige Abschnitte: %d" % len(ways))
-            body = json.dumps({"ways": ways}, separators=(",", ":")).encode()
-            os.makedirs(out_dir, exist_ok=True)
-            with open(os.path.join(out_dir, "tempo.json"), "wb") as f:
-                f.write(body)
-            var = sum(1 for w in ways if w["var"])
-            print("Tempo: %d Abschnitte (%d mit Wechselverkehrszeichen), %d kB, %s, %.0f s"
-                  % (len(ways), var, len(body) // 1024, ep, time.time() - t0))
+            write_tempo(out_dir, list(ways.values()), ep, t0)
             return
         except Exception as e:
             print("Tempo: Fehler bei %s: %s" % (ep, e))
+        if time.time() > deadline - 300:
+            break
+    # 2. in 4 Teilen
+    ways = {}
+    complete = True
+    for t in TILES:
+        bb = "(%.2f,%.2f,%.2f,%.2f)" % t
+        ok = False
+        for ep in ENDPOINTS:
+            if time.time() > deadline:
+                break
+            try:
+                d = json.loads(fetch(ep, tempo_query(bb, 80), 100))
+                if "error" in d.get("remark", "").lower():
+                    raise ValueError(d["remark"])
+                tempo_ways(d.get("elements", []), ways)
+                ok = True
+                break
+            except Exception as e:
+                print("Tempo: Teil %s: Fehler bei %s: %s" % (bb, ep, e))
+        if not ok:
+            complete = False
+            break
+    if complete and len(ways) >= 20:
+        write_tempo(out_dir, list(ways.values()), "4 Teile", t0)
+        return
+    # 3. letzter guter Stand
+    if restore(out_dir, "tempo.json", "Tempo"):
+        return
     print("Keine Wechselverkehrszeichen-Daten - die App zeigt dort das Limit der Route.")
 
 
@@ -166,6 +246,7 @@ def fetch_enforcement_tiles(out_dir: str) -> bool:
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "bayern.json"), "w", encoding="utf-8") as f:
         json.dump({"version": 0.6, "elements": elements}, f, ensure_ascii=False)
+    remember(out_dir, "bayern.json")
     print("Startbestand (4 Teile): %d Objekte (%d Blitzer)" % (len(elements), cams))
     return True
 
@@ -187,6 +268,7 @@ def fetch_enforcement(out_dir: str) -> bool:
                 os.makedirs(out_dir, exist_ok=True)
                 with open(os.path.join(out_dir, "bayern.json"), "wb") as f:
                     f.write(body)
+                remember(out_dir, "bayern.json")
                 print("Startbestand: %d Objekte (%d Blitzer), %d kB, %s, %.0f s"
                       % (len(els), cams, len(body) // 1024, ep, time.time() - t0))
                 return True
@@ -194,6 +276,8 @@ def fetch_enforcement(out_dir: str) -> bool:
                 print("Fehler bei %s: %s" % (ep, e))
         time.sleep(5)
     if fetch_enforcement_tiles(out_dir):
+        return True
+    if restore(out_dir, "bayern.json", "Blitzer"):
         return True
     print("Kein Startbestand - die App laedt die Daten beim ersten Start selbst.")
     return False

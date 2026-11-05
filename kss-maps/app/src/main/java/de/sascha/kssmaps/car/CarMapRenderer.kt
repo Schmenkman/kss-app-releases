@@ -255,7 +255,9 @@ class CarMapRenderer(
             val key = "$glyph/$color/$back/$size"
             if (buttonState[b] == key) continue
             buttonState[b] = key
-            v.setImageBitmap(Icons.glyph(glyph, icon, color))
+            // Bild mit der Dichte des Auto-Bildschirms: sonst rechnet Android es von der (hoeheren)
+            // Dichte des Handys herunter und das Symbol wird winzig
+            v.setImageBitmap(Icons.glyph(glyph, icon, color).apply { density = ctx.resources.displayMetrics.densityDpi })
             v.background = Ui.bg(ctx, back, (size / density() / 2).toInt())
         }
     }
