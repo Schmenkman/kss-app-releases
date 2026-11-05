@@ -215,7 +215,7 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         st.addImage("fuel-uta", img(Icons.fuelMarker(px(32), true)))
         st.addImage("fuel-other", img(Icons.fuelMarker(px(32), false)))
         st.addImage("avoid", img(Icons.avoidMarker(px(26))))
-        st.addImage("arrow-head", img(Icons.arrowHead(px(if (forCar) 30 else 28))))
+        st.addImage("arrow-head", img(Icons.arrowHead(px(if (forCar) 40 else 36))))
 
         // Routen ueber ALLEN Strassen des Grundstils, aber unter deren Beschriftungen. Im Nachtstil
         // liegen Autobahn-Ebenen hinter der ersten Beschriftungsebene – "unter der ersten
@@ -283,11 +283,11 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         ), labels)
         // Abbiegepfeil auf der Route (naechste Abzweigung/Ausfahrt): weisser Schaft, Spitze in Fahrtrichtung
         addBelow(st, LineLayer("nav-arrow-casing", SRC_ARROW).withProperties(
-            PropertyFactory.lineColor("#0B3D6E"), PropertyFactory.lineWidth(w(9f)),
+            PropertyFactory.lineColor("#0B3D6E"), PropertyFactory.lineWidth(w(12f)),
             PropertyFactory.lineCap(Property.LINE_CAP_BUTT), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
         ).also { it.minZoom = 13f }, labels)
         addBelow(st, LineLayer("nav-arrow", SRC_ARROW).withProperties(
-            PropertyFactory.lineColor("#FFFFFF"), PropertyFactory.lineWidth(w(5.5f)),
+            PropertyFactory.lineColor("#FFFFFF"), PropertyFactory.lineWidth(w(8f)),
             PropertyFactory.lineCap(Property.LINE_CAP_BUTT), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
         ).also { it.minZoom = 13f }, labels)
         addBelow(st, SymbolLayer("nav-arrow-head", SRC_ARROW_HEAD).withProperties(
