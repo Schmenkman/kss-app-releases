@@ -1,21 +1,19 @@
 {
-  "version": "1.2.1",
+  "version": "1.3.0",
   "notes": [
+    "Android Auto: immer sichtbare Knöpfe rechts – Kunde anrufen, Termine, Übersicht mit Alternativen (eine staufrei), Tag/Nacht, Stau-Korrektur, Tanken, Einstellungen, Zentrieren; Zoom und Beenden unten",
+    "Android Auto: Tag/Nacht folgt jetzt der App (Automatisch nach Sonnenstand) statt dem Nachtmodus des Autos",
+    "Abbiegepfeile direkt auf der Route; Warnbanner „Baustelle in 800 m“ / „Baustelle noch 1,2 km“, im Auto ohne blockierende Hinweiskarte",
+    "Baustellen nur, solange sie gelten (Tagesbaustellen im Zeitfenster), keine Meldungen der Gegenfahrbahn; Verkehr alle 2 Minuten",
+    "Tempolimit genauer: TomTom füllt Lücken, auf LED-Strecken „Anzeige beachten“ statt „frei“",
+    "Tunnel: ohne GPS fährt der Pfeil mit dem letzten Tempo weiter",
+    "„Kunde anrufen?“ automatisch vor der Ankunft (laut Terminzusatz); Ja wählt direkt, die Navigation bleibt groß",
     "Neu: Kurz vor dem Abbiegen, einer Ausfahrt oder einem Kreisverkehr zoomt die Karte etwas heran und schaut steiler von oben – so sieht man, welche Straße es ist; danach geht der Zoom wieder zurück (Handy und Android Auto)",
     "Neu: Termine des Tages aus COMP – Knopf „Termine“ (Kalender) rechts: nach Uhrzeit, antippen = Route zur Adresse",
     "Neu: Knopf „Kunde“ während der Fahrt zu einem Termin – Ansprechpartner aus dem Terminzusatz (wer zuerst anzurufen ist, steht oben), alle Nummern und der volle Terminzusatz; Nummer antippen → „Anrufen?“ Ja wählt direkt",
     "Neu: COMP-Zugang in den Einstellungen unter „Termine & Kunden“ (verschlüsselt nur auf dem Handy, KSS-Maps liest nur); Chef-Zugang: Techniker einmal auswählen",
     "Android Auto: „Termine“ und „Kunde“ in der Leiste; die letzten Ziele sind jetzt unter „Mehr“ und in der Suche",
-    "Neu: Startpunkt direkt in der Suche – oben „Von … ändern ›“ antippen, dann das Ziel",
-    "Neu: TomTom- und Tankerkönig-Schlüssel sind eingebaut – nichts mehr eintragen",
-    "Querformat wie Google Maps in Android Auto – Abbiege-Hinweis links oben, Ankunft und Knöpfe links unten, die Karte rechts bleibt frei",
-    "Flüssiger Positionspfeil – zwischen den GPS-Punkten wird die Position für jedes Bild berechnet, Pfeil und Karte laufen gleichmäßig statt ruckweise",
-    "Spracheingabe – Mikrofon in der Suchleiste; „Navigiere zum Marienplatz 7 in Freising“ öffnet direkt die Route",
-    "KSS-Maps: Navigation für Bayern mit deutscher Sprachführung (abschaltbar) und Android Auto",
-    "Baustellen, Stau, Sperrungen und Gefahren – nur auf deiner Route, mit Warnung; Alternativrouten, 'Ohne Stau' und 'Stau umfahren'",
-    "Einzelne Abschnitte meiden – lange auf die Straße drücken; Luftbild Bayern, Tempolimit + aktuelle Geschwindigkeit, Zielhaus magenta markiert",
-    "Tankstellen mit Preisen (Diesel/Super) und UTA-Akzeptanz: erst auf dem Weg, dann Preis – Zwischenstopp ohne neue Eingabe",
-    "Blitzerwarnungen standardmäßig aus (Blitzer.de Pro parallel) – Schalter in den Einstellungen und in Android Auto unter „Mehr“"
+    "Neu: Startpunkt direkt in der Suche – oben „Von … ändern ›“ antippen, dann das Ziel"
   ],
-  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.2.1/kss-maps.apk"
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.3.0/kss-maps.apk"
 }
