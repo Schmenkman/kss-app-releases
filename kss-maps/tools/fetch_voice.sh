@@ -10,9 +10,10 @@
 #  3. Pruefsumme und Groesse -> GITHUB_ENV (KSSMAPS_VOICE_SHA256 / KSSMAPS_VOICE_SIZE)
 set -euo pipefail
 SHERPA_VER=1.12.15
-# Pruefsummen der Original-Downloads (leer: nur ins Protokoll schreiben)
-LIBS_SHA256=""
-MODEL_SHA256=""
+# Pruefsummen der Original-Downloads (beim ersten Build am 05.11.2026 ermittelt); ein anderer
+# Inhalt unter derselben Adresse bricht den Schritt ab
+LIBS_SHA256="76c9568de88ca98ffeba4b44dd3d03595fd4272391490e8226e675585292ca90"
+MODEL_SHA256="50487d9c95fdf2191f31d2588569381063ba1591dcd4c7d4bdd30f12b2191714"
 MODEL=vits-piper-de_DE-thorsten-medium
 TAG=kssmaps-stimme
 ZIP=stimme-de-thorsten-medium.zip
