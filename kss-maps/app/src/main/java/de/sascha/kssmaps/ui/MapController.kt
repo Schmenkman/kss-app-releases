@@ -10,6 +10,7 @@ import de.sascha.kssmaps.core.Bavaria
 import de.sascha.kssmaps.core.Geo
 import de.sascha.kssmaps.core.HazardType
 import de.sascha.kssmaps.core.LatLon
+import de.sascha.kssmaps.core.ManeuverKind
 import de.sascha.kssmaps.core.PuckSmoother
 import de.sascha.kssmaps.core.RankedStation
 import de.sascha.kssmaps.core.Route
@@ -72,6 +73,8 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         private const val SRC_BUILDING = "nav-building"
         private const val SRC_POINTS = "nav-points"
         private const val SRC_POS = "nav-pos"
+        private const val SRC_ARROW = "nav-arrow"
+        private const val SRC_ARROW_HEAD = "nav-arrow-head"
     }
 
     private val engine: NavEngine = NaviApp.instance.engine
@@ -212,6 +215,7 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         st.addImage("fuel-uta", img(Icons.fuelMarker(px(32), true)))
         st.addImage("fuel-other", img(Icons.fuelMarker(px(32), false)))
         st.addImage("avoid", img(Icons.avoidMarker(px(26))))
+        st.addImage("arrow-head", img(Icons.arrowHead(px(if (forCar) 30 else 28))))
 
         // Routen ueber ALLEN Strassen des Grundstils, aber unter deren Beschriftungen. Im Nachtstil
         // liegen Autobahn-Ebenen hinter der ersten Beschriftungsebene – "unter der ersten
@@ -240,6 +244,8 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         st.addSource(GeoJsonSource(SRC_BUILDING))
         st.addSource(GeoJsonSource(SRC_POINTS))
         st.addSource(GeoJsonSource(SRC_POS))
+        st.addSource(GeoJsonSource(SRC_ARROW))
+        st.addSource(GeoJsonSource(SRC_ARROW_HEAD))
 
         val w = { base: Float ->
             Expression.interpolate(
@@ -275,6 +281,26 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
             PropertyFactory.lineColor(Expression.get("c")), PropertyFactory.lineWidth(w(6f)),
             PropertyFactory.lineDasharray(arrayOf(1.2f, 1.0f)), PropertyFactory.lineOpacity(0.9f),
         ), labels)
+        // Abbiegepfeil auf der Route (naechste Abzweigung/Ausfahrt): weisser Schaft, Spitze in Fahrtrichtung
+        addBelow(st, LineLayer("nav-arrow-casing", SRC_ARROW).withProperties(
+            PropertyFactory.lineColor("#0B3D6E"), PropertyFactory.lineWidth(w(9f)),
+            PropertyFactory.lineCap(Property.LINE_CAP_BUTT), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+        ).also { it.minZoom = 13f }, labels)
+        addBelow(st, LineLayer("nav-arrow", SRC_ARROW).withProperties(
+            PropertyFactory.lineColor("#FFFFFF"), PropertyFactory.lineWidth(w(5.5f)),
+            PropertyFactory.lineCap(Property.LINE_CAP_BUTT), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+        ).also { it.minZoom = 13f }, labels)
+        addBelow(st, SymbolLayer("nav-arrow-head", SRC_ARROW_HEAD).withProperties(
+            PropertyFactory.iconImage("arrow-head"),
+            PropertyFactory.iconRotate(Expression.get("b")),
+            PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+            PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_MAP),
+            PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconIgnorePlacement(true),
+            PropertyFactory.iconSize(Expression.interpolate(Expression.exponential(1.5f), Expression.zoom(),
+                Expression.stop(13, 0.55f), Expression.stop(16, 1.0f), Expression.stop(18, 1.9f))),
+        ).also { it.minZoom = 13f }, labels)
 
         // --- Zielgebaeude: kraeftig magenta, auch in 3D ---
         // UEBER den Gebaeude-Ebenen des Grundstils, sonst verdecken dessen (3D-)Gebaeude die
@@ -471,6 +497,23 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
                         stateRoute === r -> engine.state?.along ?: 0.0
                         else -> 0.0
                     }
+                    updateArrow(r, along)
+                    val alts = engine.navAlternatives
+                    if (alts.isNotEmpty()) {
+                        // Uebersicht: aktuelle Route ab hier und die Alternativen, gewaehlte hervorgehoben
+                        lastRouteObj = null
+                        alts.forEachIndexed { i, ar ->
+                            val pts = if (ar === r) r.geometry.slice(along, r.geometry.length) else ar.geometry.points
+                            if (pts.size >= 2) feats.add(Feature.fromGeometry(line(pts)).also {
+                                it.addBooleanProperty("sel", i == engine.navAltSelected)
+                                it.addNumberProperty("idx", i)
+                            })
+                        }
+                        alts.getOrNull(engine.navAltSelected)?.let { addTraffic(traffic, it, if (it === r) along else 0.0) }
+                        src.setGeoJson(FeatureCollection.fromFeatures(feats))
+                        tsrc.setGeoJson(FeatureCollection.fromFeatures(traffic))
+                        return
+                    }
                     if (!force && r === lastRouteObj && abs(along - lastRouteUpdateAlong) < 30.0) return
                     lastRouteObj = r
                     lastRouteUpdateAlong = along
@@ -491,8 +534,60 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
             }
             else -> lastRouteObj = null
         }
+        if (engine.mode != NavEngine.Mode.NAVIGATING) updateArrow(null, 0.0)
         src.setGeoJson(FeatureCollection.fromFeatures(feats))
         tsrc.setGeoJson(FeatureCollection.fromFeatures(traffic))
+    }
+
+    private var arrowKey: String? = null
+
+    /**
+     * Abbiegepfeil fuer die naechste Abzweigung, Ausfahrt oder den Kreisverkehr (bis 2 km voraus):
+     * ca. 30 m Route vor dem Manoever bis gut 20 m danach, im Kreisverkehr bis zur Ausfahrt.
+     */
+    private fun updateArrow(r: Route?, along: Double) {
+        val st = style ?: return
+        val lsrc = st.getSourceAs<GeoJsonSource>(SRC_ARROW) ?: return
+        val hsrc = st.getSourceAs<GeoJsonSource>(SRC_ARROW_HEAD) ?: return
+        val s = engine.state
+        var shaft: List<LatLon>? = null
+        if (r != null && s != null && stateRoute === r && s.nextIdx >= 0 && engine.navAlternatives.isEmpty()) {
+            val m = r.maneuvers.getOrNull(s.nextIdx)
+            if (m != null && TurnZoom.relevant(m.kind) && !m.kind.isArrival && m.kind != ManeuverKind.WAYPOINT && m.along - along < 2_000) {
+                var end = m.along + 22.0
+                if (m.kind == ManeuverKind.ROUNDABOUT) {
+                    r.maneuvers.getOrNull(s.nextIdx + 1)?.takeIf { it.kind == ManeuverKind.ROUNDABOUT_EXIT && it.along - m.along < 400 }?.let { end = it.along + 22.0 }
+                }
+                val start = maxOf(m.along - 32.0, along)
+                end = minOf(end, r.geometry.length)
+                if (end - start > 12.0) shaft = r.geometry.slice(start, end).takeIf { it.size >= 2 }
+            }
+        }
+        val key = shaft?.let { "${s?.nextIdx}/${it.size}/${(it.first().lat * 1e5).roundToInt()},${(it.first().lon * 1e5).roundToInt()}" }
+        if (key == arrowKey) return
+        arrowKey = key
+        if (shaft == null) {
+            lsrc.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
+            hsrc.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
+            return
+        }
+        val tip = shaft.last()
+        val brg = Geo.bearing(shaft[shaft.size - 2], tip)
+        lsrc.setGeoJson(Feature.fromGeometry(line(shaft)))
+        hsrc.setGeoJson(Feature.fromGeometry(pt(tip)).also { it.addNumberProperty("b", brg) })
+    }
+
+    /** Uebersicht waehrend der Fahrt: Position, Ziel und alle Alternativen ins Bild. */
+    fun showNavAlternativesOverview() {
+        val r = engine.activeRoute ?: return
+        val along = engine.state?.along ?: 0.0
+        val pts = ArrayList<LatLon>()
+        r.geometry.slice(along, r.geometry.length).filterIndexedTo(pts) { i, _ -> i % 8 == 0 }
+        for (a in engine.navAlternatives) if (a !== r) a.geometry.points.filterIndexedTo(pts) { i, _ -> i % 10 == 0 }
+        r.geometry.points.lastOrNull()?.let { pts.add(it) }
+        engine.position?.let { pts.add(it) }
+        following = false
+        fitPoints(pts)
     }
 
     private fun trafficColor(t: HazardType): String? = when (t) {

@@ -70,6 +70,8 @@ def main():
     ap.add_argument("--shot-every", type=float, default=60.0)
     ap.add_argument("--tag", default="ROUTE_CHUNK")
     ap.add_argument("--point-at", type=float, help="nur Punkt bei dieser Strecke (m) ausgeben: lat,lon")
+    ap.add_argument("--gap-from", type=float, help="Tunnel: ab dieser Strecke (m) keine GPS-Punkte mehr ...")
+    ap.add_argument("--gap-to", type=float, help="... bis zu dieser Strecke (m); die Zeit laeuft weiter")
     a = ap.parse_args()
 
     pts = None
@@ -127,9 +129,24 @@ def main():
     t0 = time.time()
     last_shot = t0
     k, d, n_shot = 0, start, 0
+    in_gap = False
     while d <= end + 0.01:
         lat, lon = point_at(d)
-        fix(lat, lon, knots)
+        gap = a.gap_from is not None and a.gap_to is not None and a.gap_from <= d < a.gap_to
+        if gap != in_gap:
+            print(("TUNNEL Anfang" if gap else "TUNNEL Ende") + f" bei {d:.0f} m", flush=True)
+            # Der Emulator meldet die letzte Position sonst von selbst weiter: Ortung ganz aus/an
+            on = "false" if gap else "true"
+            r = subprocess.run(["adb", "shell", "cmd", "location", "set-location-enabled", on], capture_output=True, text=True)
+            if r.returncode != 0:
+                subprocess.run(["adb", "shell", "settings", "put", "secure", "location_mode", "0" if gap else "3"], capture_output=True)
+            if gap:
+                # Bild mitten im Tunnel: der Pfeil soll weiterfahren
+                mid = (a.gap_to - a.gap_from) / a.speed / 2
+                subprocess.Popen(f"sleep {mid:.0f}; adb exec-out screencap -p > {a.out}/{a.prefix}_tunnel.png", shell=True)
+            in_gap = gap
+        if not gap:
+            fix(lat, lon, knots)
         now = time.time()
         if now - last_shot >= a.shot_every:
             last_shot = now

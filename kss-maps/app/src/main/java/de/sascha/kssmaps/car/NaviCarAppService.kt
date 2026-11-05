@@ -8,7 +8,9 @@ import android.util.Log
 import androidx.car.app.AppManager
 import androidx.car.app.CarAppService
 import androidx.car.app.CarContext
+import androidx.car.app.CarToast
 import androidx.car.app.Screen
+import androidx.car.app.ScreenManager
 import androidx.car.app.Session
 import androidx.car.app.navigation.NavigationManager
 import androidx.car.app.navigation.NavigationManagerCallback
@@ -37,15 +39,25 @@ class NaviSession : Session(), NavEngine.Listener {
     private var navManager: NavigationManager? = null
     private var navStarted = false
     private var lastTrip = 0L
+    private var lastMessage: String? = null
+    /** Eigene Knoepfe auf der Karte: Android Auto meldet das Antippen erst ab Schnittstelle 5. */
+    val customButtons: Boolean get() = try {
+        carContext.carAppApiLevel >= 5
+    } catch (e: Exception) {
+        false
+    }
 
     override fun onCreateScreen(intent: Intent): Screen {
-        renderer = CarMapRenderer(carContext) { carContext.isDarkMode }
+        renderer = CarMapRenderer(carContext, customButtons)
+        renderer.onButton = { b -> onButton(b) }
         carContext.getCarService(AppManager::class.java).setSurfaceCallback(renderer)
         setupNavigationManager()
         engine.addListener(this)
         engine.acquireLocation()
+        engine.carActive = true
         lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onDestroy(owner: LifecycleOwner) {
+                engine.carActive = false
                 engine.removeListener(this@NaviSession)
                 engine.releaseLocation()
                 renderer.release()
@@ -105,7 +117,54 @@ class NaviSession : Session(), NavEngine.Listener {
         }
     }
 
+    private fun toast(s: String) = try {
+        CarToast.makeText(carContext, s, CarToast.LENGTH_LONG).show()
+    } catch (e: Exception) {
+        // Host lehnt Hinweise gerade ab
+    }
+
+    /** Eigene Knoepfe auf der Karte. */
+    private fun onButton(b: CarMapRenderer.Btn) {
+        val sm = carContext.getCarService(ScreenManager::class.java)
+        val e = engine
+        val navigating = e.mode == NavEngine.Mode.NAVIGATING
+        when (b) {
+            CarMapRenderer.Btn.CALL -> if (e.activeAppointment != null) sm.push(CarCustomerScreen(carContext)) else toast("Kein Termin gewählt – unter „Termine“ einen antippen")
+            CarMapRenderer.Btn.APPOINTMENTS -> sm.push(CarAppointmentsScreen(carContext))
+            CarMapRenderer.Btn.OVERVIEW -> if (navigating) sm.push(CarRouteOverviewScreen(carContext, this)) else toast("Keine aktive Route")
+            CarMapRenderer.Btn.DAYNIGHT -> {
+                val m = e.cycleNightMode()
+                renderer.onDarkModeChanged()
+                toast(listOf("Ansicht: automatisch (nach Sonnenstand)", "Ansicht: Tag", "Ansicht: Nacht")[m])
+            }
+            CarMapRenderer.Btn.TRAFFIC_FIX -> if (navigating) {
+                e.quickTrafficFix()
+                toast("Suche Route ohne Stau …")
+            } else toast("Keine aktive Route")
+            CarMapRenderer.Btn.FUEL -> sm.push(CarFuelScreen(carContext))
+            CarMapRenderer.Btn.SETTINGS -> sm.push(CarSettingsScreen(carContext))
+            CarMapRenderer.Btn.RECENTER -> renderer.recenter()
+            CarMapRenderer.Btn.ZOOM_OUT -> renderer.zoom(-1.0)
+            CarMapRenderer.Btn.ZOOM_IN -> renderer.zoom(1.0)
+            CarMapRenderer.Btn.END -> when (e.mode) {
+                NavEngine.Mode.NAVIGATING -> e.stopNavigation()
+                NavEngine.Mode.PREVIEW -> e.cancelPreview()
+                else -> {}
+            }
+        }
+    }
+
+    /** "Kunde anrufen?" kurz vor der Ankunft – im Auto immer, egal welcher Bildschirm offen ist. */
+    override fun onAlert(alert: NavEngine.Alert) {
+        val digits = alert.callDigits ?: return
+        showCallReminder(carContext, alert.callName ?: "Kunde", alert.callDisplay ?: digits, digits)
+    }
+
     override fun onStateChanged() {
+        // Rueckmeldungen der Engine ("Route ohne Stau übernommen") auch im Auto zeigen
+        val msg = engine.message
+        if (msg != null && msg != lastMessage) toast(msg)
+        lastMessage = msg
         val nm = navManager ?: return
         try {
             if (engine.mode == NavEngine.Mode.NAVIGATING && !navStarted) {

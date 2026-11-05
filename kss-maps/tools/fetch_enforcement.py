@@ -38,6 +38,18 @@ FUEL_QUERY = (
 ).format(bb=BB)
 
 
+# Autobahn-/Schnellstrassen-Abschnitte mit Wechselverkehrszeichen (LED-Anzeigen) oder Tempolimit
+# nach Uhrzeit: dort zeigt die App "Anzeige beachten" statt "frei" bzw. das zur Uhrzeit gueltige Limit.
+TEMPO_QUERY = (
+    '[out:json][timeout:170];'
+    '('
+    'way["highway"~"^(motorway|motorway_link|trunk|trunk_link)$"]["maxspeed:variable"]{bb};'
+    'way["highway"~"^(motorway|motorway_link|trunk|trunk_link)$"]["maxspeed"="signals"]{bb};'
+    'way["highway"~"^(motorway|trunk)$"]["maxspeed:conditional"]{bb};'
+    ');out tags geom;'
+).format(bb=BB)
+
+
 def fetch(ep: str, query: str = QUERY, timeout: int = 150) -> bytes:
     data = urllib.parse.urlencode({"data": query}).encode()
     req = urllib.request.Request(ep, data=data, headers={
@@ -67,6 +79,45 @@ def fetch_fuel(out_dir: str) -> None:
         except Exception as e:
             print("Tankstellen: Fehler bei %s: %s" % (ep, e))
     print("Keine Tankstellenliste - die App fragt OpenStreetMap bei Bedarf direkt.")
+
+
+def fetch_tempo(out_dir: str) -> None:
+    """Kompakt fuer die App: {"ways":[{"ms":"none","var":1,"cond":"...","ow":1,"g":[lat,lon,...]}]}."""
+    for ep in ENDPOINTS:
+        try:
+            t0 = time.time()
+            d = json.loads(fetch(ep, TEMPO_QUERY, 150))
+            if "error" in d.get("remark", "").lower():
+                raise ValueError(d["remark"])
+            ways = []
+            for e in d.get("elements", []):
+                g = e.get("geometry") or []
+                if e.get("type") != "way" or len(g) < 2:
+                    continue
+                t = e.get("tags", {})
+                flat = []
+                for pt in g:
+                    flat += [round(pt["lat"], 5), round(pt["lon"], 5)]
+                ways.append({
+                    "ms": t.get("maxspeed", ""),
+                    "var": 1 if ("maxspeed:variable" in t or t.get("maxspeed") == "signals") else 0,
+                    "cond": t.get("maxspeed:conditional", ""),
+                    "ow": 0 if t.get("oneway") == "no" else 1,
+                    "g": flat,
+                })
+            if len(ways) < 20:
+                raise ValueError("unplausibel wenige Abschnitte: %d" % len(ways))
+            body = json.dumps({"ways": ways}, separators=(",", ":")).encode()
+            os.makedirs(out_dir, exist_ok=True)
+            with open(os.path.join(out_dir, "tempo.json"), "wb") as f:
+                f.write(body)
+            var = sum(1 for w in ways if w["var"])
+            print("Tempo: %d Abschnitte (%d mit Wechselverkehrszeichen), %d kB, %s, %.0f s"
+                  % (len(ways), var, len(body) // 1024, ep, time.time() - t0))
+            return
+        except Exception as e:
+            print("Tempo: Fehler bei %s: %s" % (ep, e))
+    print("Keine Wechselverkehrszeichen-Daten - die App zeigt dort das Limit der Route.")
 
 
 def tile_query(bb: str) -> str:
@@ -150,11 +201,13 @@ def fetch_enforcement(out_dir: str) -> bool:
 
 def main() -> int:
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "app/src/main/assets/enforcement"
-    what = sys.argv[2] if len(sys.argv) > 2 else "alle"   # blitzer | tankstellen | alle
+    what = sys.argv[2] if len(sys.argv) > 2 else "alle"   # blitzer | tankstellen | tempo | alle
     if what in ("blitzer", "alle"):
         fetch_enforcement(out_dir)
     if what in ("tankstellen", "alle"):
         fetch_fuel(out_dir)
+    if what in ("tempo", "alle"):
+        fetch_tempo(out_dir)
     return 0
 
 

@@ -215,10 +215,32 @@ class CarScreensTest {
         // "Anrufen?" -> Ja: Nummer geht an Android Auto (ohne Berechtigung als Waehl-Absicht)
         val confirm = CarCallConfirmScreen(car, "Herr Probe", "08761/72345", "0876172345")
         assertTrue(confirm.onGetTemplate() is MessageTemplate)
-        confirm.call()
-        val sent = car.startCarAppIntents.last()
-        assertEquals(android.content.Intent.ACTION_DIAL, sent.action)
-        assertEquals("tel:0876172345", sent.data.toString())
+        // ohne Anruf-Berechtigung: am Handy erlauben lassen (oder Waehlfeld), nie abstuerzen
+        val res = confirm.call()
+        assertTrue(res == CarCall.Result.PERMISSION_ASKED || res == CarCall.Result.DIALER)
+        showCallReminder(car, "Herr Probe", "08761/72345", "0876172345")
+    }
+
+    @Test
+    fun overviewSettingsAndMoreScreens() {
+        val r = route("Schnellste")
+        val st = RouteTracker(r).update(r.geometry.pointAt(50.0), 5.0, 10.0, 90.0)
+        engine.testSetState(NavEngine.Mode.NAVIGATING, dest(), listOf(r), r, st)
+        engine.testSetNavAlternatives(emptyList())
+        assertTrue(CarRouteOverviewScreen(car, NaviSession()).onGetTemplate() is RoutePreviewNavigationTemplate) // laedt
+        val alt = route("Alternative 1")
+        val free = route("Ohne Stau")
+        r.label = "Aktuelle Route"
+        engine.testSetNavAlternatives(listOf(r, alt, free), selected = 2)
+        val t = CarRouteOverviewScreen(car, NaviSession()).onGetTemplate() as RoutePreviewNavigationTemplate
+        assertNotNull(t.navigateAction)
+        engine.testSetNavAlternatives(emptyList())
+        for (mode in 0..2) {
+            engine.prefs.nightMode = mode
+            assertTrue(CarSettingsScreen(car).onGetTemplate() is ListTemplate)
+        }
+        engine.prefs.nightMode = 0
+        engine.testSetState(NavEngine.Mode.IDLE, null, emptyList())
     }
 
     @Test

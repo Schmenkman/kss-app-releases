@@ -189,6 +189,31 @@ object Instructions {
         else -> h.type.label
     }
 
+    /**
+     * Warnbanner: "Baustelle in 800 m", in der Baustelle "Baustelle noch 1,2 km" (Stau mit
+     * Verzoegerung, Blitzer mit erlaubtem Tempo dahinter).
+     */
+    fun hazardBanner(rh: RouteHazard, distAhead: Double, along: Double): String {
+        val h = rh.hazard
+        val name = when (h.type) {
+            HazardType.SPEED_CAMERA -> h.title.ifBlank { "Blitzer" }
+            HazardType.DISTANCE_CHECK -> if (h.title.startsWith("Mindestabstand")) h.title else "Abstandsmessung"
+            else -> h.type.label
+        }
+        val extra = when {
+            h.type.isTraffic -> delayShort(h)
+            h.type == HazardType.SPEED_CAMERA -> h.maxSpeed?.let { " · $it km/h" } ?: ""
+            else -> ""
+        }
+        if (distAhead > 0) return "$name in ${formatDistance(distAhead)}$extra"
+        val rest = rh.endAlong - along
+        return if (rest > 30.0) "$name noch ${formatDistance(rest)}$extra" else name + extra
+    }
+
+    /** Freie Fahrt: Blitzer voraus ("Blitzer in 400 m · 80 km/h"). */
+    fun cameraBanner(h: Hazard, dist: Double): String =
+        hazardBanner(RouteHazard(h, 0.0, 0.0), dist, 0.0)
+
     private fun delayShort(h: Hazard): String {
         val min = (h.delaySec / 60.0).roundToInt()
         return if (min >= 1) " · +$min Min." else ""

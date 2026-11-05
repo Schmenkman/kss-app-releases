@@ -20,6 +20,7 @@ import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.SearchTemplate
 import androidx.car.app.model.Template
+import androidx.car.app.model.Toggle
 import androidx.car.app.navigation.model.MessageInfo
 import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.car.app.navigation.model.PlaceListNavigationTemplate
@@ -102,6 +103,10 @@ class CarMainScreen(carContext: CarContext, private val session: NaviSession) : 
 
     override fun onAlert(alert: NavEngine.Alert) {
         if (screenManager.top !== this) return
+        // Baustellen, Gefahren, Blitzer: nur Banner auf der Karte + Ansage – die Hinweiskarte von
+        // Android Auto (mit Zeitbalken) blockiert sonst das Antippen der Karte. Anruf-Erinnerungen
+        // zeigt die Sitzung selbst.
+        if (alert.action == null || alert.callDigits != null) return
         showCarAlert(carContext, alert)
     }
 
@@ -117,7 +122,17 @@ class CarMainScreen(carContext: CarContext, private val session: NaviSession) : 
         // Kunde anrufen, solange ein Termin angefahren wird (auch nach der Ankunft); Ton und
         // Tanken gibt es dann unter "Mehr", die letzten Ziele immer dort und in der Suche.
         val customer = if (e.activeAppointment != null) CarUtil.action(Icons.Glyph.PHONE, tint = CarColor.GREEN) { screenManager.push(CarCustomerScreen(carContext)) } else null
-        if (e.mode == NavEngine.Mode.NAVIGATING) {
+        if (session.customButtons) {
+            // Alle wichtigen Knoepfe liegen immer sichtbar auf der Karte (rechts, Zoom/Beenden unten);
+            // hier nur Suche und "Mehr" (und "Ende" als Rueckfall)
+            if (e.mode == NavEngine.Mode.NAVIGATING) {
+                strip.addAction(more)
+                strip.addAction(CarUtil.textAction("Ende") { e.stopNavigation() })
+            } else {
+                strip.addAction(CarUtil.action(Icons.Glyph.SEARCH) { screenManager.push(CarSearchScreen(carContext)) })
+                strip.addAction(more)
+            }
+        } else if (e.mode == NavEngine.Mode.NAVIGATING) {
             strip.addAction(fuel)
             strip.addAction(customer ?: muteAction)
             strip.addAction(more)
@@ -129,13 +144,13 @@ class CarMainScreen(carContext: CarContext, private val session: NaviSession) : 
             strip.addAction(more)
         }
         b.setActionStrip(strip.build())
-        val mapStrip = ActionStrip.Builder()
-            .addAction(Action.PAN)
-            .addAction(CarUtil.action(Icons.Glyph.PLUS) { session.renderer.zoom(1.0) })
-            .addAction(CarUtil.action(Icons.Glyph.MINUS) { session.renderer.zoom(-1.0) })
-            .addAction(CarUtil.action(Icons.Glyph.RECENTER) { session.renderer.recenter() })
-            .build()
-        b.setMapActionStrip(mapStrip)
+        val mapStrip = ActionStrip.Builder().addAction(Action.PAN)
+        if (!session.customButtons) {
+            mapStrip.addAction(CarUtil.action(Icons.Glyph.PLUS) { session.renderer.zoom(1.0) })
+                .addAction(CarUtil.action(Icons.Glyph.MINUS) { session.renderer.zoom(-1.0) })
+                .addAction(CarUtil.action(Icons.Glyph.RECENTER) { session.renderer.recenter() })
+        }
+        b.setMapActionStrip(mapStrip.build())
         b.setPanModeListener { inPan -> if (!inPan) session.renderer.recenter() }
 
         if (e.mode == NavEngine.Mode.NAVIGATING) {
@@ -685,19 +700,173 @@ class CarCallConfirmScreen(
             .addAction(CarUtil.textAction("Nein") { finish() })
             .build()
 
-    internal fun call() {
-        val uri = Uri.fromParts("tel", digits, null)
-        // Mit Anruf-Berechtigung direkt waehlen, sonst ueber die Waehlfunktion von Android Auto
-        val direct = carContext.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
-        try {
-            carContext.startCarApp(Intent(if (direct) Intent.ACTION_CALL else Intent.ACTION_DIAL, uri))
-        } catch (e: Exception) {
-            try {
-                carContext.startCarApp(Intent(Intent.ACTION_DIAL, uri))
-            } catch (e2: Exception) {
-                CarToast.makeText(carContext, "Anruf nicht möglich", CarToast.LENGTH_LONG).show()
-            }
-        }
+    internal fun call(): CarCall.Result {
+        val r = CarCall.place(carContext, digits)
         screenManager.popToRoot()
+        return r
+    }
+}
+
+
+// =============================================================================================
+// Direkt waehlen im Auto (ohne Waehlfeld, die Navigation bleibt die grosse Ansicht)
+// =============================================================================================
+
+object CarCall {
+    enum class Result { CALLED, PERMISSION_ASKED, DIALER }
+
+    /**
+     * Mit Berechtigung ueber das Telefon des Handys waehlen (Android Auto zeigt nur die kleine
+     * Anrufkarte). Ohne: einmal am Handy erlauben lassen, danach direkt; abgelehnt -> Waehlfeld.
+     */
+    fun place(ctx: CarContext, digits: String): Result {
+        if (de.sascha.kssmaps.data.CallHelper.call(ctx, digits)) return Result.CALLED
+        return try {
+            ctx.requestPermissions(listOf(Manifest.permission.CALL_PHONE)) { granted, _ ->
+                if (Manifest.permission.CALL_PHONE !in granted || !de.sascha.kssmaps.data.CallHelper.call(ctx, digits)) dial(ctx, digits)
+            }
+            Result.PERMISSION_ASKED
+        } catch (e: Exception) {
+            dial(ctx, digits)
+            Result.DIALER
+        }
+    }
+
+    private fun dial(ctx: CarContext, digits: String) {
+        try {
+            ctx.startCarApp(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", digits, null)))
+        } catch (e: Exception) {
+            CarToast.makeText(ctx, "Anruf nicht möglich", CarToast.LENGTH_LONG).show()
+        }
+    }
+}
+
+/** "Herr Mader anrufen?" kurz vor der Ankunft (Terminzusatz "… min vorher anrufen") – Ja waehlt direkt. */
+fun showCallReminder(ctx: CarContext, name: String, display: String, digits: String) {
+    try {
+        if (ctx.carAppApiLevel >= 5) {
+            val id = ("call-" + digits).hashCode()
+            val b = Alert.Builder(id, CarText.create("$name anrufen?"), 30_000L)
+                .setSubtitle(CarText.create(display))
+                .setIcon(CarUtil.glyph(Icons.Glyph.PHONE, CarColor.GREEN))
+                .addAction(Action.Builder().setTitle("Ja").setOnClickListener {
+                    ctx.getCarService(AppManager::class.java).dismissAlert(id)
+                    CarCall.place(ctx, digits)
+                }.build())
+                .addAction(Action.Builder().setTitle("Nein").setOnClickListener {
+                    ctx.getCarService(AppManager::class.java).dismissAlert(id)
+                }.build())
+                .setCallback(object : AlertCallback {
+                    override fun onCancel(reason: Int) {}
+                    override fun onDismiss() {}
+                })
+            ctx.getCarService(AppManager::class.java).showAlert(b.build())
+        } else {
+            ctx.getCarService(androidx.car.app.ScreenManager::class.java).push(CarCallConfirmScreen(ctx, name, display, digits))
+        }
+    } catch (e: Exception) {
+        CarToast.makeText(ctx, "$name anrufen: $display", CarToast.LENGTH_LONG).show()
+    }
+}
+
+/** Zeile in Routenlisten: Laenge, Stau, Baustellen (ab [from] Metern, die aktive Route ab hier). */
+private fun routeSummary(r: Route, from: Double): String {
+    val parts = ArrayList<String>()
+    parts.add(Instructions.formatDistance(r.distanceM - from))
+    val ahead = r.hazards.filter { it.endAlong >= from }
+    val jams = ahead.count { it.hazard.type.isTraffic }
+    val delay = (ahead.filter { it.hazard.type.isTraffic }.sumOf { it.hazard.delaySec } / 60.0).roundToInt()
+    parts.add(if (jams > 0) "Stau ${jams}×" + (if (delay > 0) " +$delay Min." else "") else "kein Stau")
+    val works = ahead.count { it.hazard.type == HazardType.ROADWORKS }
+    if (works > 0) parts.add("Baustellen $works")
+    return parts.joinToString(" · ")
+}
+
+// =============================================================================================
+// Uebersicht waehrend der Fahrt: ganze Strecke ab hier, Alternativen (eine davon staufrei)
+// =============================================================================================
+
+class CarRouteOverviewScreen(carContext: CarContext, private val session: NaviSession) : EngineScreen(carContext) {
+    private var fitted = -1
+
+    init {
+        engine.computeNavAlternatives()
+        lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onDestroy(owner: LifecycleOwner) {
+                engine.clearNavAlternatives()
+                session.renderer.recenter()
+            }
+        })
+    }
+
+    override fun onStateChanged() {
+        if (engine.mode != NavEngine.Mode.NAVIGATING) {
+            finish()
+            return
+        }
+        val n = engine.navAlternatives.size
+        if (n != fitted) {
+            fitted = n
+            session.renderer.showOverview()
+        }
+        invalidate()
+    }
+
+    override fun onGetTemplate(): Template {
+        val e = engine
+        val b = RoutePreviewNavigationTemplate.Builder().setTitle("Übersicht bis zum Ziel").setHeaderAction(Action.BACK)
+        val alts = e.navAlternatives
+        if (alts.isEmpty() || (e.navAltLoading && alts.size <= 1)) return b.setLoading(true).build()
+        val along = e.state?.along ?: 0.0
+        val il = ItemList.Builder()
+        for (r in alts) {
+            val from = if (r === e.activeRoute) along else 0.0
+            il.addItem(Row.Builder().setTitle(CarUtil.durationText(e.remainingSecOf(r), r.label)).addText(routeSummary(r, from)).build())
+        }
+        il.setOnSelectedListener { idx ->
+            e.selectNavAlternative(idx)
+            session.renderer.showOverview()
+        }
+        il.setSelectedIndex(e.navAltSelected.coerceIn(0, alts.size - 1))
+        b.setItemList(il.build())
+        b.setNavigateAction(
+            Action.Builder().setTitle(if (alts.getOrNull(e.navAltSelected) === e.activeRoute) "Weiter" else "Übernehmen")
+                .setIcon(CarUtil.glyph(Icons.Glyph.NAVIGATE)).setOnClickListener {
+                    e.applyNavAlternative()
+                    finish()
+                }.build(),
+        )
+        return b.build()
+    }
+}
+
+// =============================================================================================
+// Einstellungen im Auto
+// =============================================================================================
+
+class CarSettingsScreen(carContext: CarContext) : Screen(carContext) {
+    override fun onGetTemplate(): Template {
+        val e = engine
+        val p = e.prefs
+        val il = ItemList.Builder()
+        val modes = listOf("Automatisch (nach Sonnenstand)", "Tag", "Nacht")
+        il.addItem(Row.Builder().setTitle("Kartenansicht").addText(modes[p.nightMode.coerceIn(0, 2)]).setOnClickListener {
+            e.cycleNightMode()
+            invalidate()
+        }.build())
+        fun toggle(title: String, text: String?, on: Boolean, set: (Boolean) -> Unit) {
+            val r = Row.Builder().setTitle(title).setToggle(Toggle.Builder { checked ->
+                set(checked)
+                invalidate()
+            }.setChecked(on).build())
+            if (text != null) r.addText(text)
+            il.addItem(r.build())
+        }
+        toggle("Sprachansagen", null, !p.voiceMuted) { want -> if (want == p.voiceMuted) e.toggleMuted() }
+        toggle("Schnellere Route anbieten", "Verkehr alle 2 Minuten prüfen", p.trafficReroute) { p.trafficReroute = it }
+        toggle("Blitzerwarnungen", null, p.camerasEnabled) { e.setCamerasEnabled(it) }
+        toggle("Mautstraßen meiden", "gilt für neue Routen", p.avoidTolls) { p.avoidTolls = it }
+        toggle("Autobahnen meiden", "gilt für neue Routen", p.avoidMotorways) { p.avoidMotorways = it }
+        return ListTemplate.Builder().setTitle("Einstellungen").setHeaderAction(Action.BACK).setSingleList(il.build()).build()
     }
 }

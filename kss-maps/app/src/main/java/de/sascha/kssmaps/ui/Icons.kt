@@ -273,7 +273,7 @@ object Icons {
     // Knopf-Symbole (weiss, fuer Handy-Knoepfe und Android Auto)
     // -----------------------------------------------------------------------------------
 
-    enum class Glyph { SEARCH, FUEL, VOLUME_ON, VOLUME_OFF, CLOSE, PLUS, MINUS, RECENTER, HISTORY, AVOID, LAYERS, TRAFFIC, SETTINGS, LIST, REFRESH, NAVIGATE, PAN, JAM_AVOID, REPORT, MORE, MIC, SWAP, CALENDAR, PHONE }
+    enum class Glyph { SEARCH, FUEL, VOLUME_ON, VOLUME_OFF, CLOSE, PLUS, MINUS, RECENTER, HISTORY, AVOID, LAYERS, TRAFFIC, SETTINGS, LIST, REFRESH, NAVIGATE, PAN, JAM_AVOID, REPORT, MORE, MIC, SWAP, CALENDAR, PHONE, ROUTE, SUN, MOON, DAYNIGHT }
 
     fun glyph(g: Glyph, size: Int, color: Int = Color.WHITE): Bitmap {
         val b = bmp(size)
@@ -350,6 +350,46 @@ object Icons {
                 c.drawCircle(0.5f * s, 0.26f * s, 0.09f * s, f)
                 c.drawCircle(0.5f * s, 0.50f * s, 0.09f * s, f)
                 c.drawCircle(0.5f * s, 0.74f * s, 0.09f * s, f)
+            }
+            Glyph.ROUTE -> {
+                // Strecke mit Start und Ziel: Uebersicht der ganzen Route
+                val path = Path().apply {
+                    moveTo(0.22f * s, 0.80f * s)
+                    cubicTo(0.20f * s, 0.45f * s, 0.80f * s, 0.62f * s, 0.78f * s, 0.24f * s)
+                }
+                c.drawPath(path, stroke(color, 0.08f * s).apply { strokeCap = Paint.Cap.ROUND })
+                c.drawCircle(0.22f * s, 0.80f * s, 0.10f * s, f)
+                c.drawCircle(0.78f * s, 0.22f * s, 0.12f * s, stroke(color, 0.07f * s))
+                c.drawCircle(0.78f * s, 0.22f * s, 0.04f * s, f)
+            }
+            Glyph.SUN -> {
+                c.drawCircle(0.5f * s, 0.5f * s, 0.17f * s, f)
+                for (i in 0 until 8) {
+                    val a = Math.toRadians(i * 45.0)
+                    val x1 = 0.5f * s + (0.27f * s * Math.cos(a)).toFloat()
+                    val y1 = 0.5f * s + (0.27f * s * Math.sin(a)).toFloat()
+                    val x2 = 0.5f * s + (0.40f * s * Math.cos(a)).toFloat()
+                    val y2 = 0.5f * s + (0.40f * s * Math.sin(a)).toFloat()
+                    c.drawLine(x1, y1, x2, y2, stroke(color, 0.07f * s).apply { strokeCap = Paint.Cap.ROUND })
+                }
+            }
+            Glyph.MOON -> {
+                val moon = Path().apply { addCircle(0.47f * s, 0.52f * s, 0.32f * s, Path.Direction.CW) }
+                val cut = Path().apply { addCircle(0.64f * s, 0.40f * s, 0.27f * s, Path.Direction.CW) }
+                moon.op(cut, Path.Op.DIFFERENCE)
+                c.drawPath(moon, f)
+            }
+            Glyph.DAYNIGHT -> {
+                // halb hell, halb dunkel mit "A": automatisch nach Sonnenstand
+                c.drawCircle(0.5f * s, 0.5f * s, 0.34f * s, stroke(color, 0.07f * s))
+                c.drawArc(RectF(0.16f * s, 0.16f * s, 0.84f * s, 0.84f * s), 90f, 180f, true, f)
+                val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    this.color = color
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                    textSize = 0.30f * s
+                }
+                c.drawText("A", 0.66f * s, 0.61f * s, tp)
             }
             Glyph.SETTINGS -> {
                 for (i in 0 until 8) {
@@ -446,6 +486,51 @@ object Icons {
     }
 
     /** Rundes Tempolimit-Schild (roter Ring). kmh = -1 -> Aufhebungsschild (unbegrenzt). */
+    /** Spitze des Abbiegepfeils auf der Karte: weisses Dreieck mit dunklem Rand, zeigt nach oben (Norden). */
+    fun arrowHead(size: Int): Bitmap {
+        val b = bmp(size)
+        val c = Canvas(b)
+        val s = size.toFloat()
+        val path = Path().apply {
+            moveTo(0.5f * s, 0.06f * s)
+            lineTo(0.94f * s, 0.96f * s)
+            lineTo(0.06f * s, 0.96f * s)
+            close()
+        }
+        c.drawPath(path, fill(Color.WHITE))
+        c.drawPath(path, stroke(Color.parseColor("#0B3D6E"), 0.07f * s).apply { strokeJoin = Paint.Join.ROUND })
+        return b
+    }
+
+    /**
+     * Wechselverkehrszeichen-Strecke (LED-Anzeigen): schwarzes Schild mit leuchtendem Ring, darin
+     * der feste Hoechstwert, falls bekannt, sonst "?" – das aktuelle Limit steht auf den Anzeigen.
+     */
+    fun variableSpeedSign(kmh: Int?, size: Int): Bitmap {
+        val b = bmp(size)
+        val c = Canvas(b)
+        val s = size.toFloat()
+        val r = 0.16f * s
+        c.drawRoundRect(RectF(0.03f * s, 0.03f * s, 0.97f * s, 0.97f * s), r, r, fill(Color.parseColor("#111111")))
+        c.drawRoundRect(RectF(0.03f * s, 0.03f * s, 0.97f * s, 0.97f * s), r, r, stroke(Color.parseColor("#9E9E9E"), 0.03f * s))
+        val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 0.07f * s
+            color = Color.parseColor("#FF5252")
+            pathEffect = android.graphics.DashPathEffect(floatArrayOf(0.035f * s, 0.025f * s), 0f)
+        }
+        c.drawCircle(0.5f * s, 0.5f * s, 0.34f * s, ring)
+        val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#FFF8E1")
+            typeface = Typeface.DEFAULT_BOLD
+            textAlign = Paint.Align.CENTER
+            textSize = if (kmh != null && kmh >= 100) 0.30f * s else 0.38f * s
+        }
+        val fm = tp.fontMetrics
+        c.drawText(kmh?.takeIf { it > 0 }?.toString() ?: "?", 0.5f * s, 0.5f * s - (fm.ascent + fm.descent) / 2, tp)
+        return b
+    }
+
     fun speedSign(kmh: Int, size: Int): Bitmap {
         val b = bmp(size)
         val c = Canvas(b)

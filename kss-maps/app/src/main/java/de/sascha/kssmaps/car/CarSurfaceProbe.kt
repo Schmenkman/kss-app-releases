@@ -55,11 +55,12 @@ object CarSurfaceProbe {
             }
         }, Handler(t.looper))
         reader = r
-        val cr = CarMapRenderer(ctx.applicationContext) { false }
+        val cr = CarMapRenderer(ctx.applicationContext, customButtons = true)
         renderer = cr
         cr.onSurfaceAvailable(SurfaceContainer(r.surface, w, h, dpi))
         // Wie Android Auto: links die Fahrkarte bzw. Routenliste, rechts die Knopfleisten
         cr.onVisibleAreaChanged(Rect(w * 30 / 100, 0, w - w * 8 / 100, h))
+        cr.onStableAreaChanged(Rect(w * 30 / 100, 0, w - w * 8 / 100, h))
         Log.i(TAG, "TEST_CAR_SURFACE gestartet ${w}x$h")
     }
 
@@ -76,6 +77,11 @@ object CarSurfaceProbe {
         } catch (e: Exception) {
             Log.w(TAG, "TEST_CAR_CAPTURE $name: ${e.message}")
         }
+    }
+
+    /** Antippen eines eigenen Knopfs nachstellen (z. B. "RECENTER"); das Ergebnis steht im Protokoll. */
+    fun click(name: String) {
+        renderer?.testClick(name) ?: Log.i(TAG, "TEST_CAR_BUTTON kein Renderer")
     }
 
     fun stop() {

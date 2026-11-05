@@ -19,6 +19,7 @@ import de.sascha.kssmaps.core.Route
 import de.sascha.kssmaps.core.RouteSource
 import de.sascha.kssmaps.core.SpeedLimitRange
 import de.sascha.kssmaps.core.Tankerkoenig
+import de.sascha.kssmaps.core.TempoIndex
 import de.sascha.kssmaps.core.TomTom
 import de.sascha.kssmaps.core.Uta
 import de.sascha.kssmaps.core.Valhalla
@@ -90,9 +91,21 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
         lastRoutingNote = null
         if (key.isNotBlank() && !forceValhalla) {
             try {
-                val url = TomTom.routeUrl(points, key, opts, alternatives, heading)
-                val body = if (avoid.isEmpty()) Http.get(url, 20_000)
-                else Http.post(url, TomTom.routeBody(mergeAvoid(avoid)), timeoutMs = 25_000)
+                fun call(limits: Boolean): String {
+                    val url = TomTom.routeUrl(points, key, opts, alternatives, heading, speedLimits = limits)
+                    return if (avoid.isEmpty()) Http.get(url, 20_000)
+                    else Http.post(url, TomTom.routeBody(mergeAvoid(avoid)), timeoutMs = 25_000)
+                }
+                val body = try {
+                    call(tomtomSpeedLimits)
+                } catch (e: Http.HttpError) {
+                    // Kennt der Zugang die Tempolimit-Abschnitte nicht: ohne sie (Verkehr ist wichtiger)
+                    if (e.code == 400 && tomtomSpeedLimits) {
+                        tomtomSpeedLimits = false
+                        Log.w(TAG, "TomTom ohne Tempolimits: ${TomTom.errorMessage(e.body)}")
+                        call(false)
+                    } else throw e
+                }
                 val r = TomTom.parseRoutes(body)
                 if (r.isNotEmpty()) return@withContext r
             } catch (e: Http.HttpError) {
@@ -133,6 +146,33 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
     // ---------------------------------------------------------------------------------------
 
     private val autobahnCache = HashMap<String, Pair<Long, List<Hazard>>>()
+    @Volatile private var tomtomSpeedLimits = true
+
+    // ---------------------------------------------------------------------------------------
+    // Wechselverkehrszeichen und Tempolimits nach Uhrzeit (Startbestand aus der APK)
+    // ---------------------------------------------------------------------------------------
+
+    @Volatile private var tempo: TempoIndex? = null
+
+    /** Sofort verfuegbar (leer, bis die Datei im Hintergrund gelesen ist). */
+    fun tempoIndex(): TempoIndex {
+        tempo?.let { return it }
+        synchronized(this) {
+            tempo?.let { return it }
+            tempo = TempoIndex.EMPTY
+        }
+        Thread {
+            val t = try {
+                ctx.assets.open("enforcement/tempo.json").bufferedReader().use { TempoIndex.parse(it.readText()) }
+            } catch (e: Exception) {
+                Log.i(TAG, "Kein Wechselverkehrszeichen-Bestand: ${e.javaClass.simpleName}")
+                TempoIndex.EMPTY
+            }
+            tempo = t
+            Log.i(TAG, "TEMPO_INDEX ${t.size} Abschnitte")
+        }.start()
+        return TempoIndex.EMPTY
+    }
 
     suspend fun autobahnEvents(roads: Set<String>): List<Hazard> = coroutineScope {
         roads.take(12).flatMap { road ->
@@ -142,7 +182,8 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
 
     private fun fetchAutobahn(road: String, svc: String): List<Hazard> {
         val key = "$road/$svc"
-        val maxAge = if (svc == "warning") 150_000L else 20 * 60_000L
+        // Stau/Warnungen alle 90 s frisch, Baustellen/Sperrungen alle 10 Minuten
+        val maxAge = if (svc == "warning") 90_000L else 10 * 60_000L
         val now = System.currentTimeMillis()
         synchronized(autobahnCache) {
             autobahnCache[key]?.let { if (now - it.first < maxAge) return it.second }

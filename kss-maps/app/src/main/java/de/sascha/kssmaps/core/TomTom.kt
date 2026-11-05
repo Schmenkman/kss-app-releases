@@ -14,13 +14,15 @@ import kotlin.math.roundToInt
 object TomTom {
     const val BASE = "https://api.tomtom.com"
 
-    fun routeUrl(points: List<LatLon>, key: String, opts: RouteOptions, alternatives: Int, heading: Double?): String {
+    fun routeUrl(points: List<LatLon>, key: String, opts: RouteOptions, alternatives: Int, heading: Double?, speedLimits: Boolean = true): String {
         val locs = points.joinToString(":") { String.format(Locale.ROOT, "%.6f,%.6f", it.lat, it.lon) }
         val sb = StringBuilder(BASE).append("/routing/1/calculateRoute/").append(locs).append("/json?key=")
             .append(URLEncoder.encode(key.trim(), "UTF-8"))
         sb.append("&traffic=true&travelMode=car&routeType=fastest&routeRepresentation=polyline")
         sb.append("&computeTravelTimeFor=all&instructionsType=text&language=de-DE")
         sb.append("&sectionType=traffic&sectionType=motorway&sectionType=tollRoad")
+        // Tempolimits entlang der Route (TomTom kennt auch nicht beschilderte, z. B. 100 auf Landstrassen)
+        if (speedLimits) sb.append("&sectionType=speedLimit")
         if (alternatives > 0 && points.size == 2) sb.append("&maxAlternatives=").append(alternatives)
         if (opts.avoidTolls) sb.append("&avoid=tollRoads")
         if (opts.avoidMotorways) sb.append("&avoid=motorways")
@@ -151,6 +153,7 @@ object TomTom {
         var hasToll = false
         var hasHighway = false
         val hazards = ArrayList<RouteHazard>()
+        val limits = ArrayList<SpeedLimitRange>()
         val sections = r.optJSONArray("sections") ?: JSONArray()
         for (k in 0 until sections.length()) {
             val s = sections.getJSONObject(k)
@@ -162,7 +165,14 @@ object TomTom {
                 "TRAFFIC" -> {
                     if (pts.isEmpty()) continue
                     val h = trafficHazard(s, pts, si, ei, k)
+                    // Baustellen ohne jede Auswirkung (keine Verzoegerung, Ausmass unbekannt) sind oft nur
+                    // angekuendigt oder ruhen gerade – nicht melden
+                    if (h.type == HazardType.ROADWORKS && h.delaySec <= 0 && s.optInt("magnitudeOfDelay", 0) == 0) continue
                     hazards.add(RouteHazard(h, poly.cum[si], poly.cum[ei]))
+                }
+                "SPEED_LIMIT" -> {
+                    val kmh = s.optNum("maxSpeedLimitInKmh")?.roundToInt() ?: 0
+                    if (kmh > 0 && pts.isNotEmpty() && ei > si) limits.add(SpeedLimitRange(poly.cum[si], poly.cum[ei], kmh))
                 }
             }
         }
@@ -179,6 +189,7 @@ object TomTom {
             hasFerry = false,
             via = Valhalla.viaText(nameLen),
             providerHazards = hazards.sortedBy { it.startAlong },
+            providerSpeedLimits = limits.sortedBy { it.from },
             providerDelaySec = delay,
         )
     }

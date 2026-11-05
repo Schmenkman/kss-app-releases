@@ -2,6 +2,10 @@ package de.sascha.kssmaps.core
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -23,7 +27,7 @@ object Autobahn {
 
     fun url(roadId: String, service: String) = "$BASE/$roadId/services/$service"
 
-    fun parse(json: String, service: String, roadId: String): List<Hazard> {
+    fun parse(json: String, service: String, roadId: String, now: ZonedDateTime = ZonedDateTime.now(BERLIN)): List<Hazard> {
         val root = JSONObject(json)
         val arr = root.optJSONArray(service) ?: return emptyList()
         val out = ArrayList<Hazard>()
@@ -40,6 +44,8 @@ object Autobahn {
             val title = it.optString("title").trim()
             val subtitle = it.optString("subtitle").trim()
             val desc = it.optJSONArray("description").strings()
+            // Baustellen nur, solange sie gelten: Beginn/Ende, Tagesbaustellen nur in ihrem Zeitfenster
+            if (service == "roadworks" && !activeNow(desc, displayType, title, now)) continue
             val blocked = it.optString("isBlocked").equals("true", true)
             val abnormal = it.optString("abnormalTrafficType")
             val avgSpeed = it.optNum("averageSpeed")?.roundToInt()?.takeIf { s -> s > 0 }
@@ -68,6 +74,67 @@ object Autobahn {
             )
         }
         return out
+    }
+
+    val BERLIN: ZoneId = ZoneId.of("Europe/Berlin")
+    private val whenRx = "(\\d{1,2})\\.(\\d{1,2})\\.(\\d{2,4})(?:\\s*(?:um|,|ab)?\\s*(\\d{1,2})[:.](\\d{2}))?"
+    private val beginRx = Regex("Beginn:?\\s*$whenRx", RegexOption.IGNORE_CASE)
+    private val endRx = Regex("Ende:?\\s*$whenRx", RegexOption.IGNORE_CASE)
+    /** Ausdrueckliches taegliches Zeitfenster, z. B. "täglich 09:00 - 15:00 Uhr", "Mo-Fr 9.00 bis 15.00 Uhr". */
+    private val dailyRx = Regex(
+        "(?:t(?:ä|ae)glich|jeweils|werktags|nachts|Mo(?:ntag)?\\.?\\s*(?:-|bis)\\s*(?:Fr|Sa|So)\\w*\\.?)[^0-9]{0,25}(\\d{1,2})[:.](\\d{2})\\s*(?:Uhr)?\\s*(?:-|–|bis)\\s*(\\d{1,2})[:.](\\d{2})",
+        RegexOption.IGNORE_CASE,
+    )
+    private val shortTermRx = Regex("Tagesbaustelle|Kurzzeitbaustelle|Nachtbaustelle|Wanderbaustelle|Tagesbaust", RegexOption.IGNORE_CASE)
+
+    private fun dateTime(m: MatchResult, endOfDay: Boolean): LocalDateTime? = try {
+        val d = m.groupValues[1].toInt()
+        val mo = m.groupValues[2].toInt()
+        var y = m.groupValues[3].toInt()
+        if (y < 100) y += 2000
+        val h = m.groupValues[4]
+        val t = if (h.isNotEmpty()) LocalTime.of(h.toInt() % 24, m.groupValues[5].toInt()) else if (endOfDay) LocalTime.of(23, 59) else LocalTime.MIDNIGHT
+        LocalDateTime.of(y, mo, d, t.hour, t.minute)
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Gilt die Baustelle jetzt? Aus der Beschreibung ("Beginn: 03.11.26 um 09:00 Uhr", "Ende: …").
+     * Tagesbaustellen ueber mehrere Tage gelten nur im taeglichen Zeitfenster (ausdruecklich genannt
+     * oder Beginn-/Ende-Uhrzeit, z. B. 09:00–15:00 oder nachts 20:00–05:00). Ohne Angaben: ja.
+     */
+    fun activeNow(desc: List<String>, displayType: String, title: String, now: ZonedDateTime): Boolean {
+        val text = desc.joinToString("\n")
+        val local = now.withZoneSameInstant(BERLIN).toLocalDateTime()
+        val begin = beginRx.find(text)?.let { dateTime(it, false) }
+        val end = endRx.find(text)?.let { dateTime(it, true) }
+        if (begin != null && local.isBefore(begin.minusMinutes(10))) return false
+        if (end != null && local.isAfter(end.plusMinutes(10))) return false
+        val daily = dailyRx.find(text)
+        val window: Pair<LocalTime, LocalTime>? = when {
+            daily != null -> try {
+                LocalTime.of(daily.groupValues[1].toInt() % 24, daily.groupValues[2].toInt()) to LocalTime.of(daily.groupValues[3].toInt() % 24, daily.groupValues[4].toInt())
+            } catch (e: Exception) {
+                null
+            }
+            (displayType == "SHORT_TERM_ROADWORKS" || shortTermRx.containsMatchIn(title + " " + text)) &&
+                begin != null && end != null && begin.toLocalDate() != end.toLocalDate() -> {
+                val a = begin.toLocalTime()
+                val b = end.toLocalTime()
+                // nur ein echtes Arbeitszeitfenster (2–14 Stunden), kein "00:00 bis 23:59"
+                val span = ((b.toSecondOfDay() - a.toSecondOfDay()) + 86_400) % 86_400
+                if (a != b && span in 2 * 3600..14 * 3600) a to b else null
+            }
+            else -> null
+        }
+        if (window != null) {
+            val t = local.toLocalTime().toSecondOfDay()
+            val a = (window.first.toSecondOfDay() - 600 + 86_400) % 86_400
+            val b = (window.second.toSecondOfDay() + 600) % 86_400
+            return if (a <= b) t in a..b else t >= a || t <= b
+        }
+        return true
     }
 
     private fun parseGeometry(g: JSONObject?): List<LatLon> {

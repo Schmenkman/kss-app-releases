@@ -115,6 +115,9 @@ data class SpeedLimitRange(val from: Double, val to: Double, val kmh: Int) {
     }
 }
 
+/** Was das Tempolimit-Schild zeigt: Zahl (oder [SpeedLimitRange.UNLIMITED]); [variable] = Wechselverkehrszeichen-Strecke. */
+data class SpeedSign(val kmh: Int?, val variable: Boolean = false)
+
 enum class RouteSource { VALHALLA, TOMTOM }
 
 class Route(
@@ -134,6 +137,8 @@ class Route(
     val via: String,
     /** Verkehrsmeldungen, die der Router selbst geliefert hat (TomTom). */
     val providerHazards: List<RouteHazard> = emptyList(),
+    /** Tempolimits laut Router (TomTom), fuellen Luecken der OpenStreetMap-Daten. */
+    val providerSpeedLimits: List<SpeedLimitRange> = emptyList(),
     /** Verzoegerung laut Router (TomTom), schon in timeProfile enthalten. */
     val providerDelaySec: Double = 0.0,
 ) {
@@ -167,8 +172,10 @@ class Route(
         (baseDurationSec - timeAt(along)).coerceAtLeast(0.0) + extraDelays.filter { it.first >= along }.sumOf { it.second }
 
     /** Tempolimit an der Stelle along; null = unbekannt, -1 = unbegrenzt. */
-    fun speedLimitAt(along: Double): Int? {
-        val l = speedLimits
+    /** Tempolimit an der Stelle: OpenStreetMap (beschildert), sonst TomTom (auch unbeschildert, z. B. 100 ausserorts). */
+    fun speedLimitAt(along: Double): Int? = limitIn(speedLimits, along) ?: limitIn(providerSpeedLimits, along)
+
+    private fun limitIn(l: List<SpeedLimitRange>, along: Double): Int? {
         if (l.isEmpty()) return null
         var lo = 0
         var hi = l.size - 1

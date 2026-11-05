@@ -99,6 +99,12 @@ jobs:
         timeout-minutes: 8
         run: python3 tools/fetch_enforcement.py app/src/main/assets/enforcement tankstellen
 
+      - name: Wechselverkehrszeichen und Tempolimits nach Uhrzeit laden (OpenStreetMap)
+        # Autobahn-Abschnitte mit LED-Anzeigen: dort "Anzeige beachten" statt "frei".
+        continue-on-error: true
+        timeout-minutes: 8
+        run: python3 tools/fetch_enforcement.py app/src/main/assets/enforcement tempo
+
       - name: Startbestand fuer die Testfahrt weitergeben
         continue-on-error: true
         uses: actions/upload-artifact@v4

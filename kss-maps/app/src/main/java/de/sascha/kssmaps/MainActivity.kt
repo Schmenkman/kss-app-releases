@@ -125,6 +125,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
     private var lastGesture = 0L
     private var lastRoutesKey = 0
     private var lastMessage: String? = null
+    private var lastNight: Boolean? = null
+    private var lastNightCheck = 0L
 
     // =======================================================================================
     // Aufbau
@@ -456,6 +458,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
 
     override fun onAlert(alert: NavEngine.Alert) {
         if (alert.id == "better-route") renderAll(false)
+        val digits = alert.callDigits
+        if (digits != null && !engine.carActive && !isFinishing) confirmCall(alert.callName ?: "Kunde", alert.callDisplay ?: digits, digits)
     }
 
     private fun renderAll(forceCamera: Boolean) {
@@ -500,6 +504,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (hazardList.isShown) hazardList.render()
 
+        checkNight()
         val ctl = mapCtl
         if (ctl != null && ctl.style != null) {
             ctl.updateRoutes(force = true)
@@ -545,14 +550,9 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         val nh = e.nearestHazard
         val cam = e.cameraAhead
         when {
-            nh != null -> {
-                val h = nh.first.hazard
-                val inside = nh.second <= 0.0
-                val txt = if (inside && h.type.isTraffic) "Im ${h.type.label} – noch ${Instructions.formatDistance(nh.first.endAlong - (e.state?.along ?: 0.0))}"
-                else "${Instructions.hazardShort(h)} in ${Instructions.formatDistance(nh.second)}"
-                hazardBanner.show(h.type, txt)
-            }
-            cam != null -> hazardBanner.show(cam.first.type, "${Instructions.hazardShort(cam.first)} in ${Instructions.formatDistance(cam.second)}")
+            // "Baustelle in 800 m", in der Baustelle "Baustelle noch 1,2 km"
+            nh != null -> hazardBanner.show(nh.first.hazard.type, Instructions.hazardBanner(nh.first, nh.second, e.state?.along ?: 0.0))
+            cam != null -> hazardBanner.show(cam.first.type, Instructions.cameraBanner(cam.first, cam.second))
             else -> hazardBanner.hide()
         }
         val ctl = mapCtl ?: return
@@ -566,6 +566,18 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         }
         if (ctl.following && (e.mode == NavEngine.Mode.NAVIGATING || e.mode == NavEngine.Mode.IDLE)) ctl.follow()
         updateRecenter()
+        if (System.currentTimeMillis() - lastNightCheck > 60_000) checkNight()
+    }
+
+    /** Tag/Nacht gewechselt (Einstellung, Knopf im Auto, Sonnenauf-/-untergang): Kartenstil nachziehen. */
+    private fun checkNight() {
+        val now = System.currentTimeMillis()
+        val night = engine.isNight()
+        if (night != lastNight) {
+            lastNight = night
+            mapCtl?.applyStyle()
+        }
+        lastNightCheck = now
     }
 
     private fun updateRecenter() {
@@ -674,6 +686,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), reqCall)
             return
         }
+        if (de.sascha.kssmaps.data.CallHelper.call(this, digits)) return
         try {
             startActivity(Intent(Intent.ACTION_CALL, Uri.fromParts("tel", digits, null)))
         } catch (e: Exception) {
@@ -787,6 +800,9 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             need.add(Manifest.permission.POST_NOTIFICATIONS)
         }
+        if (engine.appointmentSource.configured && !de.sascha.kssmaps.data.CallHelper.hasPermission(this)) {
+            need.add(Manifest.permission.CALL_PHONE)
+        }
         if (need.isNotEmpty()) requestPermissions(need.toTypedArray(), 42)
     }
 
@@ -870,9 +886,13 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             if (i.getBooleanExtra("test_close_customer", false)) hideCustomer()
             if (i.getBooleanExtra("test_open_settings", false)) openSettings()
             // Android-Auto-Karte auf unsichtbarer Flaeche zeichnen und als Bild sichern (Testfahrt)
+            // Anruf-Erinnerung wie kurz vor der Ankunft ("Kunde anrufen?" – in der Testfahrt nur "Nein")
+            if (i.getBooleanExtra("test_call_reminder", false)) engine.testCallReminder()
             try {
                 if (i.getBooleanExtra("test_car_start", false)) de.sascha.kssmaps.car.CarSurfaceProbe.start(this)
                 i.getStringExtra("test_car_capture")?.let { de.sascha.kssmaps.car.CarSurfaceProbe.capture(this, it) }
+                // eigenen Knopf auf der Android-Auto-Karte antippen (Treffer steht als TEST_CAR_BUTTON im Protokoll)
+                i.getStringExtra("test_car_click")?.let { de.sascha.kssmaps.car.CarSurfaceProbe.click(it) }
             } catch (e: Exception) {
                 android.util.Log.e("KSSMaps", "TEST_CAR_SURFACE fehlgeschlagen", e)
             }

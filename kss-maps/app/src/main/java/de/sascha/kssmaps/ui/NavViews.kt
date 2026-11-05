@@ -160,7 +160,7 @@ class SpeedWidget(private val ctx: Context) {
     private val speedBox = Ui.vbox(ctx)
     private val speed = Ui.text(ctx, "0", 28f, Ui.TEXT, bold = true)
     private val unit = Ui.text(ctx, "km/h", 11f, Ui.TEXT2)
-    private var lastLimit: Int? = Int.MIN_VALUE
+    private var lastSign: de.sascha.kssmaps.core.SpeedSign? = de.sascha.kssmaps.core.SpeedSign(Int.MIN_VALUE)
 
     init {
         speedBox.gravity = Gravity.CENTER
@@ -182,13 +182,23 @@ class SpeedWidget(private val ctx: Context) {
         speed.setTextColor(if (over) Color.WHITE else Ui.TEXT)
         unit.setTextColor(if (over) Color.WHITE else Ui.TEXT2)
         speedBox.background = Ui.bg(ctx, if (over) Ui.RED else Color.WHITE, 40, Color.parseColor("#DADCE0"), 1)
-        val lim = e.speedLimit
-        if (lim != lastLimit) {
-            lastLimit = lim
-            if (lim == null || lim == 0) sign.visibility = View.GONE
-            else {
-                sign.visibility = View.VISIBLE
-                sign.setImageBitmap(Icons.speedSign(if (lim == SpeedLimitRange.UNLIMITED) -1 else lim, Ui.dp(ctx, 62)))
+        val sg = e.speedSign
+        if (sg != lastSign) {
+            lastSign = sg
+            val lim = sg?.kmh
+            when {
+                sg == null -> sign.visibility = View.GONE
+                sg.variable -> {
+                    sign.visibility = View.VISIBLE
+                    sign.setImageBitmap(Icons.variableSpeedSign(lim, Ui.dp(ctx, 62)))
+                    sign.contentDescription = "Wechselverkehrszeichen – Anzeige beachten"
+                }
+                lim == null || lim == 0 -> sign.visibility = View.GONE
+                else -> {
+                    sign.visibility = View.VISIBLE
+                    sign.setImageBitmap(Icons.speedSign(if (lim == SpeedLimitRange.UNLIMITED) -1 else lim, Ui.dp(ctx, 62)))
+                    sign.contentDescription = if (lim == SpeedLimitRange.UNLIMITED) "Kein Tempolimit" else "Tempolimit $lim"
+                }
             }
         }
     }

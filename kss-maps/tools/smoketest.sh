@@ -144,9 +144,12 @@ if [ -n "$CAM" ] && [ "$CAM" -gt 1500 ] && [ "$CAM" -lt 25000 ]; then
   car_shot blitzer auto_02_fahrt
   python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from $STOP --to $((CAM + 250)) --speed 22 --shot-every 100 --prefix 05c_blitzer
 else
-  python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from 0 --to 9000 --speed 25 --shot-every 50 --prefix 05_fahrt
+  # mit "Tunnel" von 6000 bis 6750 m: 30 s keine GPS-Punkte, der Pfeil soll mit dem letzten Tempo weiterfahren
+  python3 $T/drive.py --log "$OUT/logcat.txt" --out "$OUT" --from 0 --to 9000 --speed 25 --shot-every 50 --prefix 05_fahrt --gap-from 6000 --gap-to 6750
   car_shot fahrt auto_02_fahrt
 fi
+# Eigene Knoepfe auf der Android-Auto-Karte: Antippen trifft den richtigen Knopf (Probe ohne Auto -> Protokoll)
+for b in RECENTER OVERVIEW DAYNIGHT CALL ZOOM_IN END; do act --es test_car_click $b; sleep 1; done
 # Querformat beim Fahren (wie Google Maps in Android Auto): 1,5 km mit 15 m/s
 ensure_alive quer_fahrt
 rotate 1
@@ -235,6 +238,14 @@ act --ez test_close_customer true
 sleep 1
 python3 $T/ui.py tap --text "Los" || act --ez test_start_navigation true
 sleep 8
+# "Herr Probe 30 min vorher anrufen" bei nur ~7 Min. Fahrt: die Erinnerung kommt gleich beim Losfahren
+if python3 $T/ui.py exists --text "Anrufen?"; then
+  shot 13c2_anruf_erinnerung
+  python3 $T/ui.py tap --text "Nein" --icase || adb shell input keyevent KEYCODE_BACK
+  sleep 2
+else
+  echo "keine Anruf-Erinnerung beim Losfahren"
+fi
 python3 $T/ui.py tap --desc "Kunde" || act --ez test_open_customer true
 sleep 3
 shot 13d_kunde_fahrt

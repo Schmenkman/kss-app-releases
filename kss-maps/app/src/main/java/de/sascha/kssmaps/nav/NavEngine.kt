@@ -52,6 +52,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
@@ -73,6 +74,10 @@ class NavEngine(
         val text: String,
         val type: HazardType? = null,
         val actionLabel: String? = null,
+        /** Anruf-Erinnerung: Name und Nummer (Anzeige, Waehlziffern) – waehlen tut die Oberflaeche. */
+        val callName: String? = null,
+        val callDisplay: String? = null,
+        val callDigits: String? = null,
         val action: (() -> Unit)? = null,
     )
 
@@ -83,6 +88,8 @@ class NavEngine(
     }
 
     companion object {
+        /** "Vorher anrufen" ohne Zeitangabe: so viele Minuten vor der Ankunft erinnern. */
+        const val CALL_BEFORE_DEFAULT_MIN = 15
         private const val TAG = "KSSMaps"
     }
 
@@ -214,8 +221,23 @@ class NavEngine(
         private set
     var heading: Double? = null
         private set
-    /** km/h; -1 = unbegrenzt; null = unbekannt. */
+    /** km/h; -1 = unbegrenzt; null = unbekannt (fuer die Tempo-Warnung). */
     var speedLimit: Int? = null
+        private set
+    /** Was das Tempolimit-Schild zeigt (Zahl, unbegrenzt, Wechselverkehrszeichen), null = nichts. */
+    var speedSign: de.sascha.kssmaps.core.SpeedSign? = null
+        private set
+    /** Android Auto verbunden: Hinweise mit Rueckfrage dann im Auto statt am Handy. */
+    @Volatile var carActive = false
+    /** Kein GPS (z. B. Tunnel): Position wird entlang der Route mit dem letzten Tempo weitergefuehrt. */
+    var deadReckoning = false
+        private set
+    /** Uebersicht waehrend der Fahrt: aktuelle Route und Alternativen ab hier (eine davon staufrei). */
+    var navAlternatives: List<Route> = emptyList()
+        private set
+    var navAltSelected = 0
+        private set
+    var navAltLoading = false
         private set
     var currentRoad: String? = null
         private set
@@ -254,6 +276,16 @@ class NavEngine(
     private var startWhenReady = false
     private var fuelArrivalSpoken = false
     private var lastSavedPos = 0L
+    /** Letzter echter GPS-Punkt (nicht geschaetzt): Zeit und Lage auf der Route. */
+    private var lastRealAlong = 0.0
+    private var lastRealAlongT = 0L
+    private var drJob: Job? = null
+    private var drBaseAlong = 0.0
+    private var drBaseT = 0L
+    private var drSpeed = 0.0
+    private var fixSynthetic = false
+    private var lastTraceLimit: Int? = null
+    private val callReminded = HashSet<String>()
 
     init {
         voice.muted = prefs.voiceMuted
@@ -294,7 +326,10 @@ class NavEngine(
 
     private val gpsListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
+            // Waehrend der Schaetzung (Tunnel): erst ein brauchbarer Punkt beendet sie
+            if (deadReckoning && location.accuracy > 40f) return
             lastGpsFix = SystemClock.elapsedRealtime()
+            if (deadReckoning) endDeadReckoning(location)
             onLocation(location)
         }
 
@@ -306,8 +341,11 @@ class NavEngine(
 
     private val netListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
-            // Netzwerkortung nur, solange GPS schweigt (z. B. im Haus beim Planen).
-            if (SystemClock.elapsedRealtime() - lastGpsFix > 15_000) onLocation(location)
+            // Netzwerkortung nur, solange GPS schweigt (z. B. im Haus beim Planen). Beim Navigieren nicht:
+            // im Tunnel liegt sie oft hunderte Meter daneben – dort wird entlang der Route geschaetzt.
+            val gpsAgo = SystemClock.elapsedRealtime() - lastGpsFix
+            if (mode == Mode.NAVIGATING && gpsAgo < 10 * 60_000) return
+            if (gpsAgo > 15_000) onLocation(location)
         }
 
         @Deprecated("Deprecated in Java")
@@ -852,6 +890,7 @@ class NavEngine(
         startLocation()
         voice.say(startText(r))
         startTrafficLoop()
+        startDeadReckoningWatch()
         changed()
     }
 
@@ -868,6 +907,9 @@ class NavEngine(
     }
 
     fun stopNavigation(keepDestination: Boolean = false, silent: Boolean = false) {
+        drJob?.cancel()
+        deadReckoning = false
+        navAlternatives = emptyList()
         trafficJob?.cancel()
         speedLimitJob?.cancel()
         routeJob?.cancel()
@@ -897,7 +939,11 @@ class NavEngine(
         val p = displayPosition ?: LatLon(loc.latitude, loc.longitude)
         val st = tr.update(p, loc.accuracy.toDouble(), sp, heading)
         state = st
-        speedLimit = route.speedLimitAt(st.along)
+        updateSpeedSign(route.speedLimitAt(st.along), p)
+        if (!fixSynthetic) {
+            lastRealAlong = st.along
+            lastRealAlongT = SystemClock.elapsedRealtime()
+        }
         if (st.arrived) {
             onArrived(route)
             return
@@ -915,6 +961,7 @@ class NavEngine(
         }
         announce(route, st, sp)
         checkHazards(route, st, sp)
+        checkCallReminder(st)
         if (st.along + 25_000 > speedLimitCoveredTo || speedLimitRoute !== route) fetchSpeedLimits(route, st.along)
     }
 
@@ -1044,13 +1091,13 @@ class NavEngine(
         }
     }
 
-    // ---- Verkehr waehrend der Fahrt: alle 3 Minuten pruefen ----
+    // ---- Verkehr waehrend der Fahrt: alle 2 Minuten pruefen ----
 
     private fun startTrafficLoop() {
         trafficJob?.cancel()
         trafficJob = scope.launch {
             while (isActive && mode == Mode.NAVIGATING) {
-                delay(180_000)
+                delay(120_000)
                 try {
                     refreshTraffic()
                 } catch (e: CancellationException) {
@@ -1171,11 +1218,242 @@ class NavEngine(
     }
 
     // ---------------------------------------------------------------------------------------
+    // Uebersicht mit Alternativen und schnelle Stau-Korrektur (Knoepfe im Auto)
+    // ---------------------------------------------------------------------------------------
+
+    /** Route ab hier bis zum Ziel mit Verkehr, dazu Alternativen – eine davon ohne den gemeldeten Stau. */
+    fun computeNavAlternatives() {
+        val r = activeRoute ?: return
+        val dest = destination ?: return
+        val pos = position ?: return
+        val along = state?.along ?: 0.0
+        r.label = "Aktuelle Route"
+        navAlternatives = listOf(r)
+        navAltSelected = 0
+        navAltLoading = true
+        changed()
+        scope.launch {
+            try {
+                val pts = listOfNotNull(pos, fuelStop?.pos, dest.pos)
+                val list = ArrayList<Route>()
+                list.add(r)
+                val alts = annotate(services.routes(pts, heading, if (fuelStop == null) 2 else 0))
+                val avoid = jamAvoidPoints(r)
+                val jamFree = if (avoid.isNotEmpty()) annotate(services.routes(pts, heading, 0, extraAvoid = avoid)).firstOrNull() else null
+                var n = 1
+                for (a in alts) {
+                    if (list.any { sameRoute(a, it, if (it === r) along else 0.0) }) continue
+                    a.label = "Alternative ${n++}"
+                    list.add(a)
+                }
+                if (jamFree != null && list.none { sameRoute(jamFree, it, if (it === r) along else 0.0) }) {
+                    jamFree.label = "Ohne Stau"
+                    list.add(jamFree)
+                }
+                if (mode == Mode.NAVIGATING && activeRoute === r) navAlternatives = list.take(4)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                message = "Alternativen nicht verfügbar (Internet?)"
+            } finally {
+                navAltLoading = false
+                changed()
+            }
+        }
+    }
+
+    fun selectNavAlternative(i: Int) {
+        if (i in navAlternatives.indices) {
+            navAltSelected = i
+            changed()
+        }
+    }
+
+    /** Gewaehlte Alternative uebernehmen (die aktuelle Route = nichts aendern). */
+    fun applyNavAlternative() {
+        val sel = navAlternatives.getOrNull(navAltSelected)
+        navAlternatives = emptyList()
+        if (sel != null && sel !== activeRoute && mode == Mode.NAVIGATING) {
+            replaceActive(sel)
+            voice.say("Neue Route übernommen.")
+        } else changed()
+    }
+
+    fun clearNavAlternatives() {
+        if (navAlternatives.isEmpty() && !navAltLoading) return
+        navAlternatives = emptyList()
+        navAltSelected = 0
+        changed()
+    }
+
+    /** Restzeit einer Route ab hier (aktive Route: ab der aktuellen Position). */
+    fun remainingSecOf(r: Route): Double = if (r === activeRoute) r.remainingSec(state?.along ?: 0.0) else r.durationSec
+
+    /**
+     * Schnelle Korrektur: neue Route ab hier ganz ohne Stau und Sperrung, wenn sie hoechstens
+     * etwas laenger dauert (+5 Min. bzw. +15 %). Sonst bleibt die schnellste Route.
+     */
+    fun quickTrafficFix() {
+        if (mode == Mode.PREVIEW) {
+            computePreview(avoidJams = true)
+            return
+        }
+        val r = activeRoute ?: return
+        val dest = destination ?: return
+        val pos = position ?: return
+        rerouting = true
+        changed()
+        routeJob?.cancel()
+        routeJob = scope.launch {
+            try {
+                val pts = listOfNotNull(pos, fuelStop?.pos, dest.pos)
+                val remaining = r.remainingSec(state?.along ?: 0.0)
+                val cands = ArrayList(annotate(services.routes(pts, heading, if (fuelStop == null) 2 else 0)))
+                val avoid = (jamAvoidPoints(r) + cands.flatMap { jamAvoidPoints(it) }).distinct()
+                if (avoid.isNotEmpty()) cands.addAll(annotate(services.routes(pts, heading, 0, extraAvoid = avoid)))
+                if (mode != Mode.NAVIGATING || activeRoute !== r) return@launch
+                fun blocked(x: Route) = x.hazards.any { it.hazard.type.isTraffic || it.hazard.type == HazardType.CLOSURE }
+                val maxExtra = max(300.0, remaining * 0.15)
+                val free = cands.filter { !blocked(it) }.minByOrNull { it.durationSec }
+                val fastest = cands.minByOrNull { it.durationSec }
+                when {
+                    free != null && free.durationSec <= remaining + maxExtra && (blocked(r) || free.durationSec < remaining - 60) -> {
+                        replaceActive(free)
+                        val d = ((free.durationSec - remaining) / 60).roundToInt()
+                        voice.say(if (d > 0) "Neue Route ohne Stau, etwa $d Minuten länger." else "Neue Route ohne Stau.")
+                        message = "Route ohne Stau übernommen" + if (d > 0) " (+$d Min.)" else ""
+                    }
+                    !blocked(r) -> {
+                        voice.say("Auf der Route ist kein Stau gemeldet.")
+                        message = "Kein Stau auf der Route gemeldet"
+                    }
+                    free != null -> {
+                        val d = ((free.durationSec - remaining) / 60).roundToInt()
+                        if (fastest != null && fastest.durationSec < remaining - 120 && !sameRoute(fastest, r, state?.along ?: 0.0)) replaceActive(fastest)
+                        voice.say("Ohne Stau wäre es etwa $d Minuten länger. Die Route bleibt.")
+                        message = "Staufrei wäre +$d Min. – Route bleibt"
+                    }
+                    else -> {
+                        voice.say("Keine Route ohne Stau gefunden.")
+                        message = "Keine Route ohne Stau gefunden"
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                message = "Neue Route nicht möglich (Internet?)"
+            } finally {
+                rerouting = false
+                changed()
+            }
+        }
+    }
+
+    /** Tag, Nacht, Automatisch (nach Sonnenstand) im Wechsel; gilt fuer Handy und Auto. */
+    fun cycleNightMode(): Int {
+        prefs.nightMode = (prefs.nightMode + 1) % 3
+        changed()
+        return prefs.nightMode
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Anruf-Erinnerung ("30 Min. vorher anrufen" im Terminzusatz)
+    // ---------------------------------------------------------------------------------------
+
+    private fun checkCallReminder(st: RouteTracker.State) {
+        val a = activeAppointment ?: return
+        if (arrived || a.id in callReminded) return
+        val c = a.contacts(ownNumbers).contacts.firstOrNull { it.callFirst } ?: return
+        val minutes = c.callBeforeMin ?: CALL_BEFORE_DEFAULT_MIN
+        if (st.remainingSec > minutes * 60.0) return
+        callReminded.add(a.id)
+        val digits = c.dial.firstOrNull() ?: return
+        val display = c.phones.firstOrNull() ?: digits
+        Log.i(TAG, "CALL_REMINDER rest=${(st.remainingSec / 60).roundToInt()} min (vorher $minutes min)")
+        voice.say("${c.name} anrufen?")
+        alert(Alert("call-reminder", "${c.name} anrufen?", display, null, "Ja", callName = c.name, callDisplay = display, callDigits = digits))
+    }
+
+    /** Nur Tests: Alternativen fuer die Uebersicht direkt setzen. */
+    internal fun testSetNavAlternatives(list: List<Route>, selected: Int = 0) {
+        navAlternatives = list
+        navAltSelected = selected
+        navAltLoading = false
+        changed()
+    }
+
+    /** Nur Tests: Erinnerung sofort ausloesen (wie kurz vor der Ankunft). */
+    internal fun testCallReminder() {
+        val st = state ?: return
+        checkCallReminder(st.copy(remainingSec = 0.0))
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Kein GPS (Tunnel): entlang der Route mit dem letzten Tempo weiter
+    // ---------------------------------------------------------------------------------------
+
+    private fun startDeadReckoningWatch() {
+        drJob?.cancel()
+        deadReckoning = false
+        drJob = scope.launch {
+            while (isActive && mode == Mode.NAVIGATING) {
+                delay(1000)
+                try {
+                    deadReckoningTick()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Schaetzung: ${e.javaClass.simpleName}")
+                }
+            }
+        }
+    }
+
+    private fun deadReckoningTick() {
+        val r = activeRoute ?: return
+        if (arrived || state == null) return
+        val now = SystemClock.elapsedRealtime()
+        val gap = now - lastGpsFix
+        if (!deadReckoning) {
+            // erst nach 2,5 s ohne GPS und nur bei Fahrt (ab ca. 15 km/h)
+            if (gap < 2_500 || speedKmh < 15.0 || now - lastRealAlongT > 6_000) return
+            deadReckoning = true
+            drBaseAlong = lastRealAlong
+            drBaseT = lastRealAlongT
+            drSpeed = speedKmh / 3.6
+            Log.i(TAG, "DR_START along=${drBaseAlong.roundToInt()} kmh=${speedKmh.roundToInt()}")
+        }
+        val elapsed = (now - drBaseT) / 1000.0
+        if (elapsed > 15 * 60) return // nach 15 Minuten ohne GPS nicht mehr raten
+        val along = min(drBaseAlong + drSpeed * elapsed, r.distanceM - 3.0)
+        val p = r.geometry.pointAt(along)
+        val loc = Location("dr").apply {
+            latitude = p.lat
+            longitude = p.lon
+            time = System.currentTimeMillis()
+            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+            speed = drSpeed.toFloat()
+            bearing = r.geometry.bearingAt(along).toFloat()
+            accuracy = 20f
+        }
+        fixSynthetic = true
+        try {
+            onLocation(loc)
+        } finally {
+            fixSynthetic = false
+        }
+    }
+
+    private fun endDeadReckoning(real: Location) {
+        deadReckoning = false
+        Log.i(TAG, "DR_END geschaetzt=${(state?.along ?: 0.0).roundToInt()} nach ${(SystemClock.elapsedRealtime() - drBaseT) / 1000} s, Genauigkeit ${real.accuracy.roundToInt()} m")
+    }
+
+    // ---------------------------------------------------------------------------------------
     // Freie Fahrt (ohne Ziel): Tempolimit + Blitzer voraus
     // ---------------------------------------------------------------------------------------
 
     private fun freeDriveStep(loc: Location, sp: Double) {
         val p = LatLon(loc.latitude, loc.longitude)
+        updateSpeedSign(lastTraceLimit, p)
         val now = SystemClock.elapsedRealtime()
         if (loc.accuracy < 40 && (freeTrace.isEmpty() || Geo.distance(freeTrace.last(), p) > 15)) {
             freeTrace.add(p)
@@ -1189,7 +1467,8 @@ class NavEngine(
             val pts = freeTrace.toList()
             scope.launch {
                 val r = services.matchTrace(pts) ?: return@launch
-                speedLimit = r.limits.lastOrNull()?.kmh?.takeIf { it != 0 }
+                lastTraceLimit = r.limits.lastOrNull()?.kmh?.takeIf { it != 0 }
+                updateSpeedSign(lastTraceLimit, position)
                 currentRoad = r.lastNames.firstOrNull()
                 listeners.forEach { it.onLocationChanged() }
             }
@@ -1206,6 +1485,23 @@ class NavEngine(
         } else if (sp <= 3.0) {
             cameraAhead = null
         }
+    }
+
+    /**
+     * Schild bestimmen: Wechselverkehrszeichen-Strecke -> "Anzeige beachten" (mit festem
+     * Hoechstwert, falls bekannt), Limit nach Uhrzeit, sonst das Limit der Route bzw. Strasse.
+     */
+    private fun updateSpeedSign(limit: Int?, p: LatLon?) {
+        val t = if (p != null) services.tempoIndex().at(p, heading, java.time.LocalDateTime.now(de.sascha.kssmaps.core.Autobahn.BERLIN)) else null
+        val before = speedSign
+        speedSign = when {
+            t != null && t.variable -> de.sascha.kssmaps.core.SpeedSign(t.kmh ?: limit?.takeIf { it > 0 }, variable = true)
+            t != null && t.kmh != null -> t
+            limit != null && limit != 0 -> de.sascha.kssmaps.core.SpeedSign(limit)
+            else -> null
+        }
+        speedLimit = speedSign?.kmh
+        if (speedSign != before) Log.i(TAG, "SPEED_SIGN ${speedSign?.kmh ?: "-"}${if (speedSign?.variable == true) " Wechselverkehrszeichen" else ""}")
     }
 
     private fun updateOverspeed() {

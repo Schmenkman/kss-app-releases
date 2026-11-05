@@ -16,6 +16,8 @@ object HazardMatcher {
     const val LINE_MAX_OFFSET = 45.0
     /** Liegt eine Linienmeldung im Mittel weiter weg, ist es die Gegenfahrbahn oder eine Nachbarstrasse. */
     const val LINE_MAX_MEDIAN_OFFSET = 22.0
+    /** Liegt eine Meldung genau auf der Route, zaehlt ihre Punktreihenfolge nicht (Gegenrichtung wird nur daneben geprueft). */
+    const val OPPOSITE_MIN_OFFSET = 7.0
 
     fun matchAll(route: Route, hazards: List<Hazard>): List<RouteHazard> {
         val out = ArrayList<RouteHazard>()
@@ -48,10 +50,19 @@ object HazardMatcher {
         if (samples.isEmpty()) return null
         val alongs = ArrayList<Double>()
         val offsets = ArrayList<Double>()
-        for (s in samples) {
+        var same = 0
+        var opposite = 0
+        for ((i, s) in samples.withIndex()) {
             val pr = g.projectNear(s, LINE_MAX_OFFSET) ?: continue
             alongs.add(pr.along)
             offsets.add(pr.offset)
+            // Richtung der Meldung an dieser Stelle gegen die Fahrtrichtung der Route
+            val a = samples.getOrNull(if (i + 1 < samples.size) i else i - 1)
+            val b = samples.getOrNull(if (i + 1 < samples.size) i + 1 else i)
+            if (a != null && b != null && Geo.distance(a, b) > 5.0) {
+                val diff = Geo.angleDiff(Geo.bearing(a, b), g.bearingAt(pr.along))
+                if (diff < 60.0) same++ else if (diff > 120.0) opposite++
+            }
         }
         if (alongs.isEmpty()) return null
         val ratio = alongs.size.toDouble() / samples.size
@@ -60,6 +71,8 @@ object HazardMatcher {
         offsets.sort()
         val median = offsets[offsets.size / 2]
         if (median > LINE_MAX_MEDIAN_OFFSET) return null
+        // Gegenfahrbahn: liegt neben der Route und zeigt ueberwiegend in die Gegenrichtung
+        if (median > OPPOSITE_MIN_OFFSET && opposite >= 2 && opposite > 2 * same) return null
         // Ausreisser (Route kreuzt die Meldung nur) abschneiden: zusammenhaengenden Bereich nehmen.
         alongs.sort()
         var bestStart = alongs[0]

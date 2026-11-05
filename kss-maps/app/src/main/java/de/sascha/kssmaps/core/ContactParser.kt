@@ -29,6 +29,8 @@ object ContactParser {
         val callFirst: Boolean,
         /** Kurzer Grund, z. B. "30 Min. vorher anrufen". */
         val hint: String?,
+        /** "30 min vorher anrufen" -> 30, "1 Std. vorher" -> 60; null = keine Zeit genannt. */
+        val callBeforeMin: Int? = null,
     )
 
     data class Result(val contacts: List<Contact>, val time: String?)
@@ -99,6 +101,7 @@ object ContactParser {
             var strong = false
             var hint: String? = null
             var hintWeight = 0
+            var minutes: Int? = null
         }
         val people = LinkedHashMap<String, Person>()
         var lastName: String? = null
@@ -191,6 +194,10 @@ object ContactParser {
                 if (w > p.hintWeight) {
                     hintFor(sentence, w)?.let { p.hint = it }
                     p.hintWeight = w
+                    if (w >= 3) p.minutes = minutesBefore.find(sentence)?.let { m ->
+                        val n = m.groupValues[1].toInt()
+                        if (m.groupValues[2].lowercase().startsWith("st")) n * 60 else n
+                    }
                 }
             }
             // "Termin mit Herrn X" – leicht nach vorn
@@ -202,7 +209,7 @@ object ContactParser {
             .sortedWith(compareBy<Person>({ if (it.strong) 0 else 1 }, { -it.score }, { it.first }))
         val top = ranked.firstOrNull()
         val contacts = ranked.map { p ->
-            Contact(p.name, p.phones.toList(), p.dial.toList(), callFirst = p === top && p.strong, hint = p.hint)
+            Contact(p.name, p.phones.toList(), p.dial.toList(), callFirst = p === top && p.strong, hint = p.hint, callBeforeMin = p.minutes)
         }
         return Result(contacts, timeOf(text))
     }
