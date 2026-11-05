@@ -27,6 +27,16 @@ fun builtinKey(env: String): String {
     return Base64.getEncoder().encodeToString(ByteArray(b.size) { (b[it].toInt() xor mask[it % mask.size].toInt()).toByte() })
 }
 
+// Eingebaute natuerliche Stimme: Sprachpaket an der Vorabversion "kssmaps-stimme" (baut die CI
+// einmalig, tools/fetch_voice.sh). Pruefsumme und Groesse kommen beim Bauen aus der CI und stehen
+// fest in der APK – die App laedt nur genau dieses Paket. Ohne (lokaler Build): Android-Stimme.
+val voiceUrl = (System.getenv("KSSMAPS_VOICE_URL") ?: "").trim()
+    .ifEmpty { "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-stimme/stimme-de-thorsten-medium.zip" }
+    .also { require(Regex("^https://[A-Za-z0-9./_-]+$").matches(it)) { "KSSMAPS_VOICE_URL ungueltig" } }
+val voiceSha = (System.getenv("KSSMAPS_VOICE_SHA256") ?: "").trim().lowercase()
+    .also { require(it.isEmpty() || Regex("^[0-9a-f]{64}$").matches(it)) { "KSSMAPS_VOICE_SHA256 ungueltig" } }
+val voiceSize = (System.getenv("KSSMAPS_VOICE_SIZE") ?: "").trim().toLongOrNull() ?: 0L
+
 android {
     namespace = "de.sascha.kssmaps"
     compileSdk = 35
@@ -41,6 +51,9 @@ android {
         buildConfigField("String", "BUILTIN_TANKERKOENIG", "\"" + builtinKey("KSSMAPS_TANKERKOENIG_KEY") + "\"")
         // CI ohne eigene Signier-Secrets: temporaerer Schluessel -> Updates nur nach Deinstallation
         buildConfigField("boolean", "TEMP_SIGNING_KEY", (System.getenv("KSSMAPS_TEMP_KEY") == "1").toString())
+        buildConfigField("String", "VOICE_URL", "\"$voiceUrl\"")
+        buildConfigField("String", "VOICE_SHA256", "\"$voiceSha\"")
+        buildConfigField("long", "VOICE_SIZE", "${voiceSize}L")
         ndk {
             // Nur echte Handys – halbiert die APK-Groesse (MapLibre bringt native Bibliotheken mit).
             // -PallAbis=true (Emulator-Test in der CI) baut zusaetzlich x86/x86_64.
@@ -92,6 +105,12 @@ android {
     packaging {
         resources {
             excludes += setOf("META-INF/*.kotlin_module", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/DEPENDENCIES")
+        }
+        jniLibs {
+            // Native Bibliotheken (Karte, Stimme) gepackt in der APK: deutlich kleinerer Download,
+            // Android packt sie bei der Installation aus.
+            useLegacyPackaging = true
+            pickFirsts += setOf("**/libc++_shared.so")
         }
     }
 

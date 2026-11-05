@@ -6,16 +6,21 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import de.sascha.kssmaps.core.SpeechText
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Sprachausgabe (deutsche Stimme). Laeuft ueber den Navigations-Audiokanal, damit Android Auto
- * die Ansage im Auto abspielt und Musik dabei leiser stellt. Sprachausgabe-Programm und Stimme
- * sind waehlbar (z. B. Google oder SherpaTTS mit neuronalen Stimmen); ohne Wahl nimmt die App die
- * beste deutsche Stimme, die ohne Internet funktioniert.
+ * die Ansage im Auto abspielt und Musik dabei leiser stellt.
+ *
+ * Standard ist die eingebaute natuerliche Stimme ([NeuralVoice], Piper "Thorsten", offline).
+ * Bis sie bereit ist, und wenn sie ausgeschaltet ist, spricht die Android-Sprachausgabe –
+ * Programm und Stimme dafuer sind waehlbar; ohne Wahl die beste deutsche Offline-Stimme.
  */
 class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = null) : TextToSpeech.OnInitListener {
     private val app = ctx.applicationContext
@@ -34,12 +39,34 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
     private val counter = AtomicInteger()
     private val active = AtomicInteger()
     private var tone: ToneGenerator? = null
+    private val main = Handler(Looper.getMainLooper())
+    /** Eingebaute natuerliche Stimme. */
+    val neural = NeuralVoice(app, attrs)
 
     @Volatile var muted = false
         set(v) {
             field = v
-            if (v) tts?.stop()
+            if (v) {
+                tts?.stop()
+                neural.stopAll()
+            }
         }
+
+    private val neuralOn: Boolean get() = prefs?.neuralVoice != false
+
+    /** Eingebaute Stimme vorbereiten (beim App-Start; laedt das Sprachpaket einmalig). */
+    fun startNeural() {
+        if (neuralOn) neural.start()
+    }
+
+    /** Schalter "Natürliche Stimme" in den Einstellungen geaendert. */
+    fun neuralChanged() {
+        if (neuralOn) neural.start() else neural.stop()
+    }
+
+    val neuralReady: Boolean get() = neuralOn && neural.ready
+    val neuralBusy: Boolean get() = neuralOn && neural.busy
+    fun neuralStatus(): String = neural.status(neuralOn)
 
     /** Fehlertext, falls keine deutsche Stimme installiert ist. */
     var problem: String? = null
@@ -148,20 +175,40 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
 
     /** Hoerprobe mit einer typischen Ansage (auch wenn die Ansagen stumm geschaltet sind). */
     fun sample() {
-        say("In 300 Metern rechts abbiegen auf die Hauptstraße. Danach links halten.", urgent = true, force = true)
+        say(SAMPLE, urgent = true, force = true)
     }
 
-    /** Stimme waehlen (Name aus [voices]) und sofort Probe hoeren. */
+    /** Android-Stimme waehlen (Name aus [voices]) und sofort Probe hoeren – mit genau dieser Stimme. */
     fun selectVoice(name: String) {
         prefs?.ttsVoice = name
         tts?.let { pickVoice(it) }
-        sample()
+        neural.stopAll()
+        speakSystem(SAMPLE, true)
     }
 
     /** urgent = laufende Ansage abbrechen (z. B. "Jetzt rechts abbiegen"). */
     fun say(text: String, urgent: Boolean = false, force: Boolean = false) {
-        android.util.Log.i("KSSMaps", "SAY${if (muted && !force) " (stumm)" else ""}: $text")
+        android.util.Log.i("KSSMaps", "SAY${if (muted && !force) " (stumm)" else ""}${if (neuralReady) " [natürlich]" else ""}: $text")
         if ((muted && !force) || text.isBlank()) return
+        if (neuralReady) {
+            am.requestAudioFocus(focus)
+            active.incrementAndGet()
+            if (urgent) try {
+                tts?.stop()
+            } catch (e: Exception) {
+                // Android-Stimme sprach gerade nicht
+            }
+            neural.speak(SpeechText.normalize(text), urgent) { ok ->
+                // Fehler der eingebauten Stimme: diese Ansage mit der Android-Stimme
+                if (!ok) main.post { speakSystem(text, false) }
+                finished()
+            }
+            return
+        }
+        speakSystem(text, urgent)
+    }
+
+    private fun speakSystem(text: String, urgent: Boolean) {
         val t = tts
         if (!ready || t == null) {
             if (pending.size < 3) pending.add(text)
@@ -186,7 +233,12 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
         }
     }
 
+    companion object {
+        const val SAMPLE = "In 300 Metern rechts abbiegen auf die Hauptstraße. Danach links halten."
+    }
+
     fun shutdown() {
+        neural.stop()
         tts?.stop()
         tts?.shutdown()
         tts = null

@@ -19,3 +19,6 @@ secrets.env
 # Startbestand Blitzer (wird im CI frisch aus OpenStreetMap geladen)
 app/src/main/assets/enforcement/
 __pycache__/
+
+# Native Bibliotheken der eingebauten Stimme (laedt die CI, tools/fetch_voice.sh)
+app/src/main/jniLibs/

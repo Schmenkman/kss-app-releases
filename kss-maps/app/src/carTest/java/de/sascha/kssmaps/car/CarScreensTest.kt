@@ -41,6 +41,7 @@ class TestNaviApp : NaviApp() {
     }
 
     override fun initMaps() {}
+    override fun startNeuralVoice() {}
     override fun prefetchRoute(r: Route) {}
 }
 

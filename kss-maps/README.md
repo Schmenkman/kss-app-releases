@@ -29,7 +29,8 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
 | Flüssiger Positionspfeil | GPS kommt einmal pro Sekunde – dazwischen wird die Position für jedes Bild vorausberechnet (entlang der Route, mit dem gefahrenen Tempo) und weich korrigiert; Pfeil und Karte bewegen sich gleichmäßig statt ruckweise |
 | Tankstellen mit Preisen, UTA | ⛽-Knopf: Diesel/Super E5/E10, Filter **„nur UTA“**. Reihenfolge: **zuerst die auf dem Weg zum Ziel liegenden, dann nach Preis**; danach Tankstellen mit Umweg. Ohne Tankerkönig-Schlüssel erscheinen die Tankstellen trotzdem sofort (Liste aller Tankstellen Bayerns aus OpenStreetMap ist in der App, mit UTA-Kennzeichnung) – nur ohne Preise |
 | Erst zur Tankstelle, dann automatisch weiter | Tankstelle antippen → wird Zwischenstopp, danach geht es ohne neue Eingabe weiter zum Ziel |
-| Sprachnavigation, Ton abschaltbar | Deutsche Ansagen in 3 Stufen (Vorankündigung, nah, „Jetzt …“), Lautsprecher-Knopf (Handy und Auto, im Auto in der Knopfspalte rechts). **Stimme wählbar** (Einstellungen → „Stimme der Ansagen“): Sprachausgabe-Programm und Stimme mit Hörprobe; ohne Wahl die beste deutsche Offline-Stimme. Natürlicher klingen neuronale Stimmen (Google-Sprachdaten in hoher Qualität oder die kostenlose App SherpaTTS) |
+| Sprachnavigation, Ton abschaltbar | Deutsche Ansagen in 3 Stufen (Vorankündigung, nah, „Jetzt …“), Lautsprecher-Knopf (Handy und Auto, im Auto in der Knopfspalte rechts) |
+| Natürliche Stimme (eingebaut) | Die Ansagen spricht **„Thorsten“**, ein neuronales Sprachmodell (Piper), das wie ein Mensch klingt – gerechnet **komplett auf dem Handy** mit sherpa-onnx: kostenlos, ohne Konto, ohne Schlüssel, auch im Funkloch und in Android Auto. Das Sprachpaket (ca. 60 MB) lädt die App beim ersten Start **einmalig von selbst** (Prüfsumme fest in der App), bis dahin spricht die Android-Sprachausgabe. Einstellungen → „Stimme der Ansagen“: Schalter, Stand des Ladens, Hörprobe; ausgeschaltet sind Android-Sprachausgabe und -Stimme wählbar. Braucht ein 64-Bit-Handy (fast alle seit 2017) |
 | Termine des Tages | 📅-Knopf **„Termine“**: die Termine von heute aus **COMP** nach Uhrzeit (Kunde, Adresse, wen anrufen); antippen = Route zur Adresse. Jeder mit seinem eigenen COMP-Zugang; sieht ein Zugang mehrere Techniker (Chef), oben einmal auswählen – die Wahl bleibt gespeichert. In Android Auto als Liste über die Leiste |
 | Kunde anrufen | Während der Fahrt zu einem Termin erscheint der grüne ☎-Knopf **„Kunde“**: Leiste rollt seitlich heraus (die Karte rückt nach links, Pfeil und Fahrweg bleiben frei) mit den Ansprechpartnern aus dem **Terminzusatz** – wer „vorher anzurufen“ ist, steht oben als „ZUERST ANRUFEN“ –, allen Nummern und dem vollständigen Terminzusatz. Nummer antippen → **„Anrufen?“ Ja/Nein**, Ja wählt direkt – in Android Auto ohne Wählfeld, die Navigation bleibt die große Ansicht. Steht im Terminzusatz „30 min vorher anrufen“, fragt die App 30 Minuten vor der Ankunft von selbst **„Herr … anrufen?“** (ohne Zeitangabe: 15 Minuten vorher). Eigene Nummern (Büro, Firmenhandy) in den Einstellungen werden nie als Kunde angezeigt |
 | Funklöcher | Beim Start der Navigation wird die Karte entlang der Route automatisch offline gespeichert (bis 250 km), dazu ein großer Kartenspeicher (600 MB) für oft gefahrene Gegenden |
@@ -47,7 +48,8 @@ Google-Dienste, Karte mit MapLibre. Paket `de.sascha.kssmaps`.
      alles, Stau kommt dann aber nur für Autobahnen (Autobahn GmbH).
    - **Tankerkönig** (onboarding.tankerkoenig.de): Spritpreise (Diesel, Super E5/E10). Ohne
      Schlüssel zeigt die App die Tankstellen auf dem Weg ohne Preise.
-4. Optional: deutsche Stimme prüfen (Android → Einstellungen → Sprachausgabe).
+4. Die Stimme lädt die App beim ersten Start von selbst (einmalig ca. 60 MB, am besten im WLAN
+   öffnen). Stand: *Einstellungen → Stimme der Ansagen*.
 5. Neue Version installieren: solange die CI mit dem vorläufigen Signier-Schlüssel baut, vorher
    die alte KSS-Maps deinstallieren (für Android Auto wieder über KingInstaller installieren).
 
@@ -144,6 +146,7 @@ dem Installieren einer neueren Testversion muss die alte deinstalliert werden.
 | Spritpreise | Tankerkönig / MTS-K (CC BY 4.0) | Tankerkönig |
 | Tankstellen ohne Schlüssel | OpenStreetMap (`amenity=fuel`, mit `payment:uta`), beim Bauen in die App gelegt; außerhalb Bayerns per Overpass-API – ohne Preise | – |
 | UTA-Akzeptanz | Markenliste (bearbeitbar) + OSM `payment:uta` + eigene Korrektur je Tankstelle (lange drücken) | – |
+| Sprachausgabe | Eingebaute Stimme: Piper-Modell `de_DE-thorsten-medium` (Thorsten-Voice, CC0), gerechnet mit sherpa-onnx v1.12.15 (Apache-2.0; enthält onnxruntime, MIT, und espeak-ng, GPL-3.0). Sprachpaket an der Vorabversion `kssmaps-stimme` (baut die CI einmalig, `tools/fetch_voice.sh`) | – |
 
 UTA veröffentlicht keine offene Liste der Akzeptanzstellen; laut UTA und Vergleichsportalen
 wird die Karte in Deutschland an praktisch allen Markentankstellen angenommen. Stationen

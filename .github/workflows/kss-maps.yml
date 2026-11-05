@@ -114,6 +114,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+      - name: Natuerliche Stimme bereitstellen (sherpa-onnx, Piper Thorsten)
+        # Native Bibliotheken fuer 64-Bit-Handys in die APK; das Sprachpaket (~60 MB) liegt an der
+        # Vorabversion "kssmaps-stimme" – die App laedt es beim ersten Start einmalig selbst
+        # (Pruefsumme fest eingebaut). Klappt das hier nicht: APK mit der Android-Stimme.
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/fetch_voice.sh arm64-v8a
+
       - name: Release-APK bauen
         # API-Schluessel (TomTom, Tankerkoenig) aus den Secrets in die APK einbauen – nur hier,
         # nicht in der Testfahrt (deren Protokolle sind oeffentlich).
@@ -221,6 +231,14 @@ jobs:
         with:
           name: kss-maps-blitzer-startbestand
           path: kss-maps/app/src/main/assets/enforcement
+
+      - name: Natuerliche Stimme bereitstellen (Emulator)
+        continue-on-error: true
+        timeout-minutes: 15
+        working-directory: kss-maps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/fetch_voice.sh x86_64
 
       - name: Test-APK bauen (alle ABIs)
         working-directory: kss-maps

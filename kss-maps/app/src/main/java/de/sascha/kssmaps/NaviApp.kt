@@ -41,6 +41,7 @@ open class NaviApp : Application() {
         prefs = Prefs(this)
         services = Services(this, prefs)
         voice = Voice(this, prefs)
+        startNeuralVoice()
         engine = NavEngine(this, prefs, services, voice)
         engine.onRouteActivated = { r -> prefetchRoute(r) }
         comp = CompAppointmentSource(prefs, SecretStore(this))
@@ -59,6 +60,11 @@ open class NaviApp : Application() {
         } catch (e: Exception) {
             Log.w("KSSMaps", "Cache: ${e.message}")
         }
+    }
+
+    /** Eingebaute natuerliche Stimme vorbereiten (laedt das Sprachpaket einmalig). In Tests aus. */
+    protected open fun startNeuralVoice() {
+        voice.startNeural()
     }
 
     /** Karte entlang der aktiven Route offline vorhalten. */

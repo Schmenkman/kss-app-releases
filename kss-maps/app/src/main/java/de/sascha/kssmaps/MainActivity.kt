@@ -888,6 +888,13 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
             // Android-Auto-Karte auf unsichtbarer Flaeche zeichnen und als Bild sichern (Testfahrt)
             // Anruf-Erinnerung wie kurz vor der Ankunft ("Kunde anrufen?" – in der Testfahrt nur "Nein")
             if (i.getBooleanExtra("test_call_reminder", false)) engine.testCallReminder()
+            // Hoerprobe der eingebauten Stimme als WAV (files/stimme_probe.wav, Testfahrt-Anhang)
+            i.getStringExtra("test_voice_wav")?.let { t ->
+                val v = NaviApp.instance.voice
+                val text = if (t == "probe") de.sascha.kssmaps.nav.NeuralVoice.PROBE else t
+                android.util.Log.i("KSSMaps", "TEST_VOICE_WAV bereit=${v.neuralReady} ${v.neuralStatus()}")
+                v.neural.writeWav(de.sascha.kssmaps.core.SpeechText.normalize(text), java.io.File(filesDir, "stimme_probe.wav"))
+            }
             try {
                 if (i.getBooleanExtra("test_car_start", false)) de.sascha.kssmaps.car.CarSurfaceProbe.start(this)
                 i.getStringExtra("test_car_capture")?.let { de.sascha.kssmaps.car.CarSurfaceProbe.capture(this, it) }

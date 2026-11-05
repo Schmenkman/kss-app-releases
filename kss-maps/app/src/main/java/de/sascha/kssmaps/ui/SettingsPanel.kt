@@ -222,36 +222,57 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
 
         section("Stimme der Ansagen")
         val voice = NaviApp.instance.voice
-        val engines = voice.engines()
-        if (engines.size > 1) {
-            val current = prefs.ttsEngine.ifBlank { engines.first().first }
-            choice("Sprachausgabe", engines.map { it.second }, engines.indexOfFirst { it.first == current }.coerceAtLeast(0)) { i ->
-                prefs.ttsEngine = engines[i].first
-                prefs.ttsVoice = ""
-                voice.reconfigure()
-                host.toast("Sprachausgabe: ${engines[i].second}")
-                content.postDelayed({ if (isShown) render() }, 1500)
-            }
+        toggle("Natürliche Stimme (eingebaut)", prefs.neuralVoice) { on ->
+            prefs.neuralVoice = on
+            voice.neuralChanged()
+            render()
         }
-        val voices = voice.voices()
-        val cur = voices.indexOfFirst { it.name == voice.currentVoice }
-        action(if (voices.isEmpty()) "Stimme: Standard" else "Stimme wählen (${if (cur >= 0) voices[cur].label.substringBefore(" ·") else "automatisch"})") {
-            if (voices.isEmpty()) {
-                host.toast("Keine deutsche Stimme gefunden – in den Android-Einstellungen unter Sprachausgabe installieren")
-                return@action
+        val voiceStatus = Ui.text(ctx, voice.neuralStatus(), 13f, Ui.TEXT2).apply { setPadding(Ui.dp(ctx, 4), 0, Ui.dp(ctx, 4), Ui.dp(ctx, 6)) }
+        content.addView(voiceStatus)
+        // Waehrend die Stimme geladen wird: Fortschritt live zeigen
+        if (voice.neuralBusy) {
+            val tick = object : Runnable {
+                override fun run() {
+                    if (!isShown || !voiceStatus.isAttachedToWindow) return
+                    voiceStatus.text = voice.neuralStatus()
+                    if (voice.neuralBusy) voiceStatus.postDelayed(this, 1000)
+                }
             }
-            AlertDialog.Builder(ctx).setTitle("Stimme wählen – antippen zum Anhören")
-                .setSingleChoiceItems(voices.map { it.label }.toTypedArray(), cur) { _, w -> voice.selectVoice(voices[w].name) }
-                .setPositiveButton("Fertig") { _, _ -> render() }
-                .setNeutralButton("Automatisch") { _, _ ->
+            voiceStatus.postDelayed(tick, 1000)
+        }
+        if (!voice.neuralReady) {
+            // Android-Sprachausgabe (spricht, solange die eingebaute Stimme aus oder nicht bereit ist)
+            val engines = voice.engines()
+            if (engines.size > 1) {
+                val current = prefs.ttsEngine.ifBlank { engines.first().first }
+                choice("Android-Sprachausgabe", engines.map { it.second }, engines.indexOfFirst { it.first == current }.coerceAtLeast(0)) { i ->
+                    prefs.ttsEngine = engines[i].first
                     prefs.ttsVoice = ""
                     voice.reconfigure()
-                    render()
+                    host.toast("Sprachausgabe: ${engines[i].second}")
+                    content.postDelayed({ if (isShown) render() }, 1500)
                 }
-                .show()
+            }
+            val voices = voice.voices()
+            val cur = voices.indexOfFirst { it.name == voice.currentVoice }
+            action(if (voices.isEmpty()) "Android-Stimme: Standard" else "Android-Stimme wählen (${if (cur >= 0) voices[cur].label.substringBefore(" ·") else "automatisch"})") {
+                if (voices.isEmpty()) {
+                    host.toast("Keine deutsche Stimme gefunden – in den Android-Einstellungen unter Sprachausgabe installieren")
+                    return@action
+                }
+                AlertDialog.Builder(ctx).setTitle("Stimme wählen – antippen zum Anhören")
+                    .setSingleChoiceItems(voices.map { it.label }.toTypedArray(), cur) { _, w -> voice.selectVoice(voices[w].name) }
+                    .setPositiveButton("Fertig") { _, _ -> render() }
+                    .setNeutralButton("Automatisch") { _, _ ->
+                        prefs.ttsVoice = ""
+                        voice.reconfigure()
+                        render()
+                    }
+                    .show()
+            }
         }
         action("Probe hören") { voice.sample() }
-        note("Natürlicher klingen neuronale Stimmen: in Android unter Einstellungen → Sprachausgabe die Google-Sprachdaten „Deutsch“ in hoher Qualität laden, oder die kostenlose App SherpaTTS (F-Droid) mit einer deutschen Stimme installieren und oben als Sprachausgabe wählen. „Offline“-Stimmen sprechen auch im Funkloch.")
+        note("Die eingebaute Stimme ist ein neuronales Sprachmodell (Piper „Thorsten“): klingt wie ein Mensch, läuft komplett auf dem Handy, kostenlos und ohne Internet – auch im Funkloch und in Android Auto. Sie wird beim ersten Start einmalig geladen (ca. 60 MB), bis dahin spricht die Android-Sprachausgabe.")
 
         section("Route")
         toggle("Mautstraßen meiden", prefs.avoidTolls) { prefs.avoidTolls = it }

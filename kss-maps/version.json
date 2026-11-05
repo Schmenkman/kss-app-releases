@@ -1,8 +1,9 @@
 {
   "version": "1.3.0",
   "notes": [
+    "Neu: natürliche Stimme „Thorsten“ eingebaut – klingt wie ein Mensch, läuft komplett auf dem Handy (kostenlos, ohne Internet, auch in Android Auto). Wird beim ersten Start einmalig von selbst geladen (ca. 60 MB), bis dahin spricht die Android-Stimme; Stand unter Einstellungen → „Stimme der Ansagen“",
     "Android Auto: immer sichtbare Knöpfe rechts – Kunde anrufen, Termine, Übersicht mit Alternativen (eine staufrei), Tag/Nacht, Stau-Korrektur, Tanken, Einstellungen, Zentrieren; Zoom und Beenden unten",
-    "Stimme der Ansagen wählbar (Sprachausgabe-Programm und Stimme, mit Hörprobe) – automatisch die beste deutsche Offline-Stimme; Lautsprecher-Knopf auch in Android Auto",
+    "Lautsprecher-Knopf auch in Android Auto (Knopfspalte rechts)",
     "Android Auto: Tag/Nacht folgt jetzt der App (Automatisch nach Sonnenstand) statt dem Nachtmodus des Autos",
     "Abbiegepfeile direkt auf der Route; Warnbanner „Baustelle in 800 m“ / „Baustelle noch 1,2 km“, im Auto ohne blockierende Hinweiskarte",
     "Baustellen nur, solange sie gelten (Tagesbaustellen im Zeitfenster), keine Meldungen der Gegenfahrbahn; Verkehr alle 2 Minuten",

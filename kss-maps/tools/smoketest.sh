@@ -124,6 +124,14 @@ shot 03c_wegbeschreibung
 act --ez test_close_panels true
 sleep 2
 
+# Eingebaute Stimme: das Sprachpaket laedt die App seit dem Start im Hintergrund (einmalig ~60 MB).
+# Bereit? Dann Hoerprobe als WAV (Testfahrt-Anhang) – die Fahrt danach spricht mit dieser Stimme.
+wait_log "NEURAL_VOICE (ready|nicht verfuegbar)" 1 300 || true
+act --es test_voice_wav probe
+wait_log "NEURAL_WAV" 1 90 || true
+adb exec-out run-as $PKG cat files/stimme_probe.wav > "$OUT/stimme_probe.wav" 2>/dev/null
+if [ -s "$OUT/stimme_probe.wav" ]; then echo "Hoerprobe $(stat -c %s "$OUT/stimme_probe.wav") Bytes"; else rm -f "$OUT/stimme_probe.wav"; echo "keine Hoerprobe"; fi
+
 # "Los" tippen (Fallback: Test-Intent)
 python3 $T/ui.py tap --text "Los" || act --ez test_start_navigation true
 sleep 10
@@ -290,6 +298,10 @@ sleep 1
 adb shell input swipe 540 1900 540 900 400
 sleep 2
 shot 10d_warnungen
+# weiter: "Stimme der Ansagen" (eingebaute natuerliche Stimme, Status)
+adb shell input swipe 540 1900 540 1000 400
+sleep 2
+shot 10e_stimme
 act --ez test_close_panels true
 sleep 2
 
@@ -297,6 +309,7 @@ kill $LOGPID 2>/dev/null
 sleep 1
 grep -E "AndroidRuntime|FATAL EXCEPTION|SAY|ROUTES|ROUTE_INFO|TEST_|KSSMaps" "$OUT/logcat.txt" | grep -v -E "ROUTE_CHUNK|PREVIEW_CHUNK" > "$OUT/ereignisse.txt"
 grep "PUCK_SMOOTH" "$OUT/logcat.txt" > "$OUT/pfeil.txt" || echo "keine Messung" > "$OUT/pfeil.txt"
+grep -E "NEURAL_|TEST_VOICE_WAV|SAY|TTS_VOICE|AudioTrack" "$OUT/logcat.txt" > "$OUT/stimme.txt" || echo "keine Ansagen" > "$OUT/stimme.txt"
 grep -E " [EW]/" "$OUT/logcat.txt" | grep -i -E "kssmaps|maplibre|mbgl|AndroidRuntime" | grep -v -E "ROUTE_CHUNK|PREVIEW_CHUNK" | tail -300 > "$OUT/warnungen.txt"
 grep -A 40 "FATAL EXCEPTION" "$OUT/logcat.txt" > "$OUT/absturz.txt" || echo "kein Absturz" > "$OUT/absturz.txt"
 # Native Abstuerze (Kartenbibliothek), Speicher-Notabschaltung, Prozess-Ende, ANR – mit Umgebung
