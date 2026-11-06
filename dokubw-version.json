@@ -1,9 +1,11 @@
 {
-  "version": "1.3.10",
+  "version": "1.3.11",
   "notes": [
-    "Pruefmaske: 'Innenhof ausnehmen' - in den Hof klicken, die von Waenden umschlossene Flaeche bleibt ohne Farbe (Ringbau, Burghof); ist der Hof nicht geschlossen, seine Ecken anklicken. Wird mit der Ortsbegehung gespeichert.",
-    "Aussenplaene: dicke schwarze Mauern und Tuerme zaehlen als Hindernis wie Gebaeude - von selbst auf Zeichnungen, auf denen sie ein Hauptteil sind, sonst per Haken.",
-    "Aus 1.3.9: Montage (MM BayKom) ohne gespeicherte Ortsbegehung: liegen Plaene im Ausleuchtungs-Ordner, fragt DokuBW, ob daraus eine Ausbreitung (Heatmap) werden soll. Die montierten APs aus der Bauakte werden ueber die Nummer an der Markierung zugeordnet (durchgestrichene/fremde Nummern fallen weg), Pruefmaske wie bei der Ortsbegehung; die Vorlage-Plaene kommen nicht ins ZIP."
+    "Objektbogen MM: 'HV IN = UeP' auf der Pegelkarte wird zuverlaessiger erkannt (auch 'Hvin=UP' ohne Ue-Punkte, beide Lesedurchgaenge zaehlen) - die UeP-Zeile fuellt sich von selbst.",
+    "WhatsApp-Suche holt aeltere Nachrichten vom Handy nach ('aeltere Nachrichten abrufen') - Eintraege vor Ende September wurden vorher nicht gefunden.",
+    "MER-Vorschlaege mit Nachkommastelle (z. B. 38,3 / 38,1) statt meist 38.",
+    "Aus 1.3.10: Pruefmaske: 'Innenhof ausnehmen' - in den Hof klicken, die von Waenden umschlossene Flaeche bleibt ohne Farbe (Ringbau, Burghof); ist der Hof nicht geschlossen, seine Ecken anklicken. Wird mit der Ortsbegehung gespeichert.",
+    "Aus 1.3.10: Aussenplaene: dicke schwarze Mauern und Tuerme zaehlen als Hindernis wie Gebaeude - von selbst auf Zeichnungen, auf denen sie ein Hauptteil sind, sonst per Haken."
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.3.10/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.3.11/DokuBW.exe"
 }
