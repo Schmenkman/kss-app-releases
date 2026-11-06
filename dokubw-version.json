@@ -1,9 +1,9 @@
 {
-  "version": "1.3.9",
+  "version": "1.3.10",
   "notes": [
-    "Montage (MM BayKom) ohne gespeicherte Ortsbegehung: liegen Plaene im Ausleuchtungs-Ordner, fragt DokuBW, ob daraus eine Ausbreitung (Heatmap) werden soll. Die montierten APs aus der Bauakte werden ueber die Nummer an der Markierung zugeordnet (durchgestrichene/fremde Nummern fallen weg), Pruefmaske wie bei der Ortsbegehung; die Vorlage-Plaene kommen nicht ins ZIP.",
-    "Aus 1.3.8: Neue Wanderkennung fuer die Ausleuchtung: erkennt jetzt auch rot gezeichnete Waende, graue Wandflaechen, Doppellinien und schraffierte Waende sowie schraege Gebaeudefluegel. Handschrift, AP-Marker, Moebel und Bemassung zaehlen nicht. Gegen 168 Ekahau-Grundrisse gemessen: findet 64 statt 39 % der Waende.",
-    "Aus 1.3.8: Ausbreitung nachkalibriert an Ekahau-Exporten: jede Wand zaehlt (6,5 dB), kein Deckel mehr - ein AP strahlt nicht mehr durch viele Trennwaende. Ueberstrahlung hinter vier und mehr Waenden 54 % -> 0,3 %, Abweichung zu Ekahau 6,6 -> 4,5 dB."
+    "Pruefmaske: 'Innenhof ausnehmen' - in den Hof klicken, die von Waenden umschlossene Flaeche bleibt ohne Farbe (Ringbau, Burghof); ist der Hof nicht geschlossen, seine Ecken anklicken. Wird mit der Ortsbegehung gespeichert.",
+    "Aussenplaene: dicke schwarze Mauern und Tuerme zaehlen als Hindernis wie Gebaeude - von selbst auf Zeichnungen, auf denen sie ein Hauptteil sind, sonst per Haken.",
+    "Aus 1.3.9: Montage (MM BayKom) ohne gespeicherte Ortsbegehung: liegen Plaene im Ausleuchtungs-Ordner, fragt DokuBW, ob daraus eine Ausbreitung (Heatmap) werden soll. Die montierten APs aus der Bauakte werden ueber die Nummer an der Markierung zugeordnet (durchgestrichene/fremde Nummern fallen weg), Pruefmaske wie bei der Ortsbegehung; die Vorlage-Plaene kommen nicht ins ZIP."
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.3.9/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.3.10/DokuBW.exe"
 }
