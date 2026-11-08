@@ -1,0 +1,61 @@
+name: KSS-Maps – Stimmproben
+
+# Hoerproben deutscher Offline-Stimmen (Supertonic 3, Piper) als Vorabversion "kssmaps-stimmproben".
+# Laeuft nur bei Aenderungen an diesem Ablauf bzw. am Proben-Skript oder von Hand – nicht beim Bauen der App.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ 'claude/bayern-navigation-app-*' ]
+    paths: [ '.github/workflows/kss-maps-stimmproben.yml', '.github/stimmproben/**' ]
+
+permissions:
+  contents: write
+
+jobs:
+  proben:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: sherpa-onnx installieren
+        run: pip install --quiet sherpa-onnx==1.13.8 numpy scipy soundfile
+
+      - name: Stimmen und Spracherkennung laden
+        run: |
+          mkdir -p models && cd models
+          R=https://github.com/k2-fsa/sherpa-onnx/releases/download
+          for m in sherpa-onnx-supertonic-3-tts-int8-2026-05-11 vits-piper-de_DE-kerstin-low vits-piper-de_DE-ramona-low \
+                   vits-piper-de_DE-eva_k-x_low vits-piper-de_DE-thorsten-medium; do
+            curl -fsSL --retry 3 "$R/tts-models/$m.tar.bz2" | tar -xj || echo "::warning::$m nicht ladbar"
+          done
+          curl -fsSL --retry 3 "$R/asr-models/sherpa-onnx-whisper-small.tar.bz2" | tar -xj || echo "::warning::Whisper nicht ladbar"
+          ls -la; ls -la sherpa-onnx-supertonic-3-tts-int8-2026-05-11 || true
+
+      - name: Proben erzeugen
+        run: python3 .github/stimmproben/proben.py
+
+      - name: Als Vorabversion "kssmaps-stimmproben" bereitstellen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: kssmaps-stimmproben
+        run: |
+          R="$GITHUB_REPOSITORY"
+          if ! gh release view "$TAG" --repo "$R" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$R" --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "KSS-Maps Stimmproben (nur zum Anhören)" \
+              --notes "Hörproben deutscher Offline-Stimmen für KSS-Maps. Keine App-Version." \
+            || gh release create "$TAG" --repo "$R" --prerelease --latest=false \
+              --target "$(gh api "repos/$R" --jq .default_branch)" \
+              --title "KSS-Maps Stimmproben (nur zum Anhören)" --notes "Hörproben deutscher Offline-Stimmen für KSS-Maps. Keine App-Version."
+          fi
+          for a in $(gh release view "$TAG" --repo "$R" --json assets --jq '.assets[].name' || true); do
+            gh release delete-asset "$TAG" "$a" --yes --repo "$R" || true
+          done
+          gh release upload "$TAG" out/* --clobber --repo "$R"
