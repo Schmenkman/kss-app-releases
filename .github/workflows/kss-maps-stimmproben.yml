@@ -24,8 +24,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: sherpa-onnx installieren
-        run: pip install --quiet sherpa-onnx==1.13.8 numpy scipy soundfile
+      - name: sherpa-onnx und ffmpeg installieren
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null
+          pip install --quiet sherpa-onnx==1.13.8 numpy scipy soundfile
 
       - name: Stimmen und Spracherkennung laden
         run: |
@@ -37,6 +39,8 @@ jobs:
           done
           curl -fsSL --retry 3 "$R/asr-models/sherpa-onnx-whisper-small.tar.bz2" | tar -xj || echo "::warning::Whisper nicht ladbar"
           ls -la; ls -la sherpa-onnx-supertonic-3-tts-int8-2026-05-11 || true
+          echo "== Lizenz Supertonic"; cat sherpa-onnx-supertonic-3-tts-int8-2026-05-11/LICENSE || true
+          grep -i -A3 "licen" sherpa-onnx-supertonic-3-tts-int8-2026-05-11/README.md | head -30 || true
 
       - name: Proben erzeugen
         run: python3 .github/stimmproben/proben.py
