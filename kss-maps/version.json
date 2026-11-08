@@ -1,6 +1,7 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "notes": [
+    "Ansagen kommen immer rechtzeitig: braucht die eingebaute Stimme auf dem Handy einmal zu lange zum Rechnen, spricht diese Ansage sofort die Android-Stimme (lieber pünktlich als schön); Hinweis dazu unter Einstellungen → „Stimme der Ansagen“",
     "Neu: natürliche Frauenstimme – als Standard spricht jetzt „Sprecherin 1“ (Supertonic 3). Zur Wahl unter Einstellungen → „Stimme der Ansagen“ → „Stimme: … – ändern“: 5 Sprecherinnen, 5 Sprecher und Thorsten; antippen = gleich anhören. Alle laufen komplett auf dem Handy (kostenlos, ohne Internet, auch in Android Auto)",
     "Das Paket der neuen Stimmen (ca. 125 MB, für alle 10 Stimmen) lädt die App einmalig von selbst – am besten im WLAN öffnen. Bis es da ist, spricht Thorsten weiter",
     "Zahlen, Uhrzeiten und Entfernungen werden für die neuen Stimmen als deutsche Wörter gesprochen („dreihundert Meter“, „vierzehn Uhr fünfunddreißig“)",
@@ -22,5 +23,5 @@
     "Android Auto: „Termine“ und „Kunde“ in der Leiste; die letzten Ziele sind jetzt unter „Mehr“ und in der Suche",
     "Neu: Startpunkt direkt in der Suche – oben „Von … ändern ›“ antippen, dann das Ziel"
   ],
-  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.4.0/kss-maps.apk"
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.4.1/kss-maps.apk"
 }

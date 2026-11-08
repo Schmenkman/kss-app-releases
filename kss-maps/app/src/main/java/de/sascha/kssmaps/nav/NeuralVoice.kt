@@ -4,6 +4,8 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
@@ -29,7 +31,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.min
 
 /**
@@ -80,7 +84,13 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
     private val failures = HashMap<Pack, Int>()
     private var loader: Thread? = null
     private val wake = Semaphore(0)
+    private val main = Handler(Looper.getMainLooper())
     private val generation = AtomicInteger()
+    /** Spricht gerade die Android-Stimme (z. B. als Ersatz)? Dann wartet die eingebaute kurz. */
+    @Volatile var otherBusy: () -> Boolean = { false }
+    /** Wie oft die Android-Stimme einspringen musste, weil die eingebaute zu lange rechnete. */
+    @Volatile var lateCount = 0
+        private set
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "kss-stimme").apply { isDaemon = true } }
     // nur im Arbeits-Thread benutzt: zuletzt gesprochene Saetze ("Jetzt rechts abbiegen."), je Stimme
     private val cache = object : LinkedHashMap<String, Pcm>(48, 0.75f, true) {
@@ -536,21 +546,71 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
     /**
      * Ansage sprechen. urgent = laufende und wartende Ansagen verwerfen. done(false) heisst:
      * hat nicht geklappt – der Aufrufer nimmt dann die Android-Stimme.
+     *
+     * late: rechnet die Stimme laenger als [DEADLINE_MS] (dringend: [DEADLINE_URGENT_MS]), wird
+     * late() aufgerufen (Hauptthread) und der Aufrufer spricht die Ansage mit der Android-Stimme –
+     * lieber rechtzeitig als schoen. Die fertig gerechnete Ansage wird dann nicht mehr gespielt.
      */
-    fun speak(text: String, urgent: Boolean, done: (Boolean) -> Unit) {
+    fun speak(text: String, urgent: Boolean, late: (() -> Unit)? = null, done: (Boolean) -> Unit) {
         val g = if (urgent) generation.incrementAndGet() else generation.get()
+        val claim = AtomicBoolean(false)
+        val timer = AtomicReference<Runnable?>(null)
+        fun arm() {
+            if (late == null) return
+            val r = Runnable {
+                if (generation.get() == g && claim.compareAndSet(false, true)) {
+                    lateCount++
+                    Log.i(TAG, "NEURAL_SAY zu langsam – Android-Stimme spricht: $text")
+                    late()
+                }
+            }
+            timer.set(r)
+            main.postDelayed(r, if (urgent) DEADLINE_URGENT_MS else DEADLINE_MS)
+        }
+        fun disarm() {
+            timer.getAndSet(null)?.let { main.removeCallbacks(it) }
+        }
+        // Dringend ("Jetzt …"): die Uhr laeuft ab sofort – der Arbeits-Thread rechnet evtl. noch an
+        // etwas anderem. Sonst erst ab dem eigenen Rechnen (eine gerade laufende Ansage darf ausklingen).
+        if (urgent) arm()
         worker.execute {
             if (generation.get() != g) {
+                disarm()
                 done(true) // ueberholt: einfach weglassen
                 return@execute
             }
+            val c = current
+            if (!urgent && c != null && !cache.containsKey(key(c, text))) arm()
             val ok = try {
-                play(g, pcm(text))
+                val p = pcm(text)
+                disarm()
+                if (!claim.compareAndSet(false, true)) {
+                    true // die Android-Stimme hat schon uebernommen
+                } else {
+                    waitForOtherVoice(g)
+                    play(g, p)
+                }
             } catch (e: Throwable) {
+                disarm()
                 Log.w(TAG, "NEURAL_SAY Fehler: ${e.message ?: e.javaClass.simpleName}")
-                false
+                // schon von der Android-Stimme gesprochen: nicht noch einmal
+                !claim.compareAndSet(false, true)
             }
             done(ok)
+        }
+    }
+
+    /** Nicht gleichzeitig mit der Android-Stimme sprechen (die ist evtl. gerade eingesprungen). */
+    private fun waitForOtherVoice(g: Int) {
+        val until = SystemClock.elapsedRealtime() + 8_000
+        while (generation.get() == g && SystemClock.elapsedRealtime() < until) {
+            val busy = try {
+                otherBusy()
+            } catch (e: Exception) {
+                false
+            }
+            if (!busy) return
+            Thread.sleep(50)
         }
     }
 
@@ -698,7 +758,12 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
             !on -> "Aus – es spricht die Android-Sprachausgabe."
             state == State.READY && now == w ->
                 "Bereit: „${w.name}“, spricht auch ohne Internet." +
-                    if (w.pack == Pack.SUPERTONIC && lastRtf > 0.6) " Rechnet auf diesem Handy langsam – „Thorsten“ spricht schneller los." else ""
+                    when {
+                        lateCount > 0 -> " Rechnet auf diesem Handy manchmal zu lange – $lateCount Ansage(n) sprach deshalb die Android-Stimme" +
+                            if (w.pack == Pack.SUPERTONIC) "; „Thorsten“ spricht schneller los." else "."
+                        w.pack == Pack.SUPERTONIC && lastRtf > 0.6 -> " Rechnet auf diesem Handy langsam – „Thorsten“ spricht schneller los."
+                        else -> ""
+                    }
             state == State.DOWNLOADING -> "„${w.name}“ wird einmalig geladen (ca. ${w.pack.approxMb} MB) … $progress % – bis dahin spricht $meanwhile."
             state == State.LOADING -> "„${w.name}“ wird gestartet …"
             state == State.UNSUPPORTED -> "${problem ?: "Nicht verfügbar"} – es spricht $meanwhile."
@@ -711,6 +776,10 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
         private const val TAG = "KSSMaps"
         /** Sprechtempo (1 = wie aufgenommen). */
         const val SPEED = 1.0f
+        /** So lange darf eine Ansage hoechstens rechnen, sonst spricht die Android-Stimme (ms). */
+        const val DEADLINE_MS = 2_500L
+        /** … bei "Jetzt …"-Ansagen (die sind meist schon vorausberechnet). */
+        const val DEADLINE_URGENT_MS = 1_500L
         /** Hoerprobe mit typischen Ansagen (Testfahrt). */
         const val PROBE = "In 300 Metern rechts abbiegen auf die Leopoldstraße. Danach links halten. " +
             "Achtung, Stau in 2,5 Kilometern, etwa 8 Minuten Verzögerung. " +

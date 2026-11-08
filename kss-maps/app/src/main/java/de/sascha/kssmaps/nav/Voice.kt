@@ -42,7 +42,9 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
     private var tone: ToneGenerator? = null
     private val main = Handler(Looper.getMainLooper())
     /** Eingebaute natuerliche Stimme. */
-    val neural = NeuralVoice(app, attrs, VoiceCatalog.byId(prefs?.neuralVoiceId))
+    val neural = NeuralVoice(app, attrs, VoiceCatalog.byId(prefs?.neuralVoiceId)).also { n ->
+        n.otherBusy = { ready && tts?.isSpeaking == true }
+    }
 
     @Volatile var muted = false
         set(v) {
@@ -209,7 +211,12 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
             } catch (e: Exception) {
                 // Android-Stimme sprach gerade nicht
             }
-            neural.speak(SpeechText.normalize(text), urgent) { ok ->
+            neural.speak(
+                SpeechText.normalize(text), urgent,
+                // rechnet die eingebaute Stimme zu lange: lieber rechtzeitig mit der Android-Stimme
+                // (nicht bei Hoerproben – die sollen die gewaehlte Stimme zeigen)
+                late = if (force) null else ({ speakSystem(text, urgent) }),
+            ) { ok ->
                 // Fehler der eingebauten Stimme: diese Ansage mit der Android-Stimme
                 if (!ok) main.post { speakSystem(text, false) }
                 finished()
