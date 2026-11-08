@@ -26,6 +26,7 @@ import de.sascha.kssmaps.core.UtaStatus
 import de.sascha.kssmaps.nav.NavEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -241,6 +242,31 @@ class CarScreensTest {
             assertTrue(CarSettingsScreen(car).onGetTemplate() is ListTemplate)
         }
         engine.prefs.nightMode = 0
+        // Einstellungen mit dem frueheren "Mehr" (Verkehr pruefen / letzte Ziele, Blitzer melden)
+        engine.setCamerasEnabled(true)
+        assertTrue(CarSettingsScreen(car).onGetTemplate() is ListTemplate)
+        engine.setCamerasEnabled(false)
+        engine.testSetState(NavEngine.Mode.IDLE, null, emptyList())
+        assertTrue(CarSettingsScreen(car).onGetTemplate() is ListTemplate)
+    }
+
+    @Test
+    fun customButtonsLeaveOnlySearchInTheStrip() {
+        // Ab Android-Auto-Schnittstelle 5: alle Knoepfe auf der Karte, oben rechts nur die Lupe,
+        // das Ankunftsfeld (mit Beenden) zeichnet die App selbst
+        val withButtons = object : NaviSession() {
+            override val customButtons = true
+        }
+        engine.testSetState(NavEngine.Mode.IDLE, null, emptyList())
+        val idle = CarMainScreen(car, withButtons).onGetTemplate() as NavigationTemplate
+        assertEquals(1, idle.actionStrip!!.actions.size)
+        val r = route()
+        val st = RouteTracker(r).update(r.geometry.pointAt(50.0), 5.0, 10.0, 90.0)
+        engine.testSetState(NavEngine.Mode.NAVIGATING, dest(), listOf(r), r, st)
+        val nav = CarMainScreen(car, withButtons).onGetTemplate() as NavigationTemplate
+        assertEquals(1, nav.actionStrip!!.actions.size)
+        assertTrue(nav.navigationInfo is RoutingInfo)
+        assertNull(nav.destinationTravelEstimate)
         engine.testSetState(NavEngine.Mode.IDLE, null, emptyList())
     }
 

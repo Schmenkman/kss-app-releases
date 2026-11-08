@@ -178,6 +178,10 @@ class Prefs(ctx: Context) {
         set(v) = putStr("appt_technician_name", v)
 
     // ---- Sonstiges ----
+    /** Hinweis "Android Auto blendet KSS-Maps aus" fuer diese Version nicht mehr zeigen. */
+    var installWarnVersion: Int
+        get() = int("install_warn_version", 0)
+        set(v) = putInt("install_warn_version", v)
     var lastUpdateCheck: Long
         get() = sp.getLong("last_update_check", 0L)
         set(v) = sp.edit().putLong("last_update_check", v).apply()

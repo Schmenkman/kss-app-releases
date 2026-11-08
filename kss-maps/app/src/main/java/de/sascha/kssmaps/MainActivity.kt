@@ -141,7 +141,9 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         requestPermissionsIfNeeded()
         handleIntent(intent)
         firstRunDialogs()
-        checkUpdate(manual = false)
+        // Zuletzt nicht ueber KingInstaller installiert: Android Auto blendet KSS-Maps aus -> Hinweis
+        // (dann diesmal ohne zweiten Dialog fuer ein Update – die Reparatur nimmt die neueste Version)
+        if (!checkInstallSource()) checkUpdate(manual = false)
         // Termine schon im Hintergrund holen, damit "Termine" (Handy und Auto) sofort etwas zeigt
         if (engine.appointmentSource.configured && engine.appointments.isEmpty() && !engine.appointmentsLoading) engine.loadAppointments()
     }
@@ -283,7 +285,7 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
         fuel = FuelPanel(this)
         avoid = AvoidPanel(this)
         hazardList = HazardListPanel(this)
-        settings = SettingsPanel(this, onChanged = { onSettingsChanged() }, onCheckUpdate = { checkUpdate(manual = true) })
+        settings = SettingsPanel(this, onChanged = { onSettingsChanged() }, onCheckUpdate = { checkUpdate(manual = true) }, onRepairInstall = { repairInstall() })
         steps = StepsPanel(this)
         appointmentsPanel = AppointmentsPanel(this, onSetup = { openSettings() })
         // Kunden-Leiste rechts ueber den Knoepfen; Groesse/Abstaende in layoutDrawer()
@@ -961,25 +963,114 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
                 return@launch
             }
             if (de.sascha.kssmaps.core.UpdateCheck.compare(info.version, NaviApp.versionName) > 0) {
-                // Fuer Android Auto muss die neue Version ueber KingInstaller installiert werden; mit dem
-                // temporaeren Test-Schluessel (ohne eigene Signier-Secrets) vorher deinstallieren.
+                // Fuer Android Auto muss die neue Version ueber KingInstaller installiert werden: die App
+                // laedt sie selbst und gibt sie direkt an KingInstaller (mit dem temporaeren
+                // Test-Schluessel vorher deinstallieren).
                 val steps = buildString {
-                    append("\n\nSo installierst du es:\n")
-                    append("1. „Herunterladen“ tippen (lädt kss-maps.apk).\n")
-                    if (BuildConfig.TEMP_SIGNING_KEY) append("2. KSS-Maps deinstallieren (diese Version hat einen anderen Signierschlüssel).\n3. ") else append("2. ")
-                    append("Die heruntergeladene kss-maps.apk mit KingInstaller installieren – nur so erscheint KSS-Maps in Android Auto.")
+                    append("\n\n„Installieren“ lädt die neue Version und öffnet KingInstaller – dort nur noch „Installieren“ tippen. ")
+                    append("Nicht über „Öffnen“ im Browser installieren: dann blendet Android Auto KSS-Maps aus.")
+                    if (BuildConfig.TEMP_SIGNING_KEY) append("\n\nVorher KSS-Maps deinstallieren (diese Version hat einen anderen Signierschlüssel).")
                 }
                 AlertDialog.Builder(this@MainActivity).setTitle("Update verfügbar: ${info.version}")
                     .setMessage("Du hast ${NaviApp.versionName}.\n\n" + info.notes.take(6).joinToString("\n") { "• $it" } + steps)
-                    .setPositiveButton("Herunterladen") { _, _ ->
-                        try {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.apkUrl)))
-                        } catch (e: Exception) {
-                            toast("Kein Browser gefunden")
-                        }
-                    }
+                    .setPositiveButton("Installieren") { _, _ -> installApk(info.apkUrl, info.version) }
                     .setNegativeButton("Später", null).show()
             } else if (manual) toast("Du hast die neueste Version (${NaviApp.versionName}).")
+        }
+    }
+
+    // ---- Installation ueber KingInstaller (sonst zeigt Android Auto KSS-Maps nicht) ----
+
+    private var download: de.sascha.kssmaps.data.AppInstaller.Download? = null
+
+    /** true, wenn der Hinweis "Android Auto blendet KSS-Maps aus" gezeigt wird. */
+    private fun checkInstallSource(): Boolean {
+        val inst = de.sascha.kssmaps.data.AppInstaller
+        if (!inst.androidAutoInstalled(this) || inst.visibleInAndroidAuto(this)) return false
+        if (prefs.installWarnVersion == BuildConfig.VERSION_CODE) return false
+        AlertDialog.Builder(this).setTitle("KSS-Maps fehlt in Android Auto?")
+            .setMessage(
+                "Android Auto zeigt KSS-Maps nur, wenn die App über KingInstaller installiert wurde. " +
+                    "Diese Version kam über den normalen Android-Installer (z. B. „Öffnen“ nach dem Download) – " +
+                    "deshalb blendet Android Auto KSS-Maps aus und öffnet Google Maps.\n\n" +
+                    "„Reparieren“ lädt die App und öffnet KingInstaller – dort „Installieren“ tippen. " +
+                    "Alle Einstellungen bleiben erhalten."
+            )
+            .setPositiveButton("Reparieren") { _, _ -> repairInstall() }
+            .setNegativeButton("Später", null)
+            .setNeutralButton("Nicht mehr fragen") { _, _ -> prefs.installWarnVersion = BuildConfig.VERSION_CODE }
+            .show()
+        return true
+    }
+
+    /** Neueste Version (sonst die installierte) ueber KingInstaller neu installieren. */
+    private fun repairInstall() {
+        engine.scope.launch {
+            val info = services.checkUpdate()
+            if (info != null && de.sascha.kssmaps.core.UpdateCheck.compare(info.version, NaviApp.versionName) > 0) {
+                installApk(info.apkUrl, info.version)
+            } else {
+                installApk(de.sascha.kssmaps.data.AppInstaller.apkUrl(NaviApp.versionName), NaviApp.versionName)
+            }
+        }
+    }
+
+    private fun openInBrowser(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (e: Exception) {
+            toast("Kein Browser gefunden")
+        }
+    }
+
+    /** APK laden und an KingInstaller geben; ohne Android Auto (oder sehr altes Android) per Browser. */
+    private fun installApk(url: String, version: String) {
+        val inst = de.sascha.kssmaps.data.AppInstaller
+        if (Build.VERSION.SDK_INT < 29 || (!inst.androidAutoInstalled(this) && !inst.kingInstallerInstalled(this))) {
+            openInBrowser(url)
+            return
+        }
+        if (!inst.kingInstallerInstalled(this)) {
+            AlertDialog.Builder(this).setTitle("KingInstaller fehlt")
+                .setMessage(
+                    "Damit KSS-Maps in Android Auto erscheint, muss es mit KingInstaller installiert werden " +
+                        "(kostenlos, github.com/fcaronte/KingInstaller). Erst KingInstaller installieren, dann hier noch einmal „Installieren“."
+                )
+                .setPositiveButton("KingInstaller holen") { _, _ -> openInBrowser(inst.KING_INSTALLER_URL) }
+                .setNegativeButton("Abbrechen", null).show()
+            return
+        }
+        download?.let { inst.cancel(this, it) }
+        val dlg = AlertDialog.Builder(this).setTitle("KSS-Maps $version")
+            .setMessage("Wird geladen …")
+            .setCancelable(false)
+            .setNegativeButton("Abbrechen") { _, _ ->
+                download?.let { inst.cancel(this, it) }
+                download = null
+            }
+            .show()
+        download = inst.download(
+            this, engine.scope, url, version,
+            progress = { p -> if (!isFinishing && dlg.isShowing) dlg.setMessage("Wird geladen … " + if (p >= 0) "$p %" else "") },
+            done = { outcome, name ->
+                download = null
+                if (!isFinishing && dlg.isShowing) dlg.dismiss()
+                when (outcome) {
+                    de.sascha.kssmaps.data.AppInstaller.Outcome.OPENED_IN_KING_INSTALLER ->
+                        toast("KingInstaller ist offen – dort auf „Installieren“ tippen")
+                    de.sascha.kssmaps.data.AppInstaller.Outcome.KING_INSTALLER_STARTED -> if (!isFinishing) {
+                        AlertDialog.Builder(this).setTitle("In KingInstaller installieren")
+                            .setMessage("In KingInstaller die Datei „Download/$name“ auswählen und auf „Installieren“ tippen.")
+                            .setPositiveButton("OK", null).show()
+                    }
+                    de.sascha.kssmaps.data.AppInstaller.Outcome.NO_KING_INSTALLER -> toast("KingInstaller nicht gefunden")
+                    de.sascha.kssmaps.data.AppInstaller.Outcome.FAILED -> toast("Laden fehlgeschlagen – bitte später noch einmal")
+                }
+            },
+        )
+        if (download == null) {
+            dlg.dismiss()
+            openInBrowser(url)
         }
     }
 

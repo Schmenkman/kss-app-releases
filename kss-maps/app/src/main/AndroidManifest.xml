@@ -25,6 +25,9 @@
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
+        <!-- Updates direkt an KingInstaller geben; Android Auto installiert? (Hinweis "nicht sichtbar") -->
+        <package android:name="com.example.kinginstaller" />
+        <package android:name="com.google.android.projection.gearhead" />
     </queries>
 
     <application

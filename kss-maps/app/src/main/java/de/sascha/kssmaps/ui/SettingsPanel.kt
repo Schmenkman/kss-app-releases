@@ -20,7 +20,12 @@ import de.sascha.kssmaps.ui.Ui.margins
 import kotlinx.coroutines.launch
 
 /** Einstellungen: API-Schluessel, Warnungen, Route, Karte, Tanken, Berechtigungen, Update. */
-class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private val onCheckUpdate: () -> Unit) : Panel(host, fullScreen = true) {
+class SettingsPanel(
+    host: PanelHost,
+    private val onChanged: () -> Unit,
+    private val onCheckUpdate: () -> Unit,
+    private val onRepairInstall: () -> Unit = {},
+) : Panel(host, fullScreen = true) {
     private val prefs = host.engine.prefs
 
     init {
@@ -299,7 +304,18 @@ class SettingsPanel(host: PanelHost, private val onChanged: () -> Unit, private 
                 }
             }
         }
-        note("Android Auto zeigt selbst installierte Apps nur, wenn Android sie als „aus dem Play Store installiert“ führt. Dafür KSS-Maps mit KingInstaller oder UnknownAuto installieren (kostenlos, siehe Anleitung im Projekt) und in den Android-Auto-Entwicklereinstellungen „Unbekannte Quellen“ aktivieren (10× auf „Version“ tippen → ⋮ → Entwicklereinstellungen).")
+        val inst = de.sascha.kssmaps.data.AppInstaller
+        if (inst.androidAutoInstalled(ctx)) {
+            if (inst.visibleInAndroidAuto(ctx)) {
+                note("✓ Über KingInstaller installiert – Android Auto zeigt KSS-Maps an.")
+            } else {
+                content.addView(Ui.text(ctx, "⚠ Zuletzt mit dem normalen Android-Installer installiert – Android Auto blendet KSS-Maps deshalb aus.", 14f, Ui.RED, bold = true).apply {
+                    setPadding(Ui.dp(ctx, 4), Ui.dp(ctx, 6), Ui.dp(ctx, 4), Ui.dp(ctx, 4))
+                })
+                action("Mit KingInstaller neu installieren") { onRepairInstall() }
+            }
+        }
+        note("Android Auto zeigt selbst installierte Apps nur, wenn Android sie als „aus dem Play Store installiert“ führt. Dafür KSS-Maps mit KingInstaller installieren (kostenlos) und in den Android-Auto-Entwicklereinstellungen „Unbekannte Quellen“ aktivieren (10× auf „Version“ tippen → ⋮ → Entwicklereinstellungen). Updates lädt KSS-Maps selbst und öffnet dafür KingInstaller – dort nur „Installieren“ tippen.")
 
         section("Daten")
         action("Blitzer-Daten jetzt aktualisieren") {

@@ -123,15 +123,11 @@ class CarMainScreen(carContext: CarContext, private val session: NaviSession) : 
         // Tanken gibt es dann unter "Mehr", die letzten Ziele immer dort und in der Suche.
         val customer = if (e.activeAppointment != null) CarUtil.action(Icons.Glyph.PHONE, tint = CarColor.GREEN) { screenManager.push(CarCustomerScreen(carContext)) } else null
         if (session.customButtons) {
-            // Alle wichtigen Knoepfe liegen immer sichtbar auf der Karte (rechts, Zoom/Beenden unten);
-            // hier nur Suche und "Mehr" (und "Ende" als Rueckfall)
-            if (e.mode == NavEngine.Mode.NAVIGATING) {
-                strip.addAction(more)
-                strip.addAction(CarUtil.textAction("Ende") { e.stopNavigation() })
-            } else {
-                strip.addAction(CarUtil.action(Icons.Glyph.SEARCH) { screenManager.push(CarSearchScreen(carContext)) })
-                strip.addAction(more)
-            }
+            // Alle Knoepfe liegen immer sichtbar auf der Karte (Raster rechts, Beenden im Ankunftsfeld
+            // unten links, Zoom unten). Android Auto verlangt hier mindestens eine Aktion: nur die
+            // Lupe (neues Ziel) – so bleibt oben rechts Platz fuer grosse Knoepfe. Was frueher unter
+            // "Mehr" stand, ist in den Einstellungen.
+            strip.addAction(CarUtil.action(Icons.Glyph.SEARCH) { screenManager.push(CarSearchScreen(carContext)) })
         } else if (e.mode == NavEngine.Mode.NAVIGATING) {
             strip.addAction(fuel)
             strip.addAction(customer ?: muteAction)
@@ -172,7 +168,8 @@ class CarMainScreen(carContext: CarContext, private val session: NaviSession) : 
                     } else {
                         b.setNavigationInfo(MessageInfo.Builder("Der Straße folgen").setText(Instructions.formatDistance(st.remainingM) + " bis zum Ziel").build())
                     }
-                    b.setDestinationTravelEstimate(CarUtil.travelEstimate(st.remainingM, st.remainingSec, r.trafficDelaySec))
+                    // Mit eigenen Knoepfen zeichnet die App das Ankunftsfeld selbst (mit Beenden-Knopf)
+                    if (!session.customButtons) b.setDestinationTravelEstimate(CarUtil.travelEstimate(st.remainingM, st.remainingSec, r.trafficDelaySec))
                 }
             }
         } else if (e.speedLimit == null && e.position == null) {
@@ -845,15 +842,45 @@ class CarRouteOverviewScreen(carContext: CarContext, private val session: NaviSe
 // =============================================================================================
 
 class CarSettingsScreen(carContext: CarContext) : Screen(carContext) {
+    private fun toast(t: String) = try {
+        CarToast.makeText(carContext, t, CarToast.LENGTH_LONG).show()
+    } catch (e: Exception) {
+        // Host lehnt Hinweise gerade ab
+    }
+
     override fun onGetTemplate(): Template {
         val e = engine
         val p = e.prefs
         val il = ItemList.Builder()
-        val modes = listOf("Automatisch (nach Sonnenstand)", "Tag", "Nacht")
-        il.addItem(Row.Builder().setTitle("Kartenansicht").addText(modes[p.nightMode.coerceIn(0, 2)]).setOnClickListener {
-            e.cycleNightMode()
-            invalidate()
-        }.build())
+        // Was frueher unter "Mehr" stand (Ton und Tag/Nacht haben eigene Knoepfe auf der Karte).
+        // Android Auto zeigt waehrend der Fahrt nur die ersten Zeilen – Wichtiges zuerst.
+        fun action(title: String, text: String?, click: () -> Unit) {
+            val r = Row.Builder().setTitle(title).setOnClickListener { click() }
+            if (!text.isNullOrBlank()) r.addText(text)
+            il.addItem(r.build())
+        }
+        if (e.mode == NavEngine.Mode.NAVIGATING) {
+            action("Verkehr jetzt prüfen", "schnellere Route suchen") {
+                e.refreshTrafficNow()
+                toast("Verkehr wird geprüft …")
+                screenManager.pop()
+            }
+        } else {
+            action("Letzte Ziele", null) {
+                screenManager.pop()
+                screenManager.push(CarHistoryScreen(carContext))
+            }
+        }
+        if (p.camerasEnabled) {
+            action("Mobiler Blitzer hier", "merken und auf der Route warnen (4 Stunden)") {
+                toast(if (e.reportHere(HazardType.SPEED_CAMERA, false)) "Blitzer gespeichert" else "Kein GPS-Standort")
+                screenManager.pop()
+            }
+            action("Abstandsmessung hier", "merken und auf der Route warnen (4 Stunden)") {
+                toast(if (e.reportHere(HazardType.DISTANCE_CHECK, false)) "Abstandsmessung gespeichert" else "Kein GPS-Standort")
+                screenManager.pop()
+            }
+        }
         fun toggle(title: String, text: String?, on: Boolean, set: (Boolean) -> Unit) {
             val r = Row.Builder().setTitle(title).setToggle(Toggle.Builder { checked ->
                 set(checked)
@@ -862,7 +889,6 @@ class CarSettingsScreen(carContext: CarContext) : Screen(carContext) {
             if (text != null) r.addText(text)
             il.addItem(r.build())
         }
-        toggle("Sprachansagen", null, !p.voiceMuted) { want -> if (want == p.voiceMuted) e.toggleMuted() }
         toggle("Schnellere Route anbieten", "Verkehr alle 2 Minuten prüfen", p.trafficReroute) { p.trafficReroute = it }
         toggle("Blitzerwarnungen", null, p.camerasEnabled) { e.setCamerasEnabled(it) }
         toggle("Mautstraßen meiden", "gilt für neue Routen", p.avoidTolls) { p.avoidTolls = it }
@@ -870,3 +896,4 @@ class CarSettingsScreen(carContext: CarContext) : Screen(carContext) {
         return ListTemplate.Builder().setTitle("Einstellungen").setHeaderAction(Action.BACK).setSingleList(il.build()).build()
     }
 }
+

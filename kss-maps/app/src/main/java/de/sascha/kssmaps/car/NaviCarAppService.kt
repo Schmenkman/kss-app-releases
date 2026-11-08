@@ -32,7 +32,7 @@ class NaviCarAppService : CarAppService() {
     override fun onCreateSession(): Session = NaviSession()
 }
 
-class NaviSession : Session(), NavEngine.Listener {
+open class NaviSession : Session(), NavEngine.Listener {
     lateinit var renderer: CarMapRenderer
         private set
     private val engine: NavEngine get() = NaviApp.instance.engine
@@ -41,7 +41,7 @@ class NaviSession : Session(), NavEngine.Listener {
     private var lastTrip = 0L
     private var lastMessage: String? = null
     /** Eigene Knoepfe auf der Karte: Android Auto meldet das Antippen erst ab Schnittstelle 5. */
-    val customButtons: Boolean get() = try {
+    open val customButtons: Boolean get() = try {
         carContext.carAppApiLevel >= 5
     } catch (e: Exception) {
         false

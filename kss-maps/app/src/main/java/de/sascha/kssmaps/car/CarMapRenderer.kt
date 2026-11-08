@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Point
 import android.graphics.Rect
+import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -15,9 +16,11 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.car.app.SurfaceCallback
 import androidx.car.app.SurfaceContainer
 import de.sascha.kssmaps.NaviApp
+import de.sascha.kssmaps.core.CarLayout
 import de.sascha.kssmaps.core.HazardType
 import de.sascha.kssmaps.core.Instructions
 import de.sascha.kssmaps.nav.NavEngine
@@ -36,8 +39,9 @@ import kotlin.math.ln
  * Zeichnet die Karte auf die Flaeche, die Android Auto der App gibt: eine VirtualDisplay
  * auf dieser Flaeche, darauf eine Presentation mit derselben MapLibre-Karte wie am Handy
  * plus Tempo-/Tempolimit-Anzeige, Warnbanner und – ab Android-Auto-Schnittstelle 5 – eigene,
- * immer sichtbare Knoepfe (rechts untereinander, Zoom und Beenden unten). Tag/Nacht folgt der
- * Einstellung der App (Automatisch = Sonnenstand), nicht dem Nachtmodus des Autos.
+ * immer sichtbare Knoepfe: rechts ein Raster (eine oder zwei Spalten, moeglichst grosse Knoepfe),
+ * unten links das Ankunftsfeld mit dem Beenden-Knopf (wie Google Maps), daneben Tempo und Zoom.
+ * Anordnung: [CarLayout]. Tag/Nacht folgt der Einstellung der App (Automatisch = Sonnenstand).
  */
 class CarMapRenderer(
     private val context: Context,
@@ -51,8 +55,12 @@ class CarMapRenderer(
     var onButton: ((Btn) -> Unit)? = null
     private val buttons = LinkedHashMap<Btn, ImageView>()
     private val buttonState = HashMap<Btn, String>()
-    private var rightCol: LinearLayout? = null
-    private var bottomRow: LinearLayout? = null
+    /** Ankunftsfeld unten links (Restzeit, Strecke, Ankunft) mit dem Beenden-Knopf. */
+    private var etaCard: LinearLayout? = null
+    private var etaMain: TextView? = null
+    private var etaSub: TextView? = null
+    private var etaState = ""
+    private var layout: CarLayout.Result? = null
     private var stableArea: Rect? = null
     private var lastStyleCheck = 0L
 
@@ -179,47 +187,67 @@ class CarMapRenderer(
 
     // ---- eigene Knoepfe ----
 
+    private fun newButton(ctx: Context, b: Btn) = ImageView(ctx).apply {
+        scaleType = ImageView.ScaleType.CENTER
+        elevation = Ui.dpf(ctx, 4f)
+        contentDescription = b.name
+    }
+
     private fun buildButtons(ctx: Context, ov: FrameLayout) {
-        val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        for (b in COLUMN) {
-            val v = ImageView(ctx).apply {
-                scaleType = ImageView.ScaleType.CENTER
-                elevation = Ui.dpf(ctx, 4f)
-                contentDescription = b.name
-            }
+        // Raster rechts und Zoom unten: frei positioniert (siehe layoutOverlay / CarLayout)
+        for (b in COLUMN + listOf(Btn.ZOOM_OUT, Btn.ZOOM_IN)) {
+            val v = newButton(ctx, b)
             buttons[b] = v
-            col.addView(v)
+            ov.addView(v, FrameLayout.LayoutParams(0, 0, Gravity.TOP or Gravity.START))
         }
-        val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        for (b in listOf(Btn.ZOOM_OUT, Btn.ZOOM_IN, Btn.END)) {
-            val v = ImageView(ctx).apply {
-                scaleType = ImageView.ScaleType.CENTER
-                elevation = Ui.dpf(ctx, 4f)
-                contentDescription = b.name
-            }
-            buttons[b] = v
-            row.addView(v)
+        // Ankunftsfeld unten links mit Beenden-Knopf (wie Google Maps)
+        val card = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            elevation = Ui.dpf(ctx, 4f)
+            val p = Ui.dp(ctx, 6)
+            setPadding(p, p, Ui.dp(ctx, 12), p)
+            visibility = View.GONE
         }
-        ov.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END))
-        ov.addView(row, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START))
-        rightCol = col
-        bottomRow = row
+        val end = newButton(ctx, Btn.END).apply { elevation = 0f }
+        buttons[Btn.END] = end
+        card.addView(end, LinearLayout.LayoutParams(0, 0))
+        val texts = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        val main = TextView(ctx).apply {
+            textSize = 24f
+            setTypeface(typeface, Typeface.BOLD)
+            maxLines = 1
+            includeFontPadding = false
+        }
+        val sub = TextView(ctx).apply {
+            textSize = 15f
+            maxLines = 1
+        }
+        texts.addView(main)
+        texts.addView(sub)
+        card.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = Ui.dp(ctx, 12) })
+        ov.addView(card, FrameLayout.LayoutParams(0, 0, Gravity.TOP or Gravity.START))
+        etaCard = card
+        etaMain = main
+        etaSub = sub
     }
 
     private fun density(): Float = presentation?.context?.resources?.displayMetrics?.density ?: 1f
 
     companion object {
-        /** Rechte Knopfspalte von oben nach unten. */
+        /** Knopf-Raster rechts (eine Spalte von oben nach unten bzw. paarweise; Zentrieren zuletzt). */
         private val COLUMN = listOf(Btn.CALL, Btn.APPOINTMENTS, Btn.OVERVIEW, Btn.DAYNIGHT, Btn.TRAFFIC_FIX, Btn.FUEL, Btn.MUTE, Btn.SETTINGS, Btn.RECENTER)
     }
 
-    private fun buttonSizePx(): Int {
-        val d = density()
-        val sa = stableArea ?: visibleArea ?: Rect(0, 0, width, height)
-        val n = COLUMN.size
-        val m = 8 * d
-        val gap = 6 * d
-        return ((sa.height() - 2 * m - (n - 1) * gap) / n).coerceIn(28 * d, 56 * d).toInt()
+    private fun computeLayout(): CarLayout.Result {
+        val v = visibleArea ?: Rect(0, 0, width, height)
+        val sa = stableArea ?: v
+        return CarLayout.compute(
+            width, height,
+            CarLayout.Area(v.left, v.top, v.right, v.bottom),
+            CarLayout.Area(sa.left, sa.top, sa.right, sa.bottom),
+            density(), COLUMN.size, engine.mode == NavEngine.Mode.NAVIGATING,
+        ).also { layout = it }
     }
 
     /** Knoepfe zeichnen: aktiv/inaktiv, Tag/Nacht-Symbol, Beenden nur mit Route. */
@@ -228,16 +256,34 @@ class CarMapRenderer(
         val ctx = presentation?.context ?: return
         val e = engine
         val night = e.isNight()
-        val size = buttonSizePx()
-        val icon = (size * 0.56f).toInt()
+        val lay = layout ?: computeLayout()
+        // Ankunftsfeld nur waehrend der Navigation – kommt es dazu oder weg, alles neu anordnen
+        val showEta = e.mode == NavEngine.Mode.NAVIGATING
+        if ((lay.eta != null) != showEta) {
+            layoutOverlay()
+            return
+        }
         val bg = if (night) Color.parseColor("#303134") else Color.WHITE
         val fg = if (night) Color.parseColor("#E8EAED") else Ui.TEXT
         val off = if (night) Color.parseColor("#6E7175") else Color.parseColor("#B0B4B8")
         val navigating = e.mode == NavEngine.Mode.NAVIGATING
+        etaCard?.let { card ->
+            card.visibility = if (showEta) View.VISIBLE else View.GONE
+            val key = "card/$night"
+            if (etaState != key) {
+                etaState = key
+                card.background = Ui.bg(ctx, bg, 16)
+                etaSub?.setTextColor(if (night) Color.parseColor("#BDC1C6") else Ui.TEXT2)
+            }
+        }
         for ((b, v) in buttons) {
-            val visible = b != Btn.END || e.mode != NavEngine.Mode.IDLE
-            v.visibility = if (visible) View.VISIBLE else View.GONE
-            if (!visible) continue
+            if (b == Btn.END && !showEta) continue
+            val size = when (b) {
+                Btn.ZOOM_OUT, Btn.ZOOM_IN -> lay.zoomIn.w
+                Btn.END -> (lay.eta?.h ?: lay.zoomIn.h) - Ui.dp(ctx, 12)
+                else -> lay.buttonSize
+            }
+            val icon = (size * 0.56f).toInt()
             val (glyph, color, back) = when (b) {
                 Btn.CALL -> Triple(Icons.Glyph.PHONE, if (e.activeAppointment != null) Color.WHITE else off, if (e.activeAppointment != null) Ui.GREEN_DARK else bg)
                 Btn.APPOINTMENTS -> Triple(Icons.Glyph.CALENDAR, if (night) Color.parseColor("#8AB4F8") else Ui.BLUE, bg)
@@ -296,53 +342,83 @@ class CarMapRenderer(
 
     private fun layoutOverlay() {
         val v = visibleArea ?: Rect(0, 0, width, height)
-        val m = (8 * (presentation?.context?.resources?.displayMetrics?.density ?: 1f)).toInt()
+        val m = (8 * density()).toInt()
+        val lay = computeLayout()
         speed?.view?.let { s ->
             val lp = s.layoutParams as? FrameLayout.LayoutParams ?: return@let
-            lp.leftMargin = v.left + m
-            lp.bottomMargin = (height - v.bottom) + m
+            lp.leftMargin = lay.speedLeft
+            lp.bottomMargin = lay.speedBottomInset
             s.layoutParams = lp
         }
-        val size = buttonSizePx()
-        val gap = (6 * density()).toInt()
-        val sa = stableArea ?: v
-        rightCol?.let { col ->
-            for (i in 0 until col.childCount) {
-                val lp = col.getChildAt(i).layoutParams as LinearLayout.LayoutParams
-                lp.width = size
-                lp.height = size
-                lp.topMargin = if (i == 0) 0 else gap
-                col.getChildAt(i).layoutParams = lp
-            }
-            val lp = col.layoutParams as FrameLayout.LayoutParams
-            lp.topMargin = sa.top + m
-            lp.rightMargin = (width - sa.right) + m
-            col.layoutParams = lp
+        fun place(view: View, b: CarLayout.Box) {
+            val lp = view.layoutParams as FrameLayout.LayoutParams
+            lp.gravity = Gravity.TOP or Gravity.START
+            lp.leftMargin = b.x
+            lp.topMargin = b.y
+            lp.width = b.w
+            lp.height = b.h
+            view.layoutParams = lp
         }
-        bottomRow?.let { row ->
-            for (i in 0 until row.childCount) {
-                val lp = row.getChildAt(i).layoutParams as LinearLayout.LayoutParams
-                lp.width = size
-                lp.height = size
-                lp.leftMargin = if (i == 0) 0 else gap
-                row.getChildAt(i).layoutParams = lp
+        COLUMN.forEachIndexed { i, b -> buttons[b]?.let { place(it, lay.grid[i]) } }
+        buttons[Btn.ZOOM_OUT]?.let { place(it, lay.zoomOut) }
+        buttons[Btn.ZOOM_IN]?.let { place(it, lay.zoomIn) }
+        etaCard?.let { card ->
+            val box = lay.eta
+            if (box != null) place(card, box)
+            buttons[Btn.END]?.let { end ->
+                val s = (box?.h ?: lay.zoomIn.h) - (12 * density()).toInt()
+                val lp = end.layoutParams as LinearLayout.LayoutParams
+                lp.width = s
+                lp.height = s
+                end.layoutParams = lp
             }
-            // neben Tempo und Tempolimit (unten links), dort stoert es die Sicht auf die Strasse nicht
-            val lp = row.layoutParams as FrameLayout.LayoutParams
-            lp.leftMargin = v.left + m + (148 * density()).toInt()
-            lp.bottomMargin = (height - v.bottom) + m
-            row.layoutParams = lp
         }
         hazard?.view?.let { h ->
             val lp = h.layoutParams as? FrameLayout.LayoutParams ?: return@let
             lp.leftMargin = v.left + m
             lp.topMargin = v.top + m
-            // nicht unter die Knopfspalte
-            lp.rightMargin = (width - v.right) + m + if (rightCol != null) size + m else 0
+            // nicht unter das Knopf-Raster
+            lp.rightMargin = if (buttons.isNotEmpty()) lay.bannerRightInset else (width - v.right) + m
             h.layoutParams = lp
         }
         buttonState.clear()
+        etaState = ""
         updateButtons()
+    }
+
+    /** Ankunftsfeld: Restzeit (Farbe nach Stau), darunter Strecke und Ankunftszeit. */
+    private fun updateEta() {
+        val main = etaMain ?: return
+        val sub = etaSub ?: return
+        val e = engine
+        if (e.mode != NavEngine.Mode.NAVIGATING) return
+        val night = e.isNight()
+        val st = e.state
+        val r = e.activeRoute
+        when {
+            e.arrived -> {
+                main.text = "Ziel erreicht"
+                sub.text = e.destination?.label() ?: ""
+                main.setTextColor(if (night) Color.parseColor("#E8EAED") else Ui.TEXT)
+            }
+            st == null || r == null || e.rerouting -> {
+                main.text = "Route …"
+                sub.text = "wird berechnet"
+                main.setTextColor(if (night) Color.parseColor("#E8EAED") else Ui.TEXT)
+            }
+            else -> {
+                main.text = Ui.minutes(st.remainingSec)
+                sub.text = "${Instructions.formatDistance(st.remainingM)} · ${e.etaText(st.remainingSec)}"
+                val delayMin = r.trafficDelaySec / 60
+                main.setTextColor(
+                    when {
+                        delayMin >= 10 -> if (night) Color.parseColor("#F28B82") else Color.parseColor("#D93025")
+                        delayMin >= 2 -> if (night) Color.parseColor("#FDD663") else Color.parseColor("#E37400")
+                        else -> if (night) Color.parseColor("#81C995") else Color.parseColor("#188038")
+                    },
+                )
+            }
+        }
     }
 
     // ---- Zustand zeichnen ----
@@ -393,6 +469,7 @@ class CarMapRenderer(
             }
         }
         updateButtons()
+        updateEta()
         val c = ctl ?: return
         if (c.style == null) return
         val now = System.currentTimeMillis()
@@ -460,8 +537,11 @@ class CarMapRenderer(
         overlayRoot = null
         buttons.clear()
         buttonState.clear()
-        rightCol = null
-        bottomRow = null
+        etaCard = null
+        etaMain = null
+        etaSub = null
+        etaState = ""
+        layout = null
     }
 
     @Suppress("unused")
