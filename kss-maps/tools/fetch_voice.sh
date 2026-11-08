@@ -14,9 +14,9 @@ set -euo pipefail
 SHERPA_VER=1.13.8
 # Pruefsummen der Original-Downloads; ein anderer Inhalt unter derselben Adresse bricht den Schritt
 # ab (leer: nur ins Protokoll schreiben – beim ersten Build ermitteln und eintragen)
-LIBS_SHA256=""
+LIBS_SHA256="2ff63469a71cb6009aa2e3ed5f4a670f8abdcbe4bb9ffd23776afc792a6b4f44"
 MODEL_SHA256="50487d9c95fdf2191f31d2588569381063ba1591dcd4c7d4bdd30f12b2191714"
-MODEL_ST_SHA256=""
+MODEL_ST_SHA256="82fa96f91c4ef8abaae3a14a3f4153facf88bed821d1f7331cec2700f432c427"
 MODEL=vits-piper-de_DE-thorsten-medium
 MODEL_ST=sherpa-onnx-supertonic-3-tts-int8-2026-05-11
 TAG=kssmaps-stimme
