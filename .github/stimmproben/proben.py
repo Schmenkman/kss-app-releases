@@ -21,30 +21,32 @@ OUT = "out"
 os.makedirs(OUT, exist_ok=True)
 
 ST = f"{M}/sherpa-onnx-supertonic-3-tts-int8-2026-05-11"
+# Piper (espeak) liest Ziffern selbst richtig; Supertonic nicht immer (teils englisch) – dort
+# schreibt die App Zahlen als deutsche Woerter aus (genau so hier).
 TEXT = ("Stimme {nr}. In 300 Metern rechts abbiegen auf die Leopoldstraße. Danach links halten. "
         "Achtung, Stau in 2 Komma 5 Kilometern, etwa 8 Minuten Verzögerung. Ankunft gegen 14 Uhr 35.")
 TEXT_WORDS = ("Stimme {nr}. In dreihundert Metern rechts abbiegen auf die Leopoldstraße. Danach links halten. "
               "Achtung, Stau in zwei Komma fünf Kilometern, etwa acht Minuten Verzögerung. Ankunft gegen vierzehn Uhr fünfunddreißig.")
+WORDS = {1: "eins", 2: "zwei", 3: "drei", 4: "vier", 5: "fünf", 6: "sechs", 7: "sieben", 8: "acht",
+         9: "neun", 10: "zehn", 11: "elf", 12: "zwölf", 13: "dreizehn"}
 
-# Nummer, Name, Art, Modell bzw. Sprecher, Text
+# Nummer, Name, Art, Modell bzw. Sprecher, Text, Rechenschritte (Supertonic)
 VOICES = [
-    (1, "Supertonic F1", "st", 0, TEXT),
-    (2, "Supertonic F2", "st", 1, TEXT),
-    (3, "Supertonic F3", "st", 2, TEXT),
-    (4, "Supertonic F4", "st", 3, TEXT),
-    (5, "Supertonic F5", "st", 4, TEXT),
-    (6, "Piper Kerstin (low)", "piper", "vits-piper-de_DE-kerstin-low", TEXT),
-    (7, "Piper Ramona (low)", "piper", "vits-piper-de_DE-ramona-low", TEXT),
-    (8, "Piper Eva K (x_low)", "piper", "vits-piper-de_DE-eva_k-x_low", TEXT),
-    (9, "Supertonic M1", "st", 5, TEXT),
-    (10, "Supertonic M2", "st", 6, TEXT),
-    (11, "Supertonic M3", "st", 7, TEXT),
-    (12, "Supertonic M4", "st", 8, TEXT),
-    (13, "Supertonic M5", "st", 9, TEXT),
-    (14, "Thorsten (bisher)", "piper", "vits-piper-de_DE-thorsten-medium", TEXT),
-    # Zahlen ausgeschrieben: spricht Supertonic Ziffern selbst richtig?
-    (15, "Supertonic F1, Zahlen ausgeschrieben", "st", 0, TEXT_WORDS),
+    (1, "Supertonic Sprecherin 1", "st", 0, TEXT_WORDS, 8),
+    (2, "Supertonic Sprecherin 2", "st", 1, TEXT_WORDS, 8),
+    (3, "Supertonic Sprecherin 3", "st", 2, TEXT_WORDS, 8),
+    (4, "Supertonic Sprecherin 4", "st", 3, TEXT_WORDS, 8),
+    (5, "Supertonic Sprecherin 5", "st", 4, TEXT_WORDS, 8),
+    (6, "Supertonic Sprecher 1", "st", 5, TEXT_WORDS, 8),
+    (7, "Supertonic Sprecher 2", "st", 6, TEXT_WORDS, 8),
+    (8, "Supertonic Sprecher 3", "st", 7, TEXT_WORDS, 8),
+    (9, "Supertonic Sprecher 4", "st", 8, TEXT_WORDS, 8),
+    (10, "Supertonic Sprecher 5", "st", 9, TEXT_WORDS, 8),
+    (11, "Thorsten (bisher)", "piper", "vits-piper-de_DE-thorsten-medium", TEXT, 0),
+    (12, "Piper Kerstin", "piper", "vits-piper-de_DE-kerstin-low", TEXT, 0),
 ]
+# nur Messung (nicht in alle_stimmen): wie schnell mit weniger Rechenschritten?
+SPEED_TESTS = [(1, "Sprecherin 1 mit 4 Schritten", 0, 4), (1, "Sprecherin 1 mit 5 Schritten", 0, 5)]
 
 _tts = {}
 
@@ -81,12 +83,12 @@ def tts_for(kind, model):
     return t
 
 
-def synth(kind, model, text):
+def synth(kind, model, text, steps=8):
     t = tts_for(kind, model)
     if kind == "st":
         g = sherpa_onnx.GenerationConfig()
         g.sid = model
-        g.num_steps = 8
+        g.num_steps = steps
         g.speed = 1.0
         g.extra["lang"] = "de"
         return t.generate(text, g)
@@ -108,7 +110,7 @@ def main():
     lines = []
     combined = []
     gap = np.zeros(int(24000 * 0.7), dtype=np.float32)
-    for nr, name, kind, model, text in VOICES:
+    for nr, name, kind, model, text, steps in VOICES:
         if kind == "st" and not os.path.isdir(ST):
             continue
         if kind == "piper" and not os.path.isdir(f"{M}/{model}"):
@@ -117,7 +119,7 @@ def main():
         try:
             synth(kind, model, "Hallo.")  # aufwaermen
             t0 = time.time()
-            a = synth(kind, model, text.format(nr=nr))
+            a = synth(kind, model, text.format(nr=WORDS[nr] if kind == "st" else nr), steps or 8)
             dt = time.time() - t0
         except Exception as e:  # weiter mit der naechsten Stimme
             lines.append(f"{nr:2d} {name}: FEHLER {e}")
@@ -143,6 +145,14 @@ def main():
         lines.append(f"{nr:2d} {name}: {sr} Hz, {dur:.1f} s gesprochen, {dt:.2f} s gerechnet (Faktor {dt / dur:.2f})\n   gehoert: {heard}")
         print(lines[-1], flush=True)
         os.remove(wav)
+    if os.path.isdir(ST):
+        for nr, name, sid, steps in SPEED_TESTS:
+            t0 = time.time()
+            a = synth("st", sid, TEXT_WORDS.format(nr=WORDS[nr]), steps)
+            dt = time.time() - t0
+            dur = len(a.samples) / a.sample_rate
+            lines.append(f"   Messung {name}: {dur:.1f} s gesprochen, {dt:.2f} s gerechnet (Faktor {dt / dur:.2f})")
+            print(lines[-1], flush=True)
     if combined:
         sf.write(f"{OUT}/alle_stimmen.wav", np.concatenate(combined), 24000)
         subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", f"{OUT}/alle_stimmen.wav", "-codec:a", "libmp3lame", "-b:a", "96k", f"{OUT}/alle_stimmen.mp3"], check=True)
