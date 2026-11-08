@@ -43,4 +43,23 @@ object SpeechText {
         s = s.replace(Regex("""\s*[·|]\s*"""), ", ").replace(Regex("""\s+[–-]\s+"""), ", ")
         return s.replace(Regex("""\s{2,}"""), " ").trim()
     }
+
+    private val ordinalRx = Regex("""(?<!\d)(\d{1,3})\.\s+(Ausfahrt|Abfahrt|Ausgang|Kreuzung|Ampel|Querstraße|Straße|Abzweigung|Möglichkeit)""")
+    private val letterDigit = Regex("""(\p{L})(\d)""")
+    private val houseNumber = Regex("""(?<!\d)(\d{1,4})([a-zA-Z])\b""")
+    private val oneOClock = Regex("""(?<!\d)1(?=\s+Uhr)""")
+    private val digits = Regex("""\d{1,9}""")
+
+    /**
+     * Ziffern als deutsche Woerter (nach [normalize]) – fuer Stimmen wie Supertonic, die Ziffern
+     * teils englisch sprechen. "Ankunft gegen 14 Uhr 35" -> "… vierzehn Uhr fünfunddreißig".
+     */
+    fun spellNumbers(text: String): String {
+        var s = letterDigit.replace(text, "$1 $2")
+        s = ordinalRx.replace(s) { m -> GermanNumbers.ordinal(m.groupValues[1].toLong()) + " " + m.groupValues[2] }
+        s = houseNumber.replace(s) { m -> GermanNumbers.words(m.groupValues[1].toLong()) + " " + m.groupValues[2] }
+        s = oneOClock.replace(s, "ein")
+        s = digits.replace(s) { m -> GermanNumbers.words(m.value.toLong()) }
+        return s
+    }
 }

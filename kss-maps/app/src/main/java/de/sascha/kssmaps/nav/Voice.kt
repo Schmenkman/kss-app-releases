@@ -11,6 +11,7 @@ import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import de.sascha.kssmaps.core.SpeechText
+import de.sascha.kssmaps.core.VoiceCatalog
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -18,8 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * Sprachausgabe (deutsche Stimme). Laeuft ueber den Navigations-Audiokanal, damit Android Auto
  * die Ansage im Auto abspielt und Musik dabei leiser stellt.
  *
- * Standard ist die eingebaute natuerliche Stimme ([NeuralVoice], Piper "Thorsten", offline).
- * Bis sie bereit ist, und wenn sie ausgeschaltet ist, spricht die Android-Sprachausgabe –
+ * Standard ist eine eingebaute natuerliche Stimme ([NeuralVoice], offline; waehlbar: 5 Sprecherinnen,
+ * 5 Sprecher, Thorsten). Bis sie bereit ist, und wenn sie ausgeschaltet ist, spricht die Android-Sprachausgabe –
  * Programm und Stimme dafuer sind waehlbar; ohne Wahl die beste deutsche Offline-Stimme.
  */
 class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = null) : TextToSpeech.OnInitListener {
@@ -41,7 +42,7 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
     private var tone: ToneGenerator? = null
     private val main = Handler(Looper.getMainLooper())
     /** Eingebaute natuerliche Stimme. */
-    val neural = NeuralVoice(app, attrs)
+    val neural = NeuralVoice(app, attrs, VoiceCatalog.byId(prefs?.neuralVoiceId))
 
     @Volatile var muted = false
         set(v) {
@@ -62,6 +63,16 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
     /** Schalter "Natürliche Stimme" in den Einstellungen geaendert. */
     fun neuralChanged() {
         if (neuralOn) neural.start() else neural.stop()
+    }
+
+    /**
+     * Eingebaute Stimme waehlen (Einstellungen). Laeuft ihr Modell schon, gleich eine Probe – sonst
+     * wird ihr Paket geladen; bis dahin spricht die bisherige Stimme.
+     */
+    fun selectNeural(v: VoiceCatalog.Option, sample: Boolean = true) {
+        prefs?.neuralVoiceId = v.id
+        neural.select(v)
+        if (sample && neuralOn && neural.canSpeak(v)) say(SAMPLE, urgent = true, force = true)
     }
 
     val neuralReady: Boolean get() = neuralOn && neural.ready
@@ -188,7 +199,7 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
 
     /** urgent = laufende Ansage abbrechen (z. B. "Jetzt rechts abbiegen"). */
     fun say(text: String, urgent: Boolean = false, force: Boolean = false) {
-        android.util.Log.i("KSSMaps", "SAY${if (muted && !force) " (stumm)" else ""}${if (neuralReady) " [natürlich]" else ""}: $text")
+        android.util.Log.i("KSSMaps", "SAY${if (muted && !force) " (stumm)" else ""}${if (neuralReady) " [natürlich ${neural.speaking?.id}]" else ""}: $text")
         if ((muted && !force) || text.isBlank()) return
         if (neuralReady) {
             am.requestAudioFocus(focus)

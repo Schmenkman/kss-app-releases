@@ -896,6 +896,12 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
                 engine.testGpsGapUntil = android.os.SystemClock.elapsedRealtime() + sec * 1000L
                 android.util.Log.i("KSSMaps", "TEST_GPS_GAP ${sec}s")
             }
+            // Eingebaute Stimme wechseln (ID aus VoiceCatalog, z. B. "thorsten", "st-f1")
+            i.getStringExtra("test_neural_voice")?.let { id ->
+                val o = de.sascha.kssmaps.core.VoiceCatalog.byId(id)
+                android.util.Log.i("KSSMaps", "TEST_NEURAL_VOICE ${o.id}")
+                NaviApp.instance.voice.selectNeural(o, sample = false)
+            }
             // Hoerprobe der eingebauten Stimme als WAV (files/stimme_probe.wav, Testfahrt-Anhang)
             i.getStringExtra("test_voice_wav")?.let { t ->
                 val v = NaviApp.instance.voice

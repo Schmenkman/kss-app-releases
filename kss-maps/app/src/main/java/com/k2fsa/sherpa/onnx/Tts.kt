@@ -1,8 +1,8 @@
-// Unveraendert uebernommen aus sherpa-onnx v1.12.15 (kotlin-api/Tts.kt):
-//   https://github.com/k2-fsa/sherpa-onnx/blob/v1.12.15/sherpa-onnx/kotlin-api/Tts.kt
+// Unveraendert uebernommen aus sherpa-onnx v1.13.8 (kotlin-api/Tts.kt):
+//   https://github.com/k2-fsa/sherpa-onnx/blob/v1.13.8/sherpa-onnx/kotlin-api/Tts.kt
 // Lizenz: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
 // Paket- und Feldnamen muessen exakt so bleiben: die native Bibliothek (libsherpa-onnx-jni.so,
-// in der CI aus dem Release v1.12.15 geladen) greift ueber JNI genau darauf zu.
+// in der CI aus dem Release v1.13.8 geladen) greift ueber JNI genau darauf zu.
 //
 // Copyright (c)  2023  Xiaomi Corporation
 package com.k2fsa.sherpa.onnx
@@ -42,6 +42,19 @@ data class OfflineTtsKokoroModelConfig(
     var lengthScale: Float = 1.0f,
 )
 
+data class OfflineTtsZipVoiceModelConfig(
+    var tokens: String = "",
+    var encoder: String = "",
+    var decoder: String = "",
+    var vocoder: String = "",
+    var dataDir: String = "",
+    var lexicon: String = "",
+    var featScale: Float = 0.1f,
+    var tShift: Float = 0.5f,
+    var targetRms: Float = 0.1f,
+    var guidanceScale: Float = 1.0f,
+)
+
 data class OfflineTtsKittenModelConfig(
     var model: String = "",
     var voices: String = "",
@@ -50,11 +63,49 @@ data class OfflineTtsKittenModelConfig(
     var lengthScale: Float = 1.0f,
 )
 
+/**
+ * Configuration for Pocket TTS models.
+ *
+ * See https://k2-fsa.github.io/sherpa/onnx/tts/pocket/index.html for details.
+ *
+ * @property lmFlow Path to the LM flow model (.onnx)
+ * @property lmMain Path to the LM main model (.onnx)
+ * @property encoder Path to the encoder model (.onnx)
+ * @property decoder Path to the decoder model (.onnx)
+ * @property textConditioner Path to the text conditioner model (.onnx)
+ * @property vocabJson Path to vocabulary JSON file
+ * @property tokenScoresJson Path to token scores JSON file
+ */
+data class OfflineTtsPocketModelConfig(
+  var lmFlow: String = "",
+  var lmMain: String = "",
+  var encoder: String = "",
+  var decoder: String = "",
+  var textConditioner: String = "",
+  var vocabJson: String = "",
+  var tokenScoresJson: String = "",
+  var voiceEmbeddingCacheCapacity: Int = 50,
+)
+
+data class OfflineTtsSupertonicModelConfig(
+  var durationPredictor: String = "",
+  var textEncoder: String = "",
+  var vectorEstimator: String = "",
+  var vocoder: String = "",
+  var ttsJson: String = "",
+  var unicodeIndexer: String = "",
+  var voiceStyle: String = "",
+)
+
 data class OfflineTtsModelConfig(
     var vits: OfflineTtsVitsModelConfig = OfflineTtsVitsModelConfig(),
     var matcha: OfflineTtsMatchaModelConfig = OfflineTtsMatchaModelConfig(),
     var kokoro: OfflineTtsKokoroModelConfig = OfflineTtsKokoroModelConfig(),
+    var zipvoice: OfflineTtsZipVoiceModelConfig = OfflineTtsZipVoiceModelConfig(),
     var kitten: OfflineTtsKittenModelConfig = OfflineTtsKittenModelConfig(),
+    var pocket: OfflineTtsPocketModelConfig = OfflineTtsPocketModelConfig(),
+    var supertonic: OfflineTtsSupertonicModelConfig = OfflineTtsSupertonicModelConfig(),
+
     var numThreads: Int = 1,
     var debug: Boolean = false,
     var provider: String = "cpu",
@@ -82,6 +133,17 @@ class GeneratedAudio(
     ): Boolean
 }
 
+data class GenerationConfig(
+    var silenceScale: Float = 0.2f,
+    var speed: Float = 1.0f,
+    var sid: Int = 0,
+    var referenceAudio: FloatArray? = null,
+    var referenceSampleRate: Int = 0,
+    var referenceText: String? = null,
+    var numSteps: Int = 5,
+    var extra: Map<String, String>? = null
+)
+
 class OfflineTts(
     assetManager: AssetManager? = null,
     var config: OfflineTtsConfig,
@@ -94,6 +156,9 @@ class OfflineTts(
         } else {
             newFromFile(config)
         }
+        require(ptr != 0L) {
+            "Invalid OfflineTtsConfig: failed to create native OfflineTts"
+        }
     }
 
     fun sampleRate() = getSampleRate(ptr)
@@ -105,11 +170,7 @@ class OfflineTts(
         sid: Int = 0,
         speed: Float = 1.0f
     ): GeneratedAudio {
-        val objArray = generateImpl(ptr, text = text, sid = sid, speed = speed)
-        return GeneratedAudio(
-            samples = objArray[0] as FloatArray,
-            sampleRate = objArray[1] as Int
-        )
+        return generateImpl(ptr, text = text, sid = sid, speed = speed)
     }
 
     fun generateWithCallback(
@@ -118,17 +179,28 @@ class OfflineTts(
         speed: Float = 1.0f,
         callback: (samples: FloatArray) -> Int
     ): GeneratedAudio {
-        val objArray = generateWithCallbackImpl(
+        return generateWithCallbackImpl(
             ptr,
             text = text,
             sid = sid,
             speed = speed,
             callback = callback
         )
-        return GeneratedAudio(
-            samples = objArray[0] as FloatArray,
-            sampleRate = objArray[1] as Int
-        )
+    }
+
+    fun generateWithConfig(
+      text: String,
+      config: GenerationConfig
+    ): GeneratedAudio {
+        return generateWithConfigImpl(ptr, text, config, null)
+    }
+
+    fun generateWithConfigAndCallback(
+        text: String,
+        config: GenerationConfig,
+        callback: (samples: FloatArray) -> Int
+    ): GeneratedAudio {
+        return generateWithConfigImpl(ptr, text, config, callback)
     }
 
     fun allocate(assetManager: AssetManager? = null) {
@@ -137,6 +209,9 @@ class OfflineTts(
                 newFromAsset(assetManager, config)
             } else {
                 newFromFile(config)
+            }
+            require(ptr != 0L) {
+                "Invalid OfflineTtsConfig: failed to create native OfflineTts"
             }
         }
     }
@@ -179,7 +254,7 @@ class OfflineTts(
         text: String,
         sid: Int = 0,
         speed: Float = 1.0f
-    ): Array<Any>
+    ): GeneratedAudio
 
     private external fun generateWithCallbackImpl(
         ptr: Long,
@@ -187,7 +262,15 @@ class OfflineTts(
         sid: Int = 0,
         speed: Float = 1.0f,
         callback: (samples: FloatArray) -> Int
-    ): Array<Any>
+    ): GeneratedAudio
+
+
+    private external fun generateWithConfigImpl(
+        ptr: Long,
+        text: String,
+        config: GenerationConfig,
+        callback: ((samples: FloatArray) -> Int)?
+    ): GeneratedAudio
 
     companion object {
         init {
@@ -211,7 +294,15 @@ fun getOfflineTtsConfig(
     ruleFsts: String,
     ruleFars: String,
     numThreads: Int? = null,
-    isKitten: Boolean = false
+    isKitten: Boolean = false,
+    isSupertonic: Boolean = false,
+    durationPredictor: String = "", // for Supertonic
+    textEncoder: String = "", // for Supertonic
+    vectorEstimator: String = "", // for Supertonic
+    supertonicVocoder: String = "", // for Supertonic
+    ttsJson: String = "", // for Supertonic
+    unicodeIndexer: String = "", // for Supertonic
+    voiceStyle: String = "", // for Supertonic
 ): OfflineTtsConfig {
     // For Matcha TTS, please set
     // acousticModelName, vocoder
@@ -225,6 +316,10 @@ fun getOfflineTtsConfig(
     // For VITS, please set
     // modelName
 
+    // For Supertonic TTS, please set
+    // isSupertonic, durationPredictor, textEncoder, vectorEstimator,
+    // supertonicVocoder, ttsJson, unicodeIndexer, voiceStyle
+
     val numberOfThreads = if (numThreads != null) {
         numThreads
     } else if (voices.isNotEmpty()) {
@@ -234,7 +329,7 @@ fun getOfflineTtsConfig(
         2
     }
 
-    if (modelName.isEmpty() && acousticModelName.isEmpty()) {
+    if (!isSupertonic && modelName.isEmpty() && acousticModelName.isEmpty()) {
         throw IllegalArgumentException("Please specify a TTS model")
     }
 
@@ -246,7 +341,7 @@ fun getOfflineTtsConfig(
         throw IllegalArgumentException("Please provide vocoder for Matcha TTS")
     }
 
-    val vits = if (modelName.isNotEmpty() && voices.isEmpty()) {
+    val vits = if (modelName.isNotEmpty() && voices.isEmpty() && !isSupertonic) {
         OfflineTtsVitsModelConfig(
             model = "$modelDir/$modelName",
             lexicon = "$modelDir/$lexicon",
@@ -269,7 +364,7 @@ fun getOfflineTtsConfig(
         OfflineTtsMatchaModelConfig()
     }
 
-    val kokoro = if (voices.isNotEmpty() && !isKitten) {
+    val kokoro = if (voices.isNotEmpty() && !isKitten && !isSupertonic) {
         OfflineTtsKokoroModelConfig(
             model = "$modelDir/$modelName",
             voices = "$modelDir/$voices",
@@ -296,12 +391,27 @@ fun getOfflineTtsConfig(
         OfflineTtsKittenModelConfig()
     }
 
+    val supertonic = if (isSupertonic) {
+        OfflineTtsSupertonicModelConfig(
+            durationPredictor = "$modelDir/$durationPredictor",
+            textEncoder = "$modelDir/$textEncoder",
+            vectorEstimator = "$modelDir/$vectorEstimator",
+            vocoder = "$modelDir/$supertonicVocoder",
+            ttsJson = "$modelDir/$ttsJson",
+            unicodeIndexer = "$modelDir/$unicodeIndexer",
+            voiceStyle = "$modelDir/$voiceStyle",
+        )
+    } else {
+        OfflineTtsSupertonicModelConfig()
+    }
+
     return OfflineTtsConfig(
         model = OfflineTtsModelConfig(
             vits = vits,
             matcha = matcha,
             kokoro = kokoro,
             kitten = kitten,
+            supertonic = supertonic,
             numThreads = numberOfThreads,
             debug = true,
             provider = "cpu",

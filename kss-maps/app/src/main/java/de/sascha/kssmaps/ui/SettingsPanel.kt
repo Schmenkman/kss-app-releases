@@ -159,6 +159,28 @@ class SettingsPanel(
         content.addView(Ui.button(ctx, label, Ui.LIGHT, Ui.TEXT) { click() }, Ui.linLp().margins(ctx, t = 6))
     }
 
+    /** Eingebaute Stimme waehlen – antippen = waehlen und (wenn schon geladen) gleich anhoeren. */
+    private fun pickNeuralVoice() {
+        val voice = NaviApp.instance.voice
+        val list = de.sascha.kssmaps.core.VoiceCatalog.all
+        val labels = list.map { o ->
+            val name = if (o.pack == de.sascha.kssmaps.core.VoiceCatalog.Pack.THORSTEN) "${o.name} (bisherige Stimme)" else o.name
+            if (voice.neural.installed(o.pack)) name else "$name · lädt einmalig ca. ${o.pack.approxMb} MB"
+        }
+        AlertDialog.Builder(ctx).setTitle("Stimme wählen – antippen zum Anhören")
+            .setSingleChoiceItems(labels.toTypedArray(), list.indexOf(voice.neural.wanted)) { _, w ->
+                val o = list[w]
+                voice.selectNeural(o)
+                if (!voice.neural.canSpeak(o)) {
+                    val now = voice.neural.speaking?.let { "„${it.name}“" } ?: "die Android-Stimme"
+                    host.toast("„${o.name}“ wird geladen (ca. ${o.pack.approxMb} MB) – bis dahin spricht $now")
+                }
+            }
+            .setPositiveButton("Fertig", null)
+            .setOnDismissListener { if (isShown) render() }
+            .show()
+    }
+
     fun render() {
         content.removeAllViews()
         val e = host.engine
@@ -232,6 +254,7 @@ class SettingsPanel(
             voice.neuralChanged()
             render()
         }
+        if (prefs.neuralVoice) action("Stimme: ${voice.neural.wanted.name} – ändern") { pickNeuralVoice() }
         val voiceStatus = Ui.text(ctx, voice.neuralStatus(), 13f, Ui.TEXT2).apply { setPadding(Ui.dp(ctx, 4), 0, Ui.dp(ctx, 4), Ui.dp(ctx, 6)) }
         content.addView(voiceStatus)
         // Waehrend die Stimme geladen wird: Fortschritt live zeigen
@@ -277,7 +300,7 @@ class SettingsPanel(
             }
         }
         action("Probe hören") { voice.sample() }
-        note("Die eingebaute Stimme ist ein neuronales Sprachmodell (Piper „Thorsten“): klingt wie ein Mensch, läuft komplett auf dem Handy, kostenlos und ohne Internet – auch im Funkloch und in Android Auto. Sie wird beim ersten Start einmalig geladen (ca. 60 MB), bis dahin spricht die Android-Sprachausgabe.")
+        note("Die eingebauten Stimmen sind neuronale Sprachmodelle (Supertonic 3: 5 Sprecherinnen, 5 Sprecher; Piper „Thorsten“): klingen wie Menschen, laufen komplett auf dem Handy, kostenlos und ohne Internet – auch im Funkloch und in Android Auto. Die gewählte Stimme wird einmalig geladen (Sprecherinnen/Sprecher zusammen ca. 125 MB, Thorsten ca. 60 MB), bis dahin spricht die bisherige.")
 
         section("Route")
         toggle("Mautstraßen meiden", prefs.avoidTolls) { prefs.avoidTolls = it }

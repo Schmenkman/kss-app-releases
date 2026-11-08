@@ -127,13 +127,26 @@ shot 03c_wegbeschreibung
 act --ez test_close_panels true
 sleep 2
 
-# Eingebaute Stimme: das Sprachpaket laedt die App seit dem Start im Hintergrund (einmalig ~60 MB).
-# Bereit? Dann Hoerprobe als WAV (Testfahrt-Anhang) – die Fahrt danach spricht mit dieser Stimme.
-wait_log "NEURAL_VOICE (ready|nicht verfuegbar)" 1 300 || true
-act --es test_voice_wav probe
-wait_log "NEURAL_WAV" 1 90 || true
-adb exec-out run-as $PKG cat files/stimme_probe.wav > "$OUT/stimme_probe.wav" 2>/dev/null
-if [ -s "$OUT/stimme_probe.wav" ]; then echo "Hoerprobe $(stat -c %s "$OUT/stimme_probe.wav") Bytes"; else rm -f "$OUT/stimme_probe.wav"; echo "keine Hoerprobe"; fi
+# Eingebaute Stimmen: das Paket der Standardstimme ("Sprecherin 1", Supertonic, einmalig ~125 MB)
+# laedt die App seit dem Start im Hintergrund. Bereit? Dann Hoerprobe als WAV (Testfahrt-Anhang).
+# Danach Wechsel zu Thorsten (zweites Paket – bis es da ist, spricht die Sprecherin weiter), zu
+# einem Sprecher und zurueck: die Fahrt spricht wieder mit der Standardstimme.
+probe() { # Name
+  local n
+  n=$(( $(grep -c "NEURAL_WAV" "$OUT/logcat.txt" 2>/dev/null || true) + 1 ))
+  act --es test_voice_wav probe
+  wait_log "NEURAL_WAV" "$n" 120 || true
+  adb exec-out run-as $PKG cat files/stimme_probe.wav > "$OUT/stimme_probe_$1.wav" 2>/dev/null
+  if [ -s "$OUT/stimme_probe_$1.wav" ]; then echo "Hoerprobe $1: $(stat -c %s "$OUT/stimme_probe_$1.wav") Bytes"; else rm -f "$OUT/stimme_probe_$1.wav"; echo "keine Hoerprobe $1"; fi
+}
+wait_log "NEURAL_VOICE (ready|nicht verfuegbar)" 1 420 || true
+probe sprecherin1
+act --es test_neural_voice thorsten
+wait_log "NEURAL_VOICE ready stimme=thorsten" 1 300 && probe thorsten
+act --es test_neural_voice st-m2
+wait_log "NEURAL_VOICE ready stimme=st-m2" 1 120 && probe sprecher2
+act --es test_neural_voice st-f1
+wait_log "NEURAL_VOICE ready stimme=st-f1" 2 120 || true
 
 # "Los" tippen (Fallback: Test-Intent)
 python3 $T/ui.py tap --text "Los" || act --ez test_start_navigation true
@@ -306,6 +319,13 @@ shot 10d_warnungen
 adb shell input swipe 540 1900 540 1000 400
 sleep 2
 shot 10e_stimme
+# Auswahl der eingebauten Stimme (nur ansehen, zurueck ohne Wahl)
+if python3 $T/ui.py tap --text "– ändern" --contains; then
+  sleep 3
+  shot 10f_stimmwahl
+  adb shell input keyevent KEYCODE_BACK
+  sleep 2
+fi
 act --ez test_close_panels true
 sleep 2
 

@@ -36,6 +36,11 @@ val voiceUrl = (System.getenv("KSSMAPS_VOICE_URL") ?: "").trim()
 val voiceSha = (System.getenv("KSSMAPS_VOICE_SHA256") ?: "").trim().lowercase()
     .also { require(it.isEmpty() || Regex("^[0-9a-f]{64}$").matches(it)) { "KSSMAPS_VOICE_SHA256 ungueltig" } }
 val voiceSize = (System.getenv("KSSMAPS_VOICE_SIZE") ?: "").trim().toLongOrNull() ?: 0L
+// Zweites Sprachpaket: Supertonic 3 (5 Sprecherinnen, 5 Sprecher) – laedt die App nur, wenn eine
+// dieser Stimmen gewaehlt wird.
+val voiceStSha = (System.getenv("KSSMAPS_VOICE_ST_SHA256") ?: "").trim().lowercase()
+    .also { require(it.isEmpty() || Regex("^[0-9a-f]{64}$").matches(it)) { "KSSMAPS_VOICE_ST_SHA256 ungueltig" } }
+val voiceStSize = (System.getenv("KSSMAPS_VOICE_ST_SIZE") ?: "").trim().toLongOrNull() ?: 0L
 
 android {
     namespace = "de.sascha.kssmaps"
@@ -54,6 +59,9 @@ android {
         buildConfigField("String", "VOICE_URL", "\"$voiceUrl\"")
         buildConfigField("String", "VOICE_SHA256", "\"$voiceSha\"")
         buildConfigField("long", "VOICE_SIZE", "${voiceSize}L")
+        buildConfigField("String", "VOICE_ST_URL", "\"https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-stimme/stimme-supertonic-3.zip\"")
+        buildConfigField("String", "VOICE_ST_SHA256", "\"$voiceStSha\"")
+        buildConfigField("long", "VOICE_ST_SIZE", "${voiceStSize}L")
         ndk {
             // Nur echte Handys – halbiert die APK-Groesse (MapLibre bringt native Bibliotheken mit).
             // -PallAbis=true (Emulator-Test in der CI) baut zusaetzlich x86/x86_64.

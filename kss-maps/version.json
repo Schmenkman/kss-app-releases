@@ -1,10 +1,12 @@
 {
-  "version": "1.3.1",
+  "version": "1.4.0",
   "notes": [
+    "Neu: natürliche Frauenstimme – als Standard spricht jetzt „Sprecherin 1“ (Supertonic 3). Zur Wahl unter Einstellungen → „Stimme der Ansagen“ → „Stimme: … – ändern“: 5 Sprecherinnen, 5 Sprecher und Thorsten; antippen = gleich anhören. Alle laufen komplett auf dem Handy (kostenlos, ohne Internet, auch in Android Auto)",
+    "Das Paket der neuen Stimmen (ca. 125 MB, für alle 10 Stimmen) lädt die App einmalig von selbst – am besten im WLAN öffnen. Bis es da ist, spricht Thorsten weiter",
+    "Zahlen, Uhrzeiten und Entfernungen werden für die neuen Stimmen als deutsche Wörter gesprochen („dreihundert Meter“, „vierzehn Uhr fünfunddreißig“)",
     "Android Auto: Knöpfe deutlich größer (bei Bedarf in zwei Spalten); oben rechts nur noch die Lupe – „⋮“ und „Ende“ sind weg, die Einträge aus „⋮“ stehen jetzt unter Einstellungen",
     "Android Auto: Ankunftsfeld unten links (Restzeit, Strecke, Ankunft) mit dem roten X zum Beenden – wie bei Google Maps; Zoom − und + größer",
     "Updates direkt über KingInstaller: „Installieren“ lädt die neue Version und öffnet KingInstaller – so bleibt KSS-Maps in Android Auto sichtbar. Wurde KSS-Maps mit dem normalen Android-Installer installiert (dann blendet Android Auto es aus), weist die App darauf hin und repariert es auf Wunsch",
-    "Neu: natürliche Stimme „Thorsten“ eingebaut – klingt wie ein Mensch, läuft komplett auf dem Handy (kostenlos, ohne Internet, auch in Android Auto). Wird beim ersten Start einmalig von selbst geladen (ca. 60 MB), bis dahin spricht die Android-Stimme; Stand unter Einstellungen → „Stimme der Ansagen“",
     "Android Auto: immer sichtbare Knöpfe rechts – Kunde anrufen, Termine, Übersicht mit Alternativen (eine staufrei), Tag/Nacht, Stau-Korrektur, Tanken, Einstellungen, Zentrieren; Zoom und Beenden unten",
     "Lautsprecher-Knopf auch in Android Auto (Knopfspalte rechts)",
     "Android Auto: Tag/Nacht folgt jetzt der App (Automatisch nach Sonnenstand) statt dem Nachtmodus des Autos",
@@ -20,5 +22,5 @@
     "Android Auto: „Termine“ und „Kunde“ in der Leiste; die letzten Ziele sind jetzt unter „Mehr“ und in der Suche",
     "Neu: Startpunkt direkt in der Suche – oben „Von … ändern ›“ antippen, dann das Ziel"
   ],
-  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.3.1/kss-maps.apk"
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.4.0/kss-maps.apk"
 }

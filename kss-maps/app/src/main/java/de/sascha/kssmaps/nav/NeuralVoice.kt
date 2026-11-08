@@ -7,11 +7,16 @@ import android.media.AudioTrack
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
+import com.k2fsa.sherpa.onnx.GeneratedAudio
+import com.k2fsa.sherpa.onnx.GenerationConfig
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsSupertonicModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
 import de.sascha.kssmaps.BuildConfig
+import de.sascha.kssmaps.core.VoiceCatalog
+import de.sascha.kssmaps.core.VoiceCatalog.Pack
 import de.sascha.kssmaps.core.VoicePack
 import de.sascha.kssmaps.data.Http
 import java.io.File
@@ -19,25 +24,41 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 
 /**
- * Eingebaute natuerliche Stimme: Piper-Sprachmodell "Thorsten" (neuronal, klingt wie ein Mensch),
- * gerechnet von sherpa-onnx komplett auf dem Handy – kostenlos, ohne Konto, ohne Schluessel.
+ * Eingebaute natuerliche Stimmen (neuronal, klingen wie ein Mensch), gerechnet von sherpa-onnx
+ * komplett auf dem Handy – kostenlos, ohne Konto, ohne Schluessel. Zur Wahl stehen die Stimmen aus
+ * [VoiceCatalog]: Supertonic 3 (5 Sprecherinnen, 5 Sprecher) und Piper "Thorsten".
  *
- * Das Sprachpaket (~60 MB) laedt die App beim ersten Start einmalig von ihrer GitHub-Seite
- * (Pruefsumme steht fest in der App), danach spricht sie auch im Funkloch. Bis es bereit ist –
- * und falls etwas schiefgeht – spricht wie bisher die Android-Sprachausgabe.
+ * Das Paket der gewaehlten Stimme laedt die App einmalig von ihrer GitHub-Seite (Pruefsumme steht
+ * fest in der App), danach spricht sie auch im Funkloch. Bis es bereit ist, spricht eine schon
+ * vorhandene Stimme weiter – sonst, und falls etwas schiefgeht, die Android-Sprachausgabe.
  */
-class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
+class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: VoiceCatalog.Option) {
     enum class State { OFF, WAITING, DOWNLOADING, LOADING, READY, UNSUPPORTED }
+
+    /** Gestartetes Modell eines Pakets. */
+    private class Engine(val pack: Pack, val tts: OfflineTts)
+    /** Was gerade spricht: Modell und Stimme gehoeren immer zusammen (ein Zugriff, nie gemischt). */
+    private class Current(val engine: Engine, val voice: VoiceCatalog.Option)
+    /** Fertig gerechnete Ansage. */
+    private class Pcm(val samples: ShortArray, val rate: Int)
+    private class Source(val url: String, val sha: String, val size: Long)
 
     private val app = ctx.applicationContext
     private val baseDir = File(app.noBackupFilesDir, "stimme")
-    private val modelDir = File(baseDir, PACK)
 
+    /** Gewaehlte Stimme. */
+    @Volatile var wanted: VoiceCatalog.Option = initial
+        private set
+    /** Zustand der gewaehlten Stimme (laedt, bereit, …). */
     @Volatile var state = State.OFF
         private set
     /** Fortschritt des Ladens in Prozent. */
@@ -49,35 +70,73 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
     @Volatile var lastRtf = 0.0
         private set
     @Volatile private var enabled = false
-    @Volatile private var tts: OfflineTts? = null
-    @Volatile private var sampleRate = 22050
+    @Volatile private var current: Current? = null
+    @Volatile private var libraryBroken = false
+    /** Supertonic: Rechenschritte – weniger, wenn das Handy zu langsam rechnet. */
+    @Volatile private var steps = VoiceCatalog.MAX_STEPS
+    /** Pakete, die sich auf diesem Geraet nicht nutzen lassen, mit Grund. */
+    private val broken = ConcurrentHashMap<Pack, String>()
+    /** Fehlgeschlagene Starts je Paket (nur im Lade-Thread). */
+    private val failures = HashMap<Pack, Int>()
     private var loader: Thread? = null
+    private val wake = Semaphore(0)
     private val generation = AtomicInteger()
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "kss-stimme").apply { isDaemon = true } }
-    // nur im Arbeits-Thread benutzt: zuletzt gesprochene Saetze ("Jetzt rechts abbiegen.")
-    private val cache = object : LinkedHashMap<String, ShortArray>(48, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ShortArray>) = size > 40
+    // nur im Arbeits-Thread benutzt: zuletzt gesprochene Saetze ("Jetzt rechts abbiegen."), je Stimme
+    private val cache = object : LinkedHashMap<String, Pcm>(48, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pcm>) = size > 40
     }
 
-    val ready: Boolean get() = state == State.READY && tts != null
+    /** Spricht eine eingebaute Stimme (die gewaehlte oder zur Ueberbrueckung eine andere)? */
+    val ready: Boolean get() = current != null
+    /** Stimme, die gerade spricht – bis die gewaehlte bereit ist, ggf. eine andere. */
+    val speaking: VoiceCatalog.Option? get() = current?.voice
+    /** Wird die gewaehlte Stimme noch vorbereitet? */
     val busy: Boolean get() = state == State.WAITING || state == State.DOWNLOADING || state == State.LOADING
+
+    /** Kann diese Stimme sofort sprechen (ihr Modell laeuft schon)? */
+    fun canSpeak(v: VoiceCatalog.Option): Boolean = current?.engine?.pack == v.pack
+
+    /** Ist das Paket schon auf dem Handy? */
+    fun installed(p: Pack): Boolean = source(p)?.let { installed(p, it) } ?: false
 
     /** Einschalten: Sprachpaket laden bzw. Modell starten – im Hintergrund, bei Netzproblemen spaeter erneut. */
     @Synchronized
     fun start() {
         enabled = true
-        if (state == State.READY || state == State.UNSUPPORTED || loader?.isAlive == true) return
-        loader = Thread({ prepareLoop() }, "kss-stimme-laden").apply {
-            isDaemon = true
-            start()
-        }
+        kick()
     }
 
     /** Ausschalten: nichts mehr sprechen, ein laufender Download wird angehalten (spaeter fortgesetzt). */
     fun stop() {
         enabled = false
         stopAll()
+        wake.release()
         if (busy) state = State.OFF
+    }
+
+    /**
+     * Andere Stimme waehlen. Laeuft ihr Modell schon (gleiches Paket), spricht sie ab der naechsten
+     * Ansage; sonst wird ihr Paket geladen und gestartet – bis dahin spricht die bisherige Stimme.
+     */
+    fun select(v: VoiceCatalog.Option) {
+        synchronized(this) {
+            wanted = v
+            val c = current
+            if (c != null && c.engine.pack == v.pack) {
+                current = Current(c.engine, v)
+                if (enabled) {
+                    problem = null
+                    state = State.READY
+                }
+            } else if (enabled) {
+                problem = null
+                progress = 0
+                state = State.LOADING
+            }
+        }
+        Log.i(TAG, "NEURAL_VOICE gewaehlt ${v.id}")
+        kick()
     }
 
     /** Laufende und wartende Ansagen verwerfen. */
@@ -85,72 +144,237 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
         generation.incrementAndGet()
     }
 
-    private fun prepareLoop() {
-        var pause = 60_000L
-        while (enabled) {
-            try {
-                if (prepareModel()) return
-                if (state == State.UNSUPPORTED) return
-            } catch (e: Throwable) {
-                problem = e.message ?: e.javaClass.simpleName
-                Log.w(TAG, "NEURAL_VOICE Fehler: $problem")
-                if (state != State.UNSUPPORTED) state = State.WAITING
-            }
-            if (!enabled) break
-            try {
-                Thread.sleep(pause)
-            } catch (e: InterruptedException) {
-                return
-            }
-            pause = min(pause * 2, 15 * 60_000L)
+    /** Lade-Thread starten bzw. wecken (z. B. nach einer neuen Wahl). */
+    @Synchronized
+    private fun kick() {
+        if (!enabled || libraryBroken) return
+        val l = loader
+        if (l != null && l.isAlive) {
+            wake.release()
+            return
         }
-        if (state != State.READY && state != State.UNSUPPORTED) state = State.OFF
+        loader = Thread({ prepareLoop() }, "kss-stimme-laden").apply {
+            isDaemon = true
+            start()
+        }
     }
 
-    /** true = bereit. */
-    private fun prepareModel(): Boolean {
-        if (!libraryOk()) return false
-        if (BuildConfig.VOICE_URL.isBlank() || BuildConfig.VOICE_SHA256.isBlank()) {
-            unsupported("In dieser Version nicht enthalten")
+    /**
+     * Schleife beenden? Nicht, wenn inzwischen eine andere Stimme gewaehlt bzw. die Stimme gerade
+     * wieder eingeschaltet wurde (start() weckt dann nur diesen Thread).
+     */
+    @Synchronized
+    private fun finished(want: VoiceCatalog.Option, done: Boolean): Boolean {
+        if (enabled && (wanted != want || !done)) return false
+        loader = null
+        if (!enabled && busy) state = State.OFF
+        return true
+    }
+
+    private fun prepareLoop() {
+        try {
+            cleanup()
+        } catch (e: Exception) {
+            // Aufraeumen ist nicht wichtig
+        }
+        var pause = 60_000L
+        var last: Pack? = null
+        while (true) {
+            wake.drainPermits()
+            val want = wanted
+            if (want.pack != last) {
+                last = want.pack
+                pause = 60_000L
+            }
+            val done = try {
+                prepare(want)
+            } catch (e: Throwable) {
+                // nur melden, wenn der Fehler nicht vom Wechsel bzw. Ausschalten kommt
+                if (enabled && wanted.pack == want.pack) {
+                    problem = e.message ?: e.javaClass.simpleName
+                    Log.w(TAG, "NEURAL_VOICE Fehler: $problem")
+                    state = State.WAITING
+                }
+                false
+            }
+            if (done || !enabled) {
+                if (finished(want, done)) return
+                continue
+            }
+            // anderes Paket gewaehlt: sofort weiter, sonst spaeter neu versuchen (eine neue Wahl weckt)
+            if (wanted.pack != want.pack) continue
+            val woken = try {
+                wake.tryAcquire(pause, TimeUnit.MILLISECONDS)
+            } catch (e: InterruptedException) {
+                true
+            }
+            if (!woken) pause = min(pause * 2, 15 * 60_000L)
+        }
+    }
+
+    /** true = fertig (gewaehlte Stimme spricht oder ist hier nicht moeglich), false = spaeter erneut. */
+    private fun prepare(want: VoiceCatalog.Option): Boolean {
+        if (!enabled) return false
+        if (!libraryOk()) return true
+        val p = want.pack
+        current?.engine?.takeIf { it.pack == p }?.let {
+            activate(it, want, final = true)
+            return true
+        }
+        broken[p]?.let { why ->
+            unsupported(why)
+            fallback(p)
+            return true
+        }
+        val src = source(p)
+        if (src == null) {
+            broken[p] = "In dieser Version nicht enthalten"
+            unsupported(broken[p]!!)
+            fallback(p)
+            return true
+        }
+        state = State.LOADING
+        if (!installed(p, src)) {
+            // Bis das Paket da ist: eine schon vorhandene Stimme starten (falls noch keine spricht)
+            fallback(p)
+            if (!enabled || wanted.pack != p) return false
+            download(p, src)
+            if (!enabled || wanted.pack != p) return false
+            state = State.LOADING
+        }
+        val e = try {
+            open(p)
+        } catch (x: Throwable) {
+            // Startet das Modell wiederholt nicht, bleibt das Paket aus (statt endlos neu zu laden)
+            val n = (failures[p] ?: 0) + 1
+            failures[p] = n
+            if (n >= 3) broken[p] = "Stimme ließ sich nicht starten (${x.message ?: x.javaClass.simpleName})"
+            fallback(p)
+            throw x
+        }
+        if (e == null) {
+            unsupported(broken[p] ?: "Nicht verfügbar")
+            fallback(p)
+            return true
+        }
+        failures.remove(p)
+        val now = wanted
+        if (now.pack != p) {
+            // waehrend des Startens umentschieden: zur Ueberbrueckung behalten, falls sonst keine spricht
+            if (current == null) activate(e, VoiceCatalog.firstOf(p), final = false) else e.tts.release()
             return false
         }
-        if (!installed()) {
-            download()
-            if (!enabled) return false
-        }
-        load()
+        activate(e, now, final = true)
         return true
+    }
+
+    /** Eine andere schon vorhandene Stimme starten, solange gar keine spricht. */
+    private fun fallback(skip: Pack) {
+        if (current != null || !enabled) return
+        for (p in Pack.values()) {
+            if (p == skip || broken.containsKey(p)) continue
+            val src = source(p) ?: continue
+            if (!installed(p, src)) continue
+            val e = try {
+                open(p)
+            } catch (t: Throwable) {
+                Log.w(TAG, "NEURAL_VOICE Ueberbrueckung ${p.dir}: ${t.message ?: t.javaClass.simpleName}")
+                null
+            } ?: continue
+            if (current == null) activate(e, VoiceCatalog.firstOf(p), final = false) else e.tts.release()
+            return
+        }
+    }
+
+    /**
+     * Diese Stimme spricht ab der naechsten Ansage. Ein abgeloestes Modell wird erst nach einer
+     * gerade laufenden Ansage freigegeben (im Arbeits-Thread – die rechnet evtl. noch damit).
+     */
+    @Synchronized
+    private fun activate(e: Engine, chosen: VoiceCatalog.Option, final: Boolean) {
+        // inzwischen eine andere Stimme desselben Pakets gewaehlt? Dann gleich diese
+        val v = if (wanted.pack == e.pack) wanted else chosen
+        val old = current?.engine
+        current = Current(e, v)
+        if (old != null && old !== e) {
+            worker.execute {
+                cache.clear()
+                if (current?.engine !== old) {
+                    try {
+                        old.tts.release()
+                    } catch (t: Throwable) {
+                        // schon frei
+                    }
+                }
+            }
+        }
+        if (final) {
+            problem = null
+            state = State.READY
+            Log.i(TAG, "NEURAL_VOICE ready stimme=${v.id} paket=${e.pack.dir}" + if (e.pack == Pack.SUPERTONIC) " schritte=$steps" else "")
+        } else {
+            Log.i(TAG, "NEURAL_VOICE ueberbrueckung stimme=${v.id} (gewaehlt: ${wanted.id})")
+        }
     }
 
     private fun unsupported(why: String) {
         problem = why
         state = State.UNSUPPORTED
-        Log.i(TAG, "NEURAL_VOICE nicht verfuegbar: $why")
+        Log.i(TAG, "NEURAL_VOICE nicht verfuegbar: $why (${wanted.id})")
     }
 
-    private fun libraryOk(): Boolean = try {
-        System.loadLibrary("sherpa-onnx-jni")
-        true
-    } catch (e: Throwable) {
-        unsupported("Auf diesem Gerät nicht verfügbar (nur für 64-Bit-Handys)")
-        false
-    }
-
-    private fun installed(): Boolean {
-        val ok = File(modelDir, "ok")
-        return ok.isFile && ok.readText().trim() == BuildConfig.VOICE_SHA256 && VoicePack.isComplete(modelDir)
-    }
-
-    private fun download() {
-        baseDir.mkdirs()
-        // alte bzw. unvollstaendige Pakete wegraeumen (nicht die angefangene Datei – die wird fortgesetzt)
-        baseDir.listFiles()?.filter { it.isDirectory }?.forEach { it.deleteRecursively() }
-        val expected = BuildConfig.VOICE_SIZE
-        val needed = (if (expected > 0) expected else 70_000_000L) * 2 + 50_000_000L
-        if (baseDir.usableSpace < needed) {
-            throw IOException("Zu wenig freier Speicher für die Stimme (ca. 150 MB nötig)")
+    private fun libraryOk(): Boolean {
+        if (libraryBroken) return false
+        return try {
+            System.loadLibrary("sherpa-onnx-jni")
+            true
+        } catch (e: Throwable) {
+            libraryBroken = true
+            unsupported("Auf diesem Gerät nicht verfügbar (nur für 64-Bit-Handys)")
+            false
         }
-        val part = File(baseDir, "$PACK.zip.part")
+    }
+
+    private fun source(p: Pack): Source? = when (p) {
+        Pack.THORSTEN -> Source(BuildConfig.VOICE_URL, BuildConfig.VOICE_SHA256, BuildConfig.VOICE_SIZE)
+        Pack.SUPERTONIC -> Source(BuildConfig.VOICE_ST_URL, BuildConfig.VOICE_ST_SHA256, BuildConfig.VOICE_ST_SIZE)
+    }.takeIf { it.url.isNotBlank() && it.sha.isNotBlank() }
+
+    private fun dir(p: Pack) = File(baseDir, p.dir)
+
+    private fun installed(p: Pack, src: Source): Boolean {
+        val d = dir(p)
+        val ok = File(d, "ok")
+        return ok.isFile && ok.readText().trim() == src.sha && VoiceCatalog.isComplete(p, d)
+    }
+
+    /** Alte Pakete, abgebrochenes Auspacken und Startmarken frueherer Versionen wegraeumen. */
+    private fun cleanup() {
+        val known = Pack.values().map { it.dir }.toSet()
+        baseDir.listFiles()?.forEach { f ->
+            val n = f.name
+            val stale = when {
+                f.isDirectory -> n !in known
+                n.endsWith(".zip.part") -> n.removeSuffix(".zip.part") !in known
+                n.startsWith("laden_") -> !n.endsWith("_${BuildConfig.VERSION_CODE}.lock")
+                else -> false
+            }
+            if (stale) f.deleteRecursively()
+        }
+    }
+
+    private fun download(p: Pack, src: Source) {
+        baseDir.mkdirs()
+        val target = dir(p)
+        // unvollstaendiges bzw. veraltetes Paket weg (die angefangene Datei bleibt – wird fortgesetzt)
+        target.deleteRecursively()
+        val expected = src.size
+        val needed = (if (expected > 0) expected else p.approxMb * 1_000_000L) * 2 + 50_000_000L
+        if (baseDir.usableSpace < needed) {
+            throw IOException("Zu wenig freier Speicher für die Stimme (ca. ${needed / 1_000_000} MB nötig)")
+        }
+        val part = File(baseDir, "${p.dir}.zip.part")
+        progress = 0
         state = State.DOWNLOADING
         var have = if (part.isFile) part.length() else 0L
         if (expected > 0 && have > expected) {
@@ -159,7 +383,7 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
         }
         val t0 = SystemClock.elapsedRealtime()
         if (expected <= 0 || have < expected) {
-            val c = URL(BuildConfig.VOICE_URL).openConnection() as HttpURLConnection
+            val c = URL(src.url).openConnection() as HttpURLConnection
             try {
                 c.connectTimeout = 20_000
                 c.readTimeout = 30_000
@@ -172,13 +396,13 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
                     val append = code == 206 && have > 0
                     if (!append) have = 0
                     val total = if (expected > 0) expected else c.contentLengthLong.let { if (it > 0) have + it else -1L }
-                    Log.i(TAG, "NEURAL_VOICE download start ab=$have von=$total")
+                    Log.i(TAG, "NEURAL_VOICE download start paket=${p.dir} ab=$have von=$total")
                     FileOutputStream(part, append).use { out ->
                         c.inputStream.use { inp ->
                             val buf = ByteArray(128 * 1024)
                             var done = have
                             while (true) {
-                                if (!enabled) throw IOException("angehalten")
+                                if (!enabled || wanted.pack != p) throw IOException("angehalten")
                                 val r = inp.read(buf)
                                 if (r < 0) break
                                 out.write(buf, 0, r)
@@ -197,81 +421,116 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
             throw IOException("Sprachpaket unvollständig (${part.length() / 1_000_000} von ${expected / 1_000_000} MB) – wird fortgesetzt")
         }
         val sha = VoicePack.sha256(part)
-        if (sha != BuildConfig.VOICE_SHA256) {
+        if (sha != src.sha) {
             part.delete()
             throw IOException("Sprachpaket beschädigt (Prüfsumme) – wird neu geladen")
         }
-        val tmp = File(baseDir, "neu")
+        val tmp = File(baseDir, "neu_${p.dir}")
         tmp.deleteRecursively()
         tmp.mkdirs()
         val n = part.inputStream().use { VoicePack.unzip(it, tmp) }
-        if (!VoicePack.isComplete(tmp)) {
+        if (!VoiceCatalog.isComplete(p, tmp)) {
             tmp.deleteRecursively()
             part.delete()
             throw IOException("Sprachpaket unvollständig")
         }
         File(tmp, "ok").writeText(sha)
-        modelDir.deleteRecursively()
-        if (!tmp.renameTo(modelDir)) throw IOException("Sprachpaket: Umbenennen fehlgeschlagen")
+        target.deleteRecursively()
+        if (!tmp.renameTo(target)) throw IOException("Sprachpaket: Umbenennen fehlgeschlagen")
         part.delete()
         progress = 100
-        Log.i(TAG, "NEURAL_VOICE download ok dateien=$n ${(SystemClock.elapsedRealtime() - t0) / 1000}s")
+        Log.i(TAG, "NEURAL_VOICE download ok paket=${p.dir} dateien=$n ${(SystemClock.elapsedRealtime() - t0) / 1000}s")
     }
 
-    private fun load() {
-        state = State.LOADING
-        // Schutz vor Absturz-Schleifen: stuerzt die native Bibliothek beim Laden ab, steht diese
-        // Marke beim naechsten Start noch da – nach zwei Fehlversuchen bleibt die Android-Stimme.
-        val lock = File(baseDir, "laden_${BuildConfig.VERSION_CODE}.lock")
+    /**
+     * Modell eines Pakets starten. Schutz vor Absturz-Schleifen: stuerzt die native Bibliothek
+     * dabei ab, steht die Marke beim naechsten Start noch da – nach zwei Fehlversuchen bleibt das
+     * Paket aus (null, Grund in [broken]).
+     */
+    private fun open(p: Pack): Engine? {
+        baseDir.mkdirs()
+        val lock = File(baseDir, "laden_${p.dir}_${BuildConfig.VERSION_CODE}.lock")
         val tries = if (lock.isFile) lock.readText().trim().toIntOrNull() ?: 1 else 0
         if (tries >= 2) {
-            unsupported("Stimme ließ sich auf diesem Gerät nicht starten")
-            return
+            broken[p] = "Stimme ließ sich auf diesem Gerät nicht starten"
+            return null
         }
         lock.writeText((tries + 1).toString())
         try {
-            loadModel()
+            return loadModel(p)
         } finally {
             // nur ein Absturz der nativen Bibliothek laesst die Marke stehen
             lock.delete()
         }
     }
 
-    private fun loadModel() {
-        val model = VoicePack.model(modelDir) ?: throw IOException("Sprachmodell fehlt")
+    private fun loadModel(p: Pack): Engine {
+        val d = dir(p)
         val cores = Runtime.getRuntime().availableProcessors()
-        val cfg = OfflineTtsConfig(
-            model = OfflineTtsModelConfig(
+        val threads = if (cores >= 8) 4 else 2
+        val model = when (p) {
+            Pack.THORSTEN -> OfflineTtsModelConfig(
                 vits = OfflineTtsVitsModelConfig(
-                    model = model.path,
-                    tokens = File(modelDir, "tokens.txt").path,
-                    dataDir = File(modelDir, "espeak-ng-data").path,
+                    model = (VoicePack.model(d) ?: throw IOException("Sprachmodell fehlt")).path,
+                    tokens = File(d, "tokens.txt").path,
+                    dataDir = File(d, "espeak-ng-data").path,
                 ),
-                numThreads = if (cores >= 8) 4 else 2,
+                numThreads = threads,
                 debug = false,
                 provider = "cpu",
-            ),
-            maxNumSentences = 1,
-        )
-        val t0 = SystemClock.elapsedRealtime()
-        val t = OfflineTts(config = cfg)
-        // Laesst sich das Modell nicht laden, liefert die Bibliothek einen leeren Zeiger – jeder
-        // weitere Aufruf wuerde dann abstuerzen.
-        val ptr = try {
-            OfflineTts::class.java.getDeclaredField("ptr").apply { isAccessible = true }.getLong(t)
-        } catch (e: Exception) {
-            -1L
+            )
+            Pack.SUPERTONIC -> OfflineTtsModelConfig(
+                supertonic = OfflineTtsSupertonicModelConfig(
+                    durationPredictor = File(d, "duration_predictor.int8.onnx").path,
+                    textEncoder = File(d, "text_encoder.int8.onnx").path,
+                    vectorEstimator = File(d, "vector_estimator.int8.onnx").path,
+                    vocoder = File(d, "vocoder.int8.onnx").path,
+                    ttsJson = File(d, "tts.json").path,
+                    unicodeIndexer = File(d, "unicode_indexer.bin").path,
+                    voiceStyle = File(d, "voice.bin").path,
+                ),
+                numThreads = threads,
+                debug = false,
+                provider = "cpu",
+            )
         }
-        if (ptr == 0L) throw IOException("Sprachmodell ließ sich nicht laden")
-        sampleRate = t.sampleRate()
-        val t1 = SystemClock.elapsedRealtime()
-        // Aufwaermen: die erste Rechnung ist sonst spuerbar langsamer
-        t.generate("Route wird berechnet.", 0, SPEED)
-        val t2 = SystemClock.elapsedRealtime()
-        tts = t
-        problem = null
-        state = State.READY
-        Log.i(TAG, "NEURAL_VOICE ready laden=${t1 - t0}ms aufwaermen=${t2 - t1}ms rate=$sampleRate threads=${cfg.model.numThreads}")
+        val t0 = SystemClock.elapsedRealtime()
+        // Laesst sich das Modell nicht laden, bricht der Konstruktor ab (statt eines leeren Zeigers)
+        val t = try {
+            OfflineTts(config = OfflineTtsConfig(model = model, maxNumSentences = 1))
+        } catch (e: IllegalArgumentException) {
+            throw IOException("Sprachmodell ließ sich nicht laden")
+        }
+        val e = Engine(p, t)
+        try {
+            val t1 = SystemClock.elapsedRealtime()
+            // Aufwaermen: die erste Rechnung ist sonst spuerbar langsamer
+            generate(e, VoiceCatalog.firstOf(p), "Route wird berechnet.", steps)
+            val t2 = SystemClock.elapsedRealtime()
+            var probe = ""
+            if (p == Pack.SUPERTONIC) {
+                // Wie schnell rechnet das Handy? Danach richten sich die Rechenschritte.
+                val a = generate(e, VoiceCatalog.firstOf(p), "In dreihundert Metern rechts abbiegen.", VoiceCatalog.MAX_STEPS)
+                val ms = SystemClock.elapsedRealtime() - t2
+                val audioMs = a.samples.size * 1000L / a.sampleRate.coerceAtLeast(1)
+                val rtf = if (audioMs > 0) ms.toDouble() / audioMs else 0.0
+                steps = VoiceCatalog.steps(VoiceCatalog.MAX_STEPS, rtf)
+                probe = " messung=${String.format(Locale.ROOT, "%.2f", rtf)} schritte=$steps"
+            }
+            Log.i(TAG, "NEURAL_VOICE geladen paket=${p.dir} laden=${t1 - t0}ms aufwaermen=${t2 - t1}ms rate=${t.sampleRate()} threads=$threads$probe")
+            return e
+        } catch (x: Throwable) {
+            t.release()
+            throw x
+        }
+    }
+
+    private fun generate(e: Engine, v: VoiceCatalog.Option, text: String, steps: Int): GeneratedAudio = when (e.pack) {
+        Pack.THORSTEN -> e.tts.generate(text, 0, SPEED)
+        Pack.SUPERTONIC -> e.tts.generateWithConfig(
+            VoiceCatalog.text(e.pack, text),
+            GenerationConfig(sid = v.sid, speed = SPEED, numSteps = steps, extra = mapOf("lang" to "de")),
+        )
     }
 
     /**
@@ -302,7 +561,8 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
     fun prepare(text: String) {
         val g = generation.get()
         worker.execute {
-            if (generation.get() != g || cache.containsKey(text)) return@execute
+            val c = current ?: return@execute
+            if (generation.get() != g || cache.containsKey(key(c, text))) return@execute
             try {
                 pcm(text)
             } catch (e: Throwable) {
@@ -315,39 +575,51 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
     fun writeWav(text: String, out: File) {
         worker.execute {
             try {
+                out.delete() // keine alte Probe liegen lassen, falls diese nicht klappt
                 val p = pcm(text)
-                out.writeBytes(VoicePack.wav(p, sampleRate))
-                Log.i(TAG, "NEURAL_WAV ok ${out.length()} Bytes ${p.size * 1000L / sampleRate}ms")
+                out.writeBytes(VoicePack.wav(p.samples, p.rate))
+                Log.i(TAG, "NEURAL_WAV ok ${out.length()} Bytes ${p.samples.size * 1000L / p.rate}ms stimme=${current?.voice?.id}")
             } catch (e: Throwable) {
                 Log.w(TAG, "NEURAL_WAV Fehler: ${e.message ?: e.javaClass.simpleName}")
             }
         }
     }
 
-    private fun pcm(text: String): ShortArray {
-        cache[text]?.let {
-            Log.i(TAG, "NEURAL_SAY cache ${it.size * 1000L / sampleRate}ms")
+    private fun key(c: Current, text: String) = c.voice.id + "|" + text
+
+    private fun pcm(text: String): Pcm {
+        val c = current ?: throw IOException("Stimme nicht bereit")
+        val k = key(c, text)
+        cache[k]?.let {
+            Log.i(TAG, "NEURAL_SAY cache ${it.samples.size * 1000L / it.rate}ms")
             return it
         }
-        val t = tts ?: throw IOException("Stimme nicht bereit")
+        val st = steps
         val t0 = SystemClock.elapsedRealtime()
-        val a = t.generate(text, 0, SPEED)
+        val a = generate(c.engine, c.voice, text, st)
         val ms = SystemClock.elapsedRealtime() - t0
         if (a.samples.isEmpty()) throw IOException("keine Ausgabe")
-        sampleRate = a.sampleRate
-        val p = VoicePack.toPcm16(a.samples, a.sampleRate)
+        val p = Pcm(VoicePack.toPcm16(a.samples, a.sampleRate), a.sampleRate)
         val audioMs = a.samples.size * 1000L / a.sampleRate
         lastRtf = if (audioMs > 0) ms.toDouble() / audioMs else 0.0
-        Log.i(TAG, "NEURAL_SAY rechnen=${ms}ms sprechen=${audioMs}ms zeichen=${text.length}")
-        cache[text] = p
+        Log.i(TAG, "NEURAL_SAY rechnen=${ms}ms sprechen=${audioMs}ms zeichen=${text.length} stimme=${c.voice.id}")
+        if (c.engine.pack == Pack.SUPERTONIC && audioMs >= 1_000) {
+            val s = VoiceCatalog.steps(st, lastRtf)
+            if (s != st) {
+                steps = s
+                Log.i(TAG, "NEURAL_VOICE schneller rechnen: $s Schritte (Faktor ${String.format(Locale.ROOT, "%.2f", lastRtf)})")
+            }
+        }
+        cache[k] = p
         return p
     }
 
     /** Spielt PCM ueber den Navigations-Kanal; bricht ab, sobald eine dringendere Ansage kommt. */
-    private fun play(g: Int, pcm: ShortArray): Boolean {
+    private fun play(g: Int, pcm: Pcm): Boolean {
         if (generation.get() != g) return true
         priority(Process.THREAD_PRIORITY_AUDIO)
-        val rate = sampleRate
+        val rate = pcm.rate
+        val data = pcm.samples
         val min = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val track = AudioTrack.Builder()
             .setAudioAttributes(attrs)
@@ -360,7 +632,7 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
             .build()
         try {
             if (track.state != AudioTrack.STATE_INITIALIZED) throw IOException("Audio nicht verfügbar")
-            val total = pcm.size
+            val total = data.size
             val limit = SystemClock.elapsedRealtime() + total * 1000L / rate + 4_000
             var off = 0
             var playing = false
@@ -370,7 +642,7 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
                     track.flush()
                     return true
                 }
-                val w = track.write(pcm, off, min(total - off, rate / 10), AudioTrack.WRITE_NON_BLOCKING)
+                val w = track.write(data, off, min(total - off, rate / 10), AudioTrack.WRITE_NON_BLOCKING)
                 if (w < 0) throw IOException("Audio-Fehler $w")
                 off += w
                 if (!playing) {
@@ -418,20 +690,25 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes) {
     }
 
     /** Text fuer die Einstellungen. */
-    fun status(on: Boolean): String = when {
-        !on -> "Aus – es spricht die Android-Sprachausgabe."
-        state == State.READY -> "Bereit: natürliche Stimme „Thorsten“, spricht auch ohne Internet."
-        state == State.DOWNLOADING -> "Wird einmalig geladen (ca. 60 MB) … $progress % – bis dahin spricht die Android-Stimme."
-        state == State.LOADING -> "Wird gestartet …"
-        state == State.UNSUPPORTED -> "${problem ?: "Nicht verfügbar"} – es spricht die Android-Sprachausgabe."
-        state == State.WAITING -> "Noch nicht geladen" + (problem?.let { " ($it)" } ?: "") + " – neuer Versuch in wenigen Minuten, bis dahin spricht die Android-Stimme."
-        else -> "Wird vorbereitet …"
+    fun status(on: Boolean): String {
+        val w = wanted
+        val now = speaking
+        val meanwhile = if (now != null && now != w) "„${now.name}“" else "die Android-Stimme"
+        return when {
+            !on -> "Aus – es spricht die Android-Sprachausgabe."
+            state == State.READY && now == w ->
+                "Bereit: „${w.name}“, spricht auch ohne Internet." +
+                    if (w.pack == Pack.SUPERTONIC && lastRtf > 0.6) " Rechnet auf diesem Handy langsam – „Thorsten“ spricht schneller los." else ""
+            state == State.DOWNLOADING -> "„${w.name}“ wird einmalig geladen (ca. ${w.pack.approxMb} MB) … $progress % – bis dahin spricht $meanwhile."
+            state == State.LOADING -> "„${w.name}“ wird gestartet …"
+            state == State.UNSUPPORTED -> "${problem ?: "Nicht verfügbar"} – es spricht $meanwhile."
+            state == State.WAITING -> "„${w.name}“ noch nicht geladen" + (problem?.let { " ($it)" } ?: "") + " – neuer Versuch in wenigen Minuten, bis dahin spricht $meanwhile."
+            else -> "Wird vorbereitet …"
+        }
     }
 
     companion object {
         private const val TAG = "KSSMaps"
-        /** Name des Sprachpakets (Ordner auf dem Handy). Neues Paket = neuer Name. */
-        const val PACK = "de_thorsten_medium"
         /** Sprechtempo (1 = wie aufgenommen). */
         const val SPEED = 1.0f
         /** Hoerprobe mit typischen Ansagen (Testfahrt). */

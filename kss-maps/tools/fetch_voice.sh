@@ -1,22 +1,25 @@
 #!/bin/bash
-# Natuerliche Stimme fuer KSS-Maps bereitstellen – nur in der CI, im Ordner kss-maps aufrufen:
+# Natuerliche Stimmen fuer KSS-Maps bereitstellen – nur in der CI, im Ordner kss-maps aufrufen:
 #   bash tools/fetch_voice.sh <abi> [<abi> ...]        (Release: arm64-v8a, Emulator: x86_64)
 #
-#  1. Native Bibliotheken von sherpa-onnx v1.12.15 (Apache-2.0; enthaelt espeak-ng) fuer die
-#     ABIs nach app/src/main/jniLibs/<abi>/ (nicht im Repo, siehe .gitignore)
-#  2. Sprachpaket stimme-de-thorsten-medium.zip an der Vorabversion "kssmaps-stimme": fehlt es,
-#     wird es EINMALIG aus dem Piper-Modell "Thorsten" (CC0) gebaut und hochgeladen. Danach wird
-#     es nie ersetzt – die App prueft das Paket gegen die beim Bauen eingetragene Pruefsumme.
-#  3. Pruefsumme und Groesse -> GITHUB_ENV (KSSMAPS_VOICE_SHA256 / KSSMAPS_VOICE_SIZE)
+#  1. Native Bibliotheken von sherpa-onnx (Apache-2.0; enthaelt espeak-ng) fuer die ABIs nach
+#     app/src/main/jniLibs/<abi>/ (nicht im Repo, siehe .gitignore)
+#  2. Sprachpakete an der Vorabversion "kssmaps-stimme" – fehlt eins, wird es EINMALIG aus dem
+#     Original gebaut und hochgeladen, danach nie ersetzt (die App prueft gegen die beim Bauen
+#     eingetragene Pruefsumme):
+#       stimme-de-thorsten-medium.zip  Piper "Thorsten" (CC0)
+#       stimme-supertonic-3.zip        Supertonic 3 (10 Stimmen, 5 weiblich, OpenRAIL-M)
+#  3. Pruefsummen und Groessen -> GITHUB_ENV (KSSMAPS_VOICE_* bzw. KSSMAPS_VOICE_ST_*)
 set -euo pipefail
-SHERPA_VER=1.12.15
-# Pruefsummen der Original-Downloads (beim ersten Build am 05.11.2026 ermittelt); ein anderer
-# Inhalt unter derselben Adresse bricht den Schritt ab
-LIBS_SHA256="76c9568de88ca98ffeba4b44dd3d03595fd4272391490e8226e675585292ca90"
+SHERPA_VER=1.13.8
+# Pruefsummen der Original-Downloads; ein anderer Inhalt unter derselben Adresse bricht den Schritt
+# ab (leer: nur ins Protokoll schreiben – beim ersten Build ermitteln und eintragen)
+LIBS_SHA256=""
 MODEL_SHA256="50487d9c95fdf2191f31d2588569381063ba1591dcd4c7d4bdd30f12b2191714"
+MODEL_ST_SHA256=""
 MODEL=vits-piper-de_DE-thorsten-medium
+MODEL_ST=sherpa-onnx-supertonic-3-tts-int8-2026-05-11
 TAG=kssmaps-stimme
-ZIP=stimme-de-thorsten-medium.zip
 R="${GITHUB_REPOSITORY:?nur in der CI}"
 W="${RUNNER_TEMP:-/tmp}/stimme"
 [ $# -ge 1 ] || { echo "Aufruf: $0 <abi> [<abi> ...]"; exit 2; }
@@ -62,17 +65,17 @@ for abi in "$@"; do
   readelf -d "$dst/libsherpa-onnx-jni.so" | grep NEEDED || true
 done
 
-# ---- 2. Sprachpaket
+# ---- 2. Sprachpakete
 NAMES=$(gh release view "$TAG" --repo "$R" --json assets --jq '.assets[].name' 2>/dev/null || true)
-if grep -qx "$ZIP" <<< "$NAMES"; then
-  for i in 1 2 3 4; do
-    if gh release download "$TAG" --repo "$R" --pattern "$ZIP" --dir "$W"; then break; fi
-    sleep $((i * 5))
-  done
-  [ -s "$W/$ZIP" ] || { echo "::error::Sprachpaket an $TAG nicht ladbar"; exit 1; }
-  echo "Sprachpaket von der Vorabversion $TAG"
-else
-  echo "Sprachpaket fehlt an $TAG – wird einmalig gebaut"
+NOTES="Sprachpakete für die eingebauten natürlichen Stimmen von KSS-Maps. Die App lädt das gewählte Paket einmalig selbst – nicht installieren, das ist keine App-Version. Inhalt und Lizenzen: LIZENZEN.txt im jeweiligen Paket."
+
+# gleiche Eingabe -> gleiches ZIP (feste Zeiten, feste Reihenfolge, ohne Zusatzfelder)
+pack_zip() { # Ordner, ZIP
+  (cd "$1" && find . -exec touch -h -d '2025-01-01 00:00:00' {} + \
+    && find . -type f | sed 's|^\./||' | LC_ALL=C sort | zip -X -9 -q "$2" -@)
+}
+
+build_thorsten() { # ZIP
   curl -fsSL --retry 3 -o "$W/model.tar.bz2" \
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/${MODEL}.tar.bz2"
   check "$W/model.tar.bz2" "$MODEL_SHA256"
@@ -80,7 +83,6 @@ else
   tar -xjf "$W/model.tar.bz2" -C "$W/model"
   M=$(dirname "$(find "$W/model" -type f -name tokens.txt | head -1)")
   [ -d "$M/espeak-ng-data" ] || { echo "::error::espeak-ng-data fehlt im Modell"; ls -la "$M"; exit 1; }
-  ls -la "$M"
   P="$W/paket"
   mkdir -p "$P"
   cp "$M"/*.onnx "$M/tokens.txt" "$P/"
@@ -98,26 +100,68 @@ Sprachpaket der eingebauten Stimme von KSS-Maps
 - Umgewandelt fuer sherpa-onnx (Apache-2.0): https://github.com/k2-fsa/sherpa-onnx
 - espeak-ng-data (Aussprache-Regeln): espeak-ng, GPL-3.0 – https://github.com/espeak-ng/espeak-ng
 TXT
-  # gleiche Eingabe -> gleiches ZIP (feste Zeiten, feste Reihenfolge, ohne Zusatzfelder)
-  (cd "$P" && find . -exec touch -h -d '2025-01-01 00:00:00' {} + \
-    && find . -type f | sed 's|^\./||' | LC_ALL=C sort | zip -X -9 -q "$W/$ZIP" -@)
-  NOTES="Sprachpaket für die eingebaute natürliche Stimme von KSS-Maps. Die App lädt es beim ersten Start einmalig selbst – nicht installieren, das ist keine App-Version. Inhalt und Lizenzen: LIZENZEN.txt im Paket."
-  if ! gh release view "$TAG" --repo "$R" >/dev/null 2>&1; then
-    gh release create "$TAG" --repo "$R" --prerelease --latest=false --target "$GITHUB_SHA" \
-        --title "KSS-Maps Sprachpaket (natürliche Stimme)" --notes "$NOTES" \
-      || gh release create "$TAG" --repo "$R" --prerelease --latest=false \
-        --target "$(gh api "repos/$R" --jq .default_branch)" \
-        --title "KSS-Maps Sprachpaket (natürliche Stimme)" --notes "$NOTES"
-  fi
-  gh release upload "$TAG" "$W/$ZIP" --repo "$R"
-fi
+  pack_zip "$P" "$1"
+}
 
-# ---- 3. fuer den Build
-SHA=$(sha256sum "$W/$ZIP" | cut -d' ' -f1)
-SIZE=$(stat -c %s "$W/$ZIP")
-unzip -l "$W/$ZIP" | tail -4
-echo "Sprachpaket: $SIZE Bytes, sha256 $SHA"
-{
-  echo "KSSMAPS_VOICE_SHA256=$SHA"
-  echo "KSSMAPS_VOICE_SIZE=$SIZE"
-} >> "${GITHUB_ENV:-/dev/null}"
+build_supertonic() { # ZIP
+  curl -fsSL --retry 3 -o "$W/st.tar.bz2" \
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/${MODEL_ST}.tar.bz2"
+  check "$W/st.tar.bz2" "$MODEL_ST_SHA256"
+  mkdir -p "$W/st"
+  tar -xjf "$W/st.tar.bz2" -C "$W/st"
+  M=$(dirname "$(find "$W/st" -type f -name voice.bin | head -1)")
+  P="$W/paket_st"
+  mkdir -p "$P"
+  for f in duration_predictor.int8.onnx text_encoder.int8.onnx vector_estimator.int8.onnx vocoder.int8.onnx \
+           tts.json unicode_indexer.bin voice.bin; do
+    [ -f "$M/$f" ] || { echo "::error::$f fehlt im Supertonic-Modell"; ls -la "$M"; exit 1; }
+    cp "$M/$f" "$P/"
+  done
+  for f in LICENSE README.md; do
+    if [ -f "$M/$f" ]; then cp "$M/$f" "$P/"; fi
+  done
+  cat > "$P/LIZENZEN.txt" <<'TXT'
+Sprachpaket "Supertonic 3" fuer KSS-Maps (10 Stimmen: 5 Sprecherinnen, 5 Sprecher; 31 Sprachen)
+
+- Modell: Supertonic 3 von Supertone Inc., OpenRAIL-M-Lizenz –
+  https://huggingface.co/Supertone/supertonic-3 (Lizenz: https://huggingface.co/Supertone/supertonic-3/blob/main/LICENSE)
+  Nutzung nur im Rahmen der dort genannten Einschraenkungen (keine schaedliche oder irrefuehrende Verwendung).
+- Beispielcode/Umwandlung: MIT (Supertone Inc.), sherpa-onnx (Apache-2.0) – https://github.com/k2-fsa/sherpa-onnx
+TXT
+  pack_zip "$P" "$1"
+}
+
+ensure_pack() { # ZIP, Bau-Funktion, Variablen-Praefix
+  local zip=$1 build=$2 envp=$3
+  if grep -qx "$zip" <<< "$NAMES"; then
+    for i in 1 2 3 4; do
+      if gh release download "$TAG" --repo "$R" --pattern "$zip" --dir "$W"; then break; fi
+      sleep $((i * 5))
+    done
+    [ -s "$W/$zip" ] || { echo "::error::$zip an $TAG nicht ladbar"; exit 1; }
+    echo "$zip von der Vorabversion $TAG"
+  else
+    echo "$zip fehlt an $TAG – wird einmalig gebaut"
+    "$build" "$W/$zip"
+    if ! gh release view "$TAG" --repo "$R" >/dev/null 2>&1; then
+      gh release create "$TAG" --repo "$R" --prerelease --latest=false --target "$GITHUB_SHA" \
+          --title "KSS-Maps Sprachpakete (natürliche Stimmen)" --notes "$NOTES" \
+        || gh release create "$TAG" --repo "$R" --prerelease --latest=false \
+          --target "$(gh api "repos/$R" --jq .default_branch)" \
+          --title "KSS-Maps Sprachpakete (natürliche Stimmen)" --notes "$NOTES"
+    fi
+    gh release upload "$TAG" "$W/$zip" --repo "$R"
+  fi
+  local sha size
+  sha=$(sha256sum "$W/$zip" | cut -d' ' -f1)
+  size=$(stat -c %s "$W/$zip")
+  unzip -l "$W/$zip" | tail -3
+  echo "$zip: $size Bytes, sha256 $sha"
+  {
+    echo "${envp}_SHA256=$sha"
+    echo "${envp}_SIZE=$size"
+  } >> "${GITHUB_ENV:-/dev/null}"
+}
+
+ensure_pack stimme-de-thorsten-medium.zip build_thorsten KSSMAPS_VOICE
+ensure_pack stimme-supertonic-3.zip build_supertonic KSSMAPS_VOICE_ST

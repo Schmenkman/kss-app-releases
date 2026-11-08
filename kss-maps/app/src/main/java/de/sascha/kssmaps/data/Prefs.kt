@@ -37,10 +37,14 @@ class Prefs(ctx: Context) {
     var voiceMuted: Boolean
         get() = bool("muted", false)
         set(v) = putBool("muted", v)
-    /** Eingebaute natuerliche Stimme (Piper "Thorsten", offline) statt der Android-Sprachausgabe. */
+    /** Eingebaute natuerliche Stimme (offline) statt der Android-Sprachausgabe. */
     var neuralVoice: Boolean
         get() = bool("neural_voice", true)
         set(v) = putBool("neural_voice", v)
+    /** Gewaehlte eingebaute Stimme (ID aus VoiceCatalog), leer = Standard. */
+    var neuralVoiceId: String
+        get() = str("neural_voice_id")
+        set(v) = putStr("neural_voice_id", v)
     /** Sprachausgabe-Programm (Paketname), leer = Standard des Systems. */
     var ttsEngine: String
         get() = str("tts_engine")

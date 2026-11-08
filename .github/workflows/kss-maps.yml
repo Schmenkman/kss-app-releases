@@ -288,6 +288,28 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: bash kss-maps/tools/smoketest.sh
 
+      - name: Python einrichten (Spracherkennung)
+        if: always()
+        continue-on-error: true
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Hoerproben der Testfahrt pruefen (Spracherkennung)
+        # Whisper liest die WAV-Hoerproben der App zurueck (smoke/stimme_erkannt.txt) – zeigt ohne
+        # Zuhoeren, ob jede eingebaute Stimme verstaendlich und deutsch spricht.
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          ls smoke/stimme_probe_*.wav >/dev/null 2>&1 || { echo "keine Hoerproben"; exit 0; }
+          pip install --quiet sherpa-onnx==1.13.8 numpy
+          mkdir -p "$RUNNER_TEMP/asr"
+          curl -fsSL --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-small.tar.bz2 \
+            | tar -xj -C "$RUNNER_TEMP/asr"
+          python3 -I kss-maps/tools/erkenne_stimme.py "$RUNNER_TEMP/asr/sherpa-onnx-whisper-small" smoke/stimme_probe_*.wav \
+            | tee smoke/stimme_erkannt.txt
+
       - name: Ergebnisse an die Testfahrt-Vorabversion haengen
         if: always()
         env:
