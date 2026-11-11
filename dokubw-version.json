@@ -1,11 +1,9 @@
 {
-  "version": "1.3.11",
+  "version": "1.3.12",
   "notes": [
-    "Objektbogen MM: 'HV IN = UeP' auf der Pegelkarte wird zuverlaessiger erkannt (auch 'Hvin=UP' ohne Ue-Punkte, beide Lesedurchgaenge zaehlen) - die UeP-Zeile fuellt sich von selbst.",
-    "WhatsApp-Suche holt aeltere Nachrichten vom Handy nach ('aeltere Nachrichten abrufen') - Eintraege vor Ende September wurden vorher nicht gefunden.",
-    "MER-Vorschlaege mit Nachkommastelle (z. B. 38,3 / 38,1) statt meist 38.",
-    "Aus 1.3.10: Pruefmaske: 'Innenhof ausnehmen' - in den Hof klicken, die von Waenden umschlossene Flaeche bleibt ohne Farbe (Ringbau, Burghof); ist der Hof nicht geschlossen, seine Ecken anklicken. Wird mit der Ortsbegehung gespeichert.",
-    "Aus 1.3.10: Aussenplaene: dicke schwarze Mauern und Tuerme zaehlen als Hindernis wie Gebaeude - von selbst auf Zeichnungen, auf denen sie ein Hauptteil sind, sonst per Haken."
+    "Behoben: DokuBW verlangte ploetzlich einen API-Key und konnte keine Express-Bauakten mehr erstellen - die Claude-App hat ihre Dateien am 09.11. verlegt, DokuBW findet sie jetzt wieder (und sucht kuenftig selbst nach, falls sie noch einmal umzieht).",
+    "Aus 1.3.11: Objektbogen MM: 'HV IN = UeP' auf der Pegelkarte wird zuverlaessiger erkannt (auch 'Hvin=UP' ohne Ue-Punkte, beide Lesedurchgaenge zaehlen) - die UeP-Zeile fuellt sich von selbst.",
+    "Aus 1.3.11: WhatsApp-Suche holt aeltere Nachrichten vom Handy nach ('aeltere Nachrichten abrufen') - Eintraege vor Ende September wurden vorher nicht gefunden."
   ],
-  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.3.11/DokuBW.exe"
+  "exeUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/dokubw-v1.3.12/DokuBW.exe"
 }
