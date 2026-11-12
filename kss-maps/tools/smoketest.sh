@@ -178,13 +178,13 @@ for b in RECENTER OVERVIEW DAYNIGHT CALL ZOOM_IN END; do act --es test_car_click
 # Zoom und Uebersicht wie mit den Knoepfen im Auto: die Karte bleibt beim Zoomen bei der Position,
 # die Uebersicht zeigt die Strecke bis zum Ziel genordet von oben, danach zurueck zur Fahransicht
 ensure_alive auto_zoom
-act --es test_car_action ZOOM_OUT; sleep 1; act --es test_car_action ZOOM_OUT; sleep 4
+act --es test_car_action ZOOM_OUT; sleep 1; act --es test_car_action ZOOM_OUT; sleep 10
 car_shot zoom_raus auto_04_zoom_raus
-act --es test_car_action ZOOM_IN; sleep 1; act --es test_car_action ZOOM_IN; sleep 1; act --es test_car_action ZOOM_IN; sleep 4
+act --es test_car_action ZOOM_IN; sleep 1; act --es test_car_action ZOOM_IN; sleep 1; act --es test_car_action ZOOM_IN; sleep 10
 car_shot zoom_rein auto_05_zoom_rein
 act --es test_car_action OVERVIEW; sleep 25; act --es test_car_action OVERVIEW; sleep 5
 car_shot uebersicht auto_06_uebersicht
-act --es test_car_action OVERVIEW_CLOSE; sleep 5
+act --es test_car_action OVERVIEW_CLOSE; sleep 12
 car_shot zurueck auto_07_zurueck
 # Querformat beim Fahren (wie Google Maps in Android Auto): 1,5 km mit 15 m/s
 ensure_alive quer_fahrt

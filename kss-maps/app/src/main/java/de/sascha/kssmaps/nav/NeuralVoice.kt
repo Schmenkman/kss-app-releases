@@ -572,8 +572,10 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
      * late: rechnet die Stimme laenger als [DEADLINE_MS] (dringend: [DEADLINE_URGENT_MS]), wird
      * late() aufgerufen (Hauptthread) und der Aufrufer spricht die Ansage mit der Android-Stimme –
      * lieber rechtzeitig als schoen. Die fertig gerechnete Ansage wird dann nicht mehr gespielt.
+     * started: kurz bevor der Ton beginnt (Abspiel-Thread) – erst dann den Ton anfordern, damit das
+     * Radio nur waehrend der Ansage leiser ist (nicht schon waehrend des Rechnens).
      */
-    fun speak(text: String, urgent: Boolean, late: (() -> Unit)? = null, done: (Boolean) -> Unit) {
+    fun speak(text: String, urgent: Boolean, late: (() -> Unit)? = null, started: (() -> Unit)? = null, done: (Boolean) -> Unit) {
         val g = if (urgent) generation.incrementAndGet() else generation.get()
         inFlight.incrementAndGet()
         val closed = AtomicBoolean(false)
@@ -629,7 +631,12 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
                 player.execute {
                     val ok = try {
                         waitForOtherVoice(g)
-                        play(g, p)
+                        if (generation.get() != g) {
+                            true // inzwischen ueberholt
+                        } else {
+                            started?.invoke()
+                            play(g, p)
+                        }
                     } catch (e: Throwable) {
                         Log.w(TAG, "NEURAL_PLAY Fehler: ${e.message ?: e.javaClass.simpleName}")
                         false

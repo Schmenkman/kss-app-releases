@@ -243,21 +243,23 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
         android.util.Log.i("KSSMaps", "SAY${if (muted && !force) " (stumm)" else ""}${if (neuralReady) " [natürlich ${neural.speaking?.id}]" else ""}: $text")
         if ((muted && !force) || text.isBlank()) return
         if (neuralReady) {
-            begin()
             if (urgent) try {
                 tts?.stop()
             } catch (e: Exception) {
                 // Android-Stimme sprach gerade nicht
             }
+            // Ton (Radio leiser) erst, wenn die Ansage wirklich beginnt – nicht schon beim Rechnen
+            val began = java.util.concurrent.atomic.AtomicBoolean(false)
             neural.speak(
                 SpeechText.normalize(text), urgent,
                 // rechnet die eingebaute Stimme zu lange: lieber rechtzeitig mit der Android-Stimme
                 // (nicht bei Hoerproben – die sollen die gewaehlte Stimme zeigen)
                 late = if (force) null else ({ speakSystem(text, urgent) }),
+                started = { if (began.compareAndSet(false, true)) begin() },
             ) { ok ->
                 // Fehler der eingebauten Stimme: diese Ansage mit der Android-Stimme
                 if (!ok) main.post { speakSystem(text, false) }
-                finished()
+                if (began.get()) finished()
             }
             return
         }
