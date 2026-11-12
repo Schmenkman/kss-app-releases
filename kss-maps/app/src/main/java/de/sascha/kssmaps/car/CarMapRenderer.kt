@@ -170,6 +170,12 @@ class CarMapRenderer(
         val c = ctl ?: return
         if (scaleFactor <= 0f) return
         val delta = ln(scaleFactor.toDouble()) / ln(2.0)
+        // Beim Mitfuehren: eigener Zoom, die Karte bleibt bei der Position (sonst ueberschriebe
+        // die Verfolgerkamera den Fingerzoom im naechsten Bild)
+        if (c.following) {
+            c.zoomBy(delta)
+            return
+        }
         if (focusX < 0 || focusY < 0) c.map.moveCamera(CameraUpdateFactory.zoomBy(delta))
         else c.map.moveCamera(CameraUpdateFactory.zoomBy(delta, Point(focusX.toInt(), focusY.toInt())))
     }
@@ -489,11 +495,10 @@ class CarMapRenderer(
         ctl?.recenter()
     }
 
+    /** Zoom-Knoepfe: beim Mitfuehren bleibt die Karte bei der Position (siehe MapController.zoomBy). */
     fun zoom(delta: Double) {
-        ctl?.let {
-            it.following = false
-            it.zoomBy(delta)
-        }
+        ctl?.zoomBy(delta)
+        updateButtons()
     }
 
     /** Nachtmodus des Autos geaendert: Karte folgt der App-Einstellung, nur neu pruefen. */

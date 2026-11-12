@@ -1,6 +1,11 @@
 {
-  "version": "1.4.1",
+  "version": "1.4.2",
   "notes": [
+    "Radio wird nach jeder Ansage wieder laut – nach abgebrochenen Ansagen gab die App den Ton bisher nicht immer zurück (zusätzlich gibt ein Wächter den Ton spätestens nach wenigen Sekunden Stille frei)",
+    "Gleichbleibende Stimme: Rechnen und Sprechen laufen jetzt gleichzeitig, die nächste Ansage ist meist schon fertig, wenn sie dran ist – die Android-Stimme (klang wie eine andere Frauenstimme) muss kaum noch einspringen",
+    "Android Auto: + und − zoomen, ohne dass die Karte stehen bleibt – sie fährt weiter mit, „Zentrieren“ stellt den automatischen Zoom wieder her; Fingerzoom ebenso",
+    "Android Auto: Übersicht mit Alternativen zeigt jetzt immer die Strecke bis zum Ziel (genordet, von oben) – bei schräger Fahransicht landete sie bisher manchmal an einem ganz anderen Ort",
+    "Karte bleibt nicht mehr leer, wenn der Kartenstil ohne Netz (Tiefgarage, Funkloch) nicht geladen werden konnte – neuer Versuch nach wenigen Sekunden",
     "Ansagen kommen immer rechtzeitig: braucht die eingebaute Stimme auf dem Handy einmal zu lange zum Rechnen, spricht diese Ansage sofort die Android-Stimme (lieber pünktlich als schön); Hinweis dazu unter Einstellungen → „Stimme der Ansagen“",
     "Neu: natürliche Frauenstimme – als Standard spricht jetzt „Sprecherin 1“ (Supertonic 3). Zur Wahl unter Einstellungen → „Stimme der Ansagen“ → „Stimme: … – ändern“: 5 Sprecherinnen, 5 Sprecher und Thorsten; antippen = gleich anhören. Alle laufen komplett auf dem Handy (kostenlos, ohne Internet, auch in Android Auto)",
     "Das Paket der neuen Stimmen (ca. 125 MB, für alle 10 Stimmen) lädt die App einmalig von selbst – am besten im WLAN öffnen. Bis es da ist, spricht Thorsten weiter",
@@ -23,5 +28,5 @@
     "Android Auto: „Termine“ und „Kunde“ in der Leiste; die letzten Ziele sind jetzt unter „Mehr“ und in der Suche",
     "Neu: Startpunkt direkt in der Suche – oben „Von … ändern ›“ antippen, dann das Ziel"
   ],
-  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.4.1/kss-maps.apk"
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.4.2/kss-maps.apk"
 }

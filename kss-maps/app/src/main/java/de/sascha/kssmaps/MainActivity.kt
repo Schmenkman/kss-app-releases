@@ -914,6 +914,8 @@ class MainActivity : Activity(), NavEngine.Listener, PanelHost {
                 i.getStringExtra("test_car_capture")?.let { de.sascha.kssmaps.car.CarSurfaceProbe.capture(this, it) }
                 // eigenen Knopf auf der Android-Auto-Karte antippen (Treffer steht als TEST_CAR_BUTTON im Protokoll)
                 i.getStringExtra("test_car_click")?.let { de.sascha.kssmaps.car.CarSurfaceProbe.click(it) }
+                // Knopf-Aktion wie im Auto (Zoom, Uebersicht) auf der Probe-Karte ausfuehren
+                i.getStringExtra("test_car_action")?.let { de.sascha.kssmaps.car.CarSurfaceProbe.action(it) }
             } catch (e: Exception) {
                 android.util.Log.e("KSSMaps", "TEST_CAR_SURFACE fehlgeschlagen", e)
             }

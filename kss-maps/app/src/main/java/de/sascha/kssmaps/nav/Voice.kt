@@ -104,6 +104,9 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) = finished()
             override fun onError(utteranceId: String?, errorCode: Int) = finished()
+            // Abgebrochen (dringendere Ansage, stumm) oder aus der Warteschlange geworfen: meldet sich
+            // NUR hier – ohne das hielte die App den Ton fest und das Radio im Auto bliebe leise.
+            override fun onStop(utteranceId: String?, interrupted: Boolean) = finished()
         })
         ready = true
         val queued = ArrayList(pending)
@@ -111,10 +114,46 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
         queued.forEach { say(it) }
     }
 
+    /** Ansage beginnt: Ton anfordern (Radio/Musik wird leiser), Waechter starten. */
+    private fun begin() {
+        active.incrementAndGet()
+        am.requestAudioFocus(focus)
+        quietChecks = 0
+        main.removeCallbacks(focusGuard)
+        main.postDelayed(focusGuard, GUARD_MS)
+    }
+
+    /** Ansage fertig (oder abgebrochen): sprechen keine mehr, Ton freigeben – Radio wieder laut. */
     private fun finished() {
         if (active.decrementAndGet() <= 0) {
             active.set(0)
             am.abandonAudioFocusRequest(focus)
+        }
+    }
+
+    private var quietChecks = 0
+
+    /**
+     * Waechter: haelt die App den Ton, obwohl nichts mehr spricht (eine Ansage hat sich nicht
+     * zurueckgemeldet), wird er nach zwei stillen Pruefungen freigegeben – das Radio bleibt nie leise.
+     */
+    private val focusGuard = object : Runnable {
+        override fun run() {
+            if (active.get() <= 0) return
+            val speaking = neural.speakingOrQueued || (ready && try {
+                tts?.isSpeaking == true
+            } catch (e: Exception) {
+                false
+            })
+            quietChecks = if (speaking) 0 else quietChecks + 1
+            if (quietChecks >= 2) {
+                android.util.Log.w("KSSMaps", "TON_FREI Waechter: nichts spricht mehr (offen=${active.get()}) – Ton freigegeben")
+                active.set(0)
+                quietChecks = 0
+                am.abandonAudioFocusRequest(focus)
+                return
+            }
+            main.postDelayed(this, GUARD_MS)
         }
     }
 
@@ -204,8 +243,7 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
         android.util.Log.i("KSSMaps", "SAY${if (muted && !force) " (stumm)" else ""}${if (neuralReady) " [natürlich ${neural.speaking?.id}]" else ""}: $text")
         if ((muted && !force) || text.isBlank()) return
         if (neuralReady) {
-            am.requestAudioFocus(focus)
-            active.incrementAndGet()
+            begin()
             if (urgent) try {
                 tts?.stop()
             } catch (e: Exception) {
@@ -237,8 +275,7 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
             if (pending.size < 3) pending.add(text)
             return
         }
-        am.requestAudioFocus(focus)
-        active.incrementAndGet()
+        begin()
         // Kein KEY_PARAM_STREAM: die AudioAttributes (Navigation) sollen gelten, nicht "Musik".
         val params = Bundle()
         val res = t.speak(text, if (urgent) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, params, "u" + counter.incrementAndGet())
@@ -258,6 +295,7 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
 
     companion object {
         const val SAMPLE = "In 300 Metern rechts abbiegen auf die Hauptstraße. Danach links halten."
+        private const val GUARD_MS = 3_000L
     }
 
     fun shutdown() {

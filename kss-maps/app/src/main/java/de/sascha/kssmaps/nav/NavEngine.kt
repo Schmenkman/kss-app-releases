@@ -238,6 +238,8 @@ class NavEngine(
     var navAltSelected = 0
         private set
     var navAltLoading = false
+    /** Nummer der laufenden Alternativen-Suche (spaete Antworten frueherer Suchen verwerfen). */
+    private var navAltRequest = 0
         private set
     var currentRoad: String? = null
         private set
@@ -1239,6 +1241,8 @@ class NavEngine(
         navAlternatives = listOf(r)
         navAltSelected = 0
         navAltLoading = true
+        // Antwort einer frueheren (schon geschlossenen) Uebersicht verwerfen
+        val req = ++navAltRequest
         changed()
         scope.launch {
             try {
@@ -1258,13 +1262,13 @@ class NavEngine(
                     jamFree.label = "Ohne Stau"
                     list.add(jamFree)
                 }
-                if (mode == Mode.NAVIGATING && activeRoute === r) navAlternatives = list.take(4)
+                if (mode == Mode.NAVIGATING && activeRoute === r && req == navAltRequest) navAlternatives = list.take(4)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 message = "Alternativen nicht verfügbar (Internet?)"
             } finally {
-                navAltLoading = false
+                if (req == navAltRequest) navAltLoading = false
                 changed()
             }
         }
@@ -1289,6 +1293,8 @@ class NavEngine(
 
     fun clearNavAlternatives() {
         if (navAlternatives.isEmpty() && !navAltLoading) return
+        navAltRequest++
+        navAltLoading = false
         navAlternatives = emptyList()
         navAltSelected = 0
         changed()

@@ -91,7 +91,22 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
     /** Wie oft die Android-Stimme einspringen musste, weil die eingebaute zu lange rechnete. */
     @Volatile var lateCount = 0
         private set
-    private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "kss-stimme").apply { isDaemon = true } }
+    // Rechnen und Abspielen getrennt: waehrend eine Ansage laeuft, rechnet schon die naechste
+    // (z. B. das "Jetzt …" waehrend der Vorankuendigung) – dann kommt sie ohne Rechenpause.
+    private val worker = Executors.newSingleThreadExecutor { r ->
+        Thread({
+            priority(Process.THREAD_PRIORITY_DISPLAY)
+            r.run()
+        }, "kss-stimme").apply { isDaemon = true }
+    }
+    private val player = Executors.newSingleThreadExecutor { r ->
+        Thread({
+            priority(Process.THREAD_PRIORITY_AUDIO)
+            r.run()
+        }, "kss-stimme-ton").apply { isDaemon = true }
+    }
+    /** Angefangene Ansagen (rechnen, warten oder spielen). */
+    private val inFlight = AtomicInteger()
     // nur im Arbeits-Thread benutzt: zuletzt gesprochene Saetze ("Jetzt rechts abbiegen."), je Stimme
     private val cache = object : LinkedHashMap<String, Pcm>(48, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pcm>) = size > 40
@@ -101,6 +116,8 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
     val ready: Boolean get() = current != null
     /** Stimme, die gerade spricht – bis die gewaehlte bereit ist, ggf. eine andere. */
     val speaking: VoiceCatalog.Option? get() = current?.voice
+    /** Rechnet oder spielt gerade eine Ansage (oder wartet darauf)? */
+    val speakingOrQueued: Boolean get() = inFlight.get() > 0
     /** Wird die gewaehlte Stimme noch vorbereitet? */
     val busy: Boolean get() = state == State.WAITING || state == State.DOWNLOADING || state == State.LOADING
 
@@ -505,11 +522,16 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
             )
         }
         val t0 = SystemClock.elapsedRealtime()
+        // Die Rechen-Threads des Modells entstehen hier und erben die Prioritaet: etwas vorziehen,
+        // damit Ansagen auch bei voll ausgelastetem Handy (Karte, Android Auto) zuegig fertig sind
+        priority(Process.THREAD_PRIORITY_DISPLAY)
         // Laesst sich das Modell nicht laden, bricht der Konstruktor ab (statt eines leeren Zeigers)
         val t = try {
             OfflineTts(config = OfflineTtsConfig(model = model, maxNumSentences = 1))
         } catch (e: IllegalArgumentException) {
             throw IOException("Sprachmodell ließ sich nicht laden")
+        } finally {
+            priority(Process.THREAD_PRIORITY_DEFAULT)
         }
         val e = Engine(p, t)
         try {
@@ -553,6 +575,13 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
      */
     fun speak(text: String, urgent: Boolean, late: (() -> Unit)? = null, done: (Boolean) -> Unit) {
         val g = if (urgent) generation.incrementAndGet() else generation.get()
+        inFlight.incrementAndGet()
+        val closed = AtomicBoolean(false)
+        fun finish(ok: Boolean) {
+            if (!closed.compareAndSet(false, true)) return
+            inFlight.decrementAndGet()
+            done(ok)
+        }
         val claim = AtomicBoolean(false)
         val timer = AtomicReference<Runnable?>(null)
         fun arm() {
@@ -570,33 +599,47 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
         fun disarm() {
             timer.getAndSet(null)?.let { main.removeCallbacks(it) }
         }
-        // Dringend ("Jetzt …"): die Uhr laeuft ab sofort – der Arbeits-Thread rechnet evtl. noch an
-        // etwas anderem. Sonst erst ab dem eigenen Rechnen (eine gerade laufende Ansage darf ausklingen).
+        // Dringend ("Jetzt …"): die Uhr laeuft ab sofort – der Rechen-Thread ist evtl. noch mit etwas
+        // anderem beschaeftigt. Sonst erst ab dem eigenen Rechnen.
         if (urgent) arm()
-        worker.execute {
-            if (generation.get() != g) {
-                disarm()
-                done(true) // ueberholt: einfach weglassen
-                return@execute
-            }
-            val c = current
-            if (!urgent && c != null && !cache.containsKey(key(c, text))) arm()
-            val ok = try {
-                val p = pcm(text)
+        try {
+            worker.execute {
+                if (generation.get() != g) {
+                    disarm()
+                    finish(true) // ueberholt: einfach weglassen
+                    return@execute
+                }
+                val c = current
+                if (!urgent && c != null && !cache.containsKey(key(c, text))) arm()
+                val p = try {
+                    pcm(text)
+                } catch (e: Throwable) {
+                    disarm()
+                    Log.w(TAG, "NEURAL_SAY Fehler: ${e.message ?: e.javaClass.simpleName}")
+                    // schon von der Android-Stimme gesprochen: nicht noch einmal
+                    finish(!claim.compareAndSet(false, true))
+                    return@execute
+                }
                 disarm()
                 if (!claim.compareAndSet(false, true)) {
-                    true // die Android-Stimme hat schon uebernommen
-                } else {
-                    waitForOtherVoice(g)
-                    play(g, p)
+                    finish(true) // die Android-Stimme hat schon uebernommen
+                    return@execute
                 }
-            } catch (e: Throwable) {
-                disarm()
-                Log.w(TAG, "NEURAL_SAY Fehler: ${e.message ?: e.javaClass.simpleName}")
-                // schon von der Android-Stimme gesprochen: nicht noch einmal
-                !claim.compareAndSet(false, true)
+                // abspielen im eigenen Thread (der Reihe nach); hier geht es gleich weiter mit Rechnen
+                player.execute {
+                    val ok = try {
+                        waitForOtherVoice(g)
+                        play(g, p)
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "NEURAL_PLAY Fehler: ${e.message ?: e.javaClass.simpleName}")
+                        false
+                    }
+                    finish(ok)
+                }
             }
-            done(ok)
+        } catch (e: Exception) {
+            disarm()
+            finish(false)
         }
     }
 
@@ -677,7 +720,6 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
     /** Spielt PCM ueber den Navigations-Kanal; bricht ab, sobald eine dringendere Ansage kommt. */
     private fun play(g: Int, pcm: Pcm): Boolean {
         if (generation.get() != g) return true
-        priority(Process.THREAD_PRIORITY_AUDIO)
         val rate = pcm.rate
         val data = pcm.samples
         val min = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
@@ -739,7 +781,6 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
             return true
         } finally {
             track.release()
-            priority(Process.THREAD_PRIORITY_DEFAULT)
         }
     }
 
@@ -777,9 +818,9 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
         /** Sprechtempo (1 = wie aufgenommen). */
         const val SPEED = 1.0f
         /** So lange darf eine Ansage hoechstens rechnen, sonst spricht die Android-Stimme (ms). */
-        const val DEADLINE_MS = 2_500L
+        const val DEADLINE_MS = 4_000L
         /** … bei "Jetzt …"-Ansagen (die sind meist schon vorausberechnet). */
-        const val DEADLINE_URGENT_MS = 1_500L
+        const val DEADLINE_URGENT_MS = 2_000L
         /** Hoerprobe mit typischen Ansagen (Testfahrt). */
         const val PROBE = "In 300 Metern rechts abbiegen auf die Leopoldstraße. Danach links halten. " +
             "Achtung, Stau in 2,5 Kilometern, etwa 8 Minuten Verzögerung. " +

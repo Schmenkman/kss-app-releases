@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.Choreographer
 import de.sascha.kssmaps.NaviApp
 import de.sascha.kssmaps.core.Bavaria
+import de.sascha.kssmaps.core.CameraFit
 import de.sascha.kssmaps.core.Geo
 import de.sascha.kssmaps.core.HazardType
 import de.sascha.kssmaps.core.LatLon
@@ -145,6 +146,7 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         style = null
         map.setStyle(Style.Builder().fromUri(url)) { st ->
             style = st
+            styleRetryMs = 5_000L
             hiddenBaseLayers.clear()
             satVisible = false
             try {
@@ -157,9 +159,23 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         }
     }
 
-    /** Vom Besitzer der MapView aufrufen, wenn der Stil nicht geladen werden konnte (z. B. Nachtstil fehlt). */
+    private val retryHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var styleRetryMs = 5_000L
+
+    /**
+     * Vom Besitzer der MapView aufrufen, wenn der Stil nicht geladen werden konnte: Nachtstil fehlt ->
+     * Tagstil; ohne Netz (Tiefgarage, Funkloch beim Start) spaeter erneut – sonst bliebe die Karte leer.
+     */
     fun onStyleFailed() {
-        if (styleUrl != STYLE_DAY) loadStyle(STYLE_DAY)
+        if (disposed) return
+        if (styleUrl != STYLE_DAY) {
+            loadStyle(STYLE_DAY)
+            return
+        }
+        val wait = styleRetryMs
+        styleRetryMs = minOf(styleRetryMs * 2, 60_000L)
+        Log.w("KSSMaps", "Kartenstil nicht geladen – neuer Versuch in ${wait / 1000} s")
+        retryHandler.postDelayed({ if (!disposed && style == null) loadStyle(styleUrl ?: STYLE_DAY) }, wait)
     }
 
     private fun firstSymbolLayerId(st: Style): String? = st.layers.firstOrNull { it is SymbolLayer }?.id
@@ -882,6 +898,7 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
     fun dispose() {
         disposed = true
         cancelFrame()
+        retryHandler.removeCallbacksAndMessages(null)
     }
 
     private fun onFrame(t: Double) {
@@ -975,6 +992,10 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
     private var camTilt = Double.NaN
     private var camPad: DoubleArray? = null
     private var idleZoom = 16.0
+    /** Eigener Zoom des Fahrers beim Mitfuehren (Stufen, auf den automatischen aufgeschlagen). */
+    var userZoom = 0.0
+        private set
+    private var userZoomAt = -1e9
     private var trFrom: CameraPosition? = null
     private var trStart = 0.0
     private val trDuration = 0.9
@@ -1004,15 +1025,16 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         val turn = navigating && turnZoomActive()
         val wantZoom = when {
             !navigating -> idleZoom
-            turn -> minOf(zoomForSpeedSteady(engine.speedKmh) + TurnZoom.BOOST, TurnZoom.MAX_ZOOM)
-            else -> zoomForSpeedSteady(engine.speedKmh)
+            turn -> (minOf(zoomForSpeedSteady(engine.speedKmh) + TurnZoom.BOOST, TurnZoom.MAX_ZOOM) + userZoom).coerceIn(3.0, 19.5)
+            else -> (zoomForSpeedSteady(engine.speedKmh) + userZoom).coerceIn(3.0, 19.5)
         }
         val wantTilt = if (navigating) 50.0 - (if (turn) TurnZoom.TILT_LESS else 0.0) else 0.0
         val wantBearing = if (navigating) smoother.bearing else 0.0
         val wantPad = uiPadding.copyOf()
         // Beim Navigieren die Position ins untere Drittel schieben: mehr Strecke voraus sichtbar
         if (navigating && viewHeightPx > 0) wantPad[1] = maxOf(wantPad[1], viewHeightPx * 0.42)
-        camZoom = ease(camZoom, wantZoom, fdt, 1.0)
+        // nach "+"/"−" zuegig, sonst (Tempo, Abbiegen) weich
+        camZoom = ease(camZoom, wantZoom, fdt, if (t - userZoomAt < 1.5) 0.15 else 1.0)
         camTilt = ease(camTilt, wantTilt, fdt, 0.5)
         val pad = camPad ?: wantPad.copyOf()
         for (i in 0..3) pad[i] = ease(pad[i], wantPad[i], fdt, 0.3)
@@ -1061,6 +1083,7 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
 
     fun recenter() {
         beginTransition()
+        userZoom = 0.0
         following = true
         scheduleFrame()
     }
@@ -1071,28 +1094,30 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         fitPoints(pts)
     }
 
+    /**
+     * Alle Punkte ins Bild – genordet und flach von oben (siehe [CameraFit]: MapLibres eigene
+     * Rechnung uebernaehme die Neigung der Fahransicht und landete dann teils an einem ganz anderen Ort).
+     */
     fun fitPoints(pts: List<LatLon>) {
-        if (pts.size < 2) {
-            pts.firstOrNull()?.let { map.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(it.lat, it.lon), 15.0), 800) }
-            return
-        }
-        val b = LatLngBounds.Builder()
-        pts.forEach { b.include(LatLng(it.lat, it.lon)) }
-        val bounds = try {
-            b.build()
-        } catch (e: Exception) {
-            return
-        }
+        val m = px(40).toDouble()
+        val pad = DoubleArray(4) { uiPadding[it] + m }
+        val w = map.width.toDouble().takeIf { it > 0 } ?: return
+        val h = map.height.toDouble().takeIf { it > 0 } ?: return
+        val fit = CameraFit.fit(pts, w, h, pad, density.toDouble(), maxZoom = if (pts.size < 2) 15.0 else 17.0) ?: return
         following = false
         lastManualMove = System.currentTimeMillis()
-        val m = px(40)
-        val update = CameraUpdateFactory.newLatLngBounds(
-            bounds, (uiPadding[0] + m).toInt(), (uiPadding[1] + m).toInt(), (uiPadding[2] + m).toInt(), (uiPadding[3] + m).toInt()
-        )
+        val cp = CameraPosition.Builder()
+            .target(LatLng(fit.lat, fit.lon))
+            .zoom(fit.zoom)
+            .bearing(0.0)
+            .tilt(0.0)
+            .padding(pad[0], pad[1], pad[2], pad[3])
+            .build()
+        if (debuggable) Log.i("KSSMaps", "CAMERA_FIT ${if (forCar) "auto" else "handy"} punkte=${pts.size} lat=${"%.4f".format(java.util.Locale.ROOT, fit.lat)} lon=${"%.4f".format(java.util.Locale.ROOT, fit.lon)} zoom=${"%.2f".format(java.util.Locale.ROOT, fit.zoom)}")
         try {
-            map.animateCamera(update, 900)
+            map.animateCamera(CameraUpdateFactory.newCameraPosition(cp), 900)
         } catch (e: Exception) {
-            map.moveCamera(update)
+            map.moveCamera(CameraUpdateFactory.newCameraPosition(cp))
         }
     }
 
@@ -1102,8 +1127,20 @@ class MapController(private val ctx: Context, val map: MapLibreMap, private val 
         map.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder().target(LatLng(p.lat, p.lon)).zoom(zoom).bearing(0.0).tilt(0.0).build()), 800)
     }
 
+    /**
+     * Zoom-Knoepfe bzw. Fingerzoom. Beim Mitfuehren bleibt die Karte bei der Position und uebernimmt
+     * den Zoom des Fahrers (auf den automatischen Zoom nach Tempo aufgeschlagen, bis "Zentrieren");
+     * sonst wird die stehende Karte gezoomt.
+     */
     fun zoomBy(delta: Double) {
         lastManualMove = System.currentTimeMillis()
+        if (following) {
+            if (engine.mode == NavEngine.Mode.NAVIGATING) userZoom = (userZoom + delta).coerceIn(-6.0, 4.0)
+            else idleZoom = (idleZoom + delta).coerceIn(4.0, 19.5)
+            userZoomAt = nowSec()
+            scheduleFrame()
+            return
+        }
         map.animateCamera(CameraUpdateFactory.zoomBy(delta), 300)
     }
 

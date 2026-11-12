@@ -79,6 +79,34 @@ object CarSurfaceProbe {
         }
     }
 
+    /**
+     * Knopf-Aktion wie im Auto ausfuehren – fuer Bilder der Testfahrt: ZOOM_IN, ZOOM_OUT, RECENTER,
+     * OVERVIEW (Uebersicht mit Alternativen; nochmal aufrufen, wenn die Alternativen da sind),
+     * OVERVIEW_CLOSE (zurueck zur Fahransicht).
+     */
+    fun action(name: String) {
+        val r = renderer ?: run {
+            Log.i(TAG, "TEST_CAR_ACTION kein Renderer")
+            return
+        }
+        val e = de.sascha.kssmaps.NaviApp.instance.engine
+        when (name) {
+            "ZOOM_IN" -> r.zoom(1.0)
+            "ZOOM_OUT" -> r.zoom(-1.0)
+            "RECENTER" -> r.recenter()
+            "OVERVIEW" -> {
+                if (e.navAlternatives.isEmpty()) e.computeNavAlternatives()
+                r.showOverview()
+            }
+            "OVERVIEW_CLOSE" -> {
+                e.clearNavAlternatives()
+                r.recenter()
+            }
+        }
+        val c = r.ctl
+        Log.i(TAG, "TEST_CAR_ACTION $name following=${c?.following} eigenerZoom=${c?.userZoom} alternativen=${e.navAlternatives.size}")
+    }
+
     /** Antippen eines eigenen Knopfs nachstellen (z. B. "RECENTER"); das Ergebnis steht im Protokoll. */
     fun click(name: String) {
         renderer?.testClick(name) ?: Log.i(TAG, "TEST_CAR_BUTTON kein Renderer")
