@@ -62,7 +62,7 @@ object VoicePack {
      * 4-fach verstaerkt), mit etwas Stille vorne – Bluetooth und Android Auto schneiden sonst
      * gern den Anfang ab.
      */
-    fun toPcm16(samples: FloatArray, rate: Int, leadMs: Int = 150, tailMs: Int = 60): ShortArray {
+    fun toPcm16(samples: FloatArray, rate: Int, leadMs: Int = 150, tailMs: Int = 60, boost: Float = 1f): ShortArray {
         var peak = 0f
         for (v in samples) {
             val a = abs(v)
@@ -73,7 +73,11 @@ object VoicePack {
         val tail = rate * tailMs / 1000
         val out = ShortArray(lead + samples.size + tail)
         for (i in samples.indices) {
-            out[lead + i] = (samples[i] * gain * 32767f).roundToInt().coerceIn(-32768, 32767).toShort()
+            var v = samples[i] * gain
+            // boost > 1: leise Stellen anheben, Spitzen weich begrenzen – Sprache wird neben
+            // (laut gemasterter) Musik deutlich besser hoerbar, ohne zu uebersteuern
+            if (boost > 1f) v = (kotlin.math.tanh((v * boost).toDouble()) / kotlin.math.tanh(boost.toDouble()) * 0.95).toFloat()
+            out[lead + i] = (v * 32767f).roundToInt().coerceIn(-32768, 32767).toShort()
         }
         return out
     }

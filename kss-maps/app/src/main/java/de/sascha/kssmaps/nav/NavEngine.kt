@@ -332,8 +332,7 @@ class NavEngine(
     private val gpsListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             if (testGpsGapUntil != 0L && SystemClock.elapsedRealtime() < testGpsGapUntil) return
-            // Waehrend der Schaetzung (Tunnel): erst ein brauchbarer Punkt beendet sie
-            if (deadReckoning && location.accuracy > 40f) return
+            if (!gpsUsable(location)) return
             lastGpsFix = SystemClock.elapsedRealtime()
             if (deadReckoning) endDeadReckoning(location)
             onLocation(location)
@@ -350,6 +349,7 @@ class NavEngine(
             // Netzwerkortung nur, solange GPS schweigt (z. B. im Haus beim Planen). Beim Navigieren nicht:
             // im Tunnel liegt sie oft hunderte Meter daneben – dort wird entlang der Route geschaetzt.
             val gpsAgo = SystemClock.elapsedRealtime() - lastGpsFix
+            if (deadReckoning) return
             if (mode == Mode.NAVIGATING && gpsAgo < 10 * 60_000) return
             if (gpsAgo > 15_000) onLocation(location)
         }
@@ -1456,8 +1456,46 @@ class NavEngine(
         }
     }
 
+    private var drCandidate: Location? = null
+    private var gpsRejected = 0
+
+    /**
+     * Beim Navigieren nur plausible GPS-Punkte uebernehmen. Im Tunnel und an dessen Enden liefern
+     * Handys oft noch Punkte, die weit daneben liegen – der Pfeil sprang dann irgendwohin. Solche
+     * Punkte zaehlen als "kein GPS": die Position laeuft entlang der Route weiter.
+     */
+    private fun gpsUsable(loc: Location): Boolean {
+        if (mode != Mode.NAVIGATING) return true
+        if (deadReckoning) {
+            // Schaetzung endet erst mit zwei guten Punkten kurz nacheinander, die zueinander passen
+            if (loc.accuracy > 40f) {
+                drCandidate = null
+                return false
+            }
+            val c = drCandidate
+            drCandidate = loc
+            return c != null && loc.elapsedRealtimeNanos - c.elapsedRealtimeNanos in 0..4_000_000_000L && c.distanceTo(loc) < 150f
+        }
+        drCandidate = null
+        // sehr ungenau waehrend der Fahrt: verwerfen (dann uebernimmt die Schaetzung)
+        if (loc.accuracy > 50f && speedKmh >= 15.0) return false
+        // Sprung: weiter weg, als ein Auto in der Zeit fahren kann (hoechstens 4-mal in Folge verwerfen)
+        val prev = location
+        if (prev != null && gpsRejected < 4) {
+            val dt = ((loc.elapsedRealtimeNanos - prev.elapsedRealtimeNanos) / 1e9).coerceIn(0.0, 60.0)
+            if (prev.distanceTo(loc) > 70.0 * dt + 120.0) {
+                gpsRejected++
+                Log.i(TAG, "GPS_SPRUNG verworfen ${prev.distanceTo(loc).roundToInt()} m in ${"%.1f".format(dt)} s")
+                return false
+            }
+        }
+        gpsRejected = 0
+        return true
+    }
+
     private fun endDeadReckoning(real: Location) {
         deadReckoning = false
+        drCandidate = null
         Log.i(TAG, "DR_END geschaetzt=${(state?.along ?: 0.0).roundToInt()} nach ${(SystemClock.elapsedRealtime() - drBaseT) / 1000} s, Genauigkeit ${real.accuracy.roundToInt()} m")
     }
 

@@ -116,6 +116,8 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
     val ready: Boolean get() = current != null
     /** Stimme, die gerade spricht – bis die gewaehlte bereit ist, ggf. eine andere. */
     val speaking: VoiceCatalog.Option? get() = current?.voice
+    /** Modell der gewaehlten Stimme startet gerade (ist in wenigen Sekunden bereit). */
+    val startingSoon: Boolean get() = enabled && current == null && state == State.LOADING
     /** Rechnet oder spielt gerade eine Ansage (oder wartet darauf)? */
     val speakingOrQueued: Boolean get() = inFlight.get() > 0
     /** Wird die gewaehlte Stimme noch vorbereitet? */
@@ -709,7 +711,7 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
         val a = generate(c.engine, c.voice, text, st)
         val ms = SystemClock.elapsedRealtime() - t0
         if (a.samples.isEmpty()) throw IOException("keine Ausgabe")
-        val p = Pcm(VoicePack.toPcm16(a.samples, a.sampleRate), a.sampleRate)
+        val p = Pcm(VoicePack.toPcm16(a.samples, a.sampleRate, leadMs = 250, boost = 2.5f), a.sampleRate)
         val audioMs = a.samples.size * 1000L / a.sampleRate
         lastRtf = if (audioMs > 0) ms.toDouble() / audioMs else 0.0
         Log.i(TAG, "NEURAL_SAY rechnen=${ms}ms sprechen=${audioMs}ms zeichen=${text.length} stimme=${c.voice.id}")
@@ -807,8 +809,6 @@ class NeuralVoice(ctx: Context, private val attrs: AudioAttributes, initial: Voi
             state == State.READY && now == w ->
                 "Bereit: „${w.name}“, spricht auch ohne Internet." +
                     when {
-                        lateCount > 0 -> " Rechnet auf diesem Handy manchmal zu lange – $lateCount Ansage(n) sprach deshalb die Android-Stimme" +
-                            if (w.pack == Pack.SUPERTONIC) "; „Thorsten“ spricht schneller los." else "."
                         w.pack == Pack.SUPERTONIC && lastRtf > 0.6 -> " Rechnet auf diesem Handy langsam – „Thorsten“ spricht schneller los."
                         else -> ""
                     }

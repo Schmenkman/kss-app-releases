@@ -239,7 +239,15 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
     }
 
     /** urgent = laufende Ansage abbrechen (z. B. "Jetzt rechts abbiegen"). */
-    fun say(text: String, urgent: Boolean = false, force: Boolean = false) {
+    fun say(text: String, urgent: Boolean = false, force: Boolean = false) = say(text, urgent, force, 0)
+
+    private fun say(text: String, urgent: Boolean, force: Boolean, attempt: Int) {
+        // Eingebaute Stimme startet gerade (App-Start): kurz warten statt mit der Android-Stimme zu
+        // sprechen – es soll immer dieselbe Stimme sein
+        if (neuralOn && !neural.ready && neural.startingSoon && attempt < 20 && !text.isBlank() && (!muted || force)) {
+            main.postDelayed({ say(text, urgent, force, attempt + 1) }, 500)
+            return
+        }
         android.util.Log.i("KSSMaps", "SAY${if (muted && !force) " (stumm)" else ""}${if (neuralReady) " [natürlich ${neural.speaking?.id}]" else ""}: $text")
         if ((muted && !force) || text.isBlank()) return
         if (neuralReady) {
@@ -254,7 +262,8 @@ class Voice(ctx: Context, private val prefs: de.sascha.kssmaps.data.Prefs? = nul
                 SpeechText.normalize(text), urgent,
                 // rechnet die eingebaute Stimme zu lange: lieber rechtzeitig mit der Android-Stimme
                 // (nicht bei Hoerproben – die sollen die gewaehlte Stimme zeigen)
-                late = if (force) null else ({ speakSystem(text, urgent) }),
+                // Keine Ersatzstimme mehr bei langem Rechnen: es spricht immer die gewaehlte Stimme
+                late = null,
                 started = { if (began.compareAndSet(false, true)) begin() },
             ) { ok ->
                 // Fehler der eingebauten Stimme: diese Ansage mit der Android-Stimme

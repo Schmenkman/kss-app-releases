@@ -1,6 +1,9 @@
 {
-  "version": "1.4.3",
+  "version": "1.4.4",
   "notes": [
+    "Nur noch eine Stimme: die Android-Stimme springt nicht mehr ein, wenn die eingebaute Stimme rechnet – es spricht immer die gewählte (beim App-Start wartet die Ansage kurz, bis sie bereit ist)",
+    "Ansagen deutlich lauter und klarer neben Musik (Spotify, Radio): leise Stellen werden angehoben, die Musik wird schon kurz vor der Ansage leiser",
+    "Tunnel: der Standort springt nicht mehr irgendwohin – ungenaue oder unmögliche GPS-Punkte werden verworfen, die Position läuft auf der Route weiter, bis das GPS wieder zwei gute Punkte liefert",
     "Radio wird nur noch während der Ansage leiser – nicht mehr, während die Stimme im Hintergrund rechnet (sprang die Android-Stimme ein, blieb das Radio bisher noch einige Sekunden leise)",
     "Radio wird nach jeder Ansage wieder laut – nach abgebrochenen Ansagen gab die App den Ton bisher nicht immer zurück (zusätzlich gibt ein Wächter den Ton spätestens nach wenigen Sekunden Stille frei)",
     "Gleichbleibende Stimme: Rechnen und Sprechen laufen jetzt gleichzeitig, die nächste Ansage ist meist schon fertig, wenn sie dran ist – die Android-Stimme (klang wie eine andere Frauenstimme) muss kaum noch einspringen",
@@ -29,5 +32,5 @@
     "Android Auto: „Termine“ und „Kunde“ in der Leiste; die letzten Ziele sind jetzt unter „Mehr“ und in der Suche",
     "Neu: Startpunkt direkt in der Suche – oben „Von … ändern ›“ antippen, dann das Ziel"
   ],
-  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.4.3/kss-maps.apk"
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.4.4/kss-maps.apk"
 }
