@@ -1,9 +1,11 @@
 {
-  "version": "1.3.7",
-  "date": "2026-08-01",
+  "version": "1.3.8",
+  "date": "2026-11-13",
   "notes": [
-    "Fotos: es öffnet sich jetzt die Bildergalerie statt der Kamera – mehrere Bilder auswählen und mit OK bestätigen",
-    "WE-Spiegel: Überschrift 'Etage' ist jetzt weiß und damit gut lesbar"
+    "Upload: bei Fehlern wird automatisch mehrfach neu versucht, Fotos gehen parallel und damit schneller raus",
+    "Eingaben und Fotos bleiben als Entwurf gespeichert – auch wenn der Upload scheitert oder die App geschlossen wird",
+    "Fotos werden gleich bei der Auswahl verkleinert; kein Hängen mehr bei 'Fotos werden vorbereitet'",
+    "Klare Fehlermeldung mit Ursache und Knopf 'Erneut senden'"
   ],
   "apkUrl": "https://github.com/Schmenkman/kss-app-releases/raw/main/kss-negativbauakte.apk"
 }
