@@ -5,7 +5,7 @@ import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.Locale
 
-/** Adresssuche ueber Photon (komoot, OSM-Daten) mit Nominatim als Rueckfallebene. */
+/** Adresssuche ueber Photon (komoot, OSM-Daten) mit Nominatim als Rueckfallebene, dazu TomTom fuer neue Hausnummern. */
 object Geocoding {
     const val PHOTON = "https://photon.komoot.io"
     const val NOMINATIM = "https://nominatim.openstreetmap.org"
@@ -134,6 +134,84 @@ object Geocoding {
             )
         }
         return out
+    }
+
+    // ---- TomTom-Adresssuche: kennt neue Hausnummern (Neubaugebiete, Baustellen) meist lange vor
+    // OpenStreetMap. Liefert fuer eine Hausnummer, die es noch nicht als Punkt gibt, eine aus dem
+    // Hausnummernbereich der Strasse geschaetzte Lage.
+
+    fun tomtomGeocodeUrl(q: String, key: String, bias: LatLon?): String {
+        val sb = StringBuilder(TomTom.BASE).append("/search/2/geocode/")
+            .append(enc(q).replace("+", "%20")).append(".json?key=").append(enc(key))
+            .append("&language=de-DE&countrySet=DE,AT,CH&limit=6")
+        if (bias != null) sb.append(String.format(Locale.ROOT, "&lat=%.5f&lon=%.5f", bias.lat, bias.lon))
+        return sb.toString()
+    }
+
+    fun parseTomTomGeocode(json: String): List<Place> {
+        val arr = JSONObject(json).optJSONArray("results") ?: return emptyList()
+        val out = ArrayList<Place>()
+        for (i in 0 until arr.length()) {
+            val r = arr.optJSONObject(i) ?: continue
+            val a = r.optJSONObject("address") ?: JSONObject()
+            // Zufahrt (Eingang an der Strasse) statt Gebaeudemitte, wenn angegeben
+            var pos = r.optJSONObject("position")
+            val eps = r.optJSONArray("entryPoints")
+            if (eps != null) for (k in 0 until eps.length()) {
+                val e = eps.optJSONObject(k) ?: continue
+                if (e.optString("type") == "main") e.optJSONObject("position")?.let { pos = it }
+            }
+            val lat = pos?.optNum("lat") ?: continue
+            val lon = pos?.optNum("lon") ?: continue
+            val street = a.optStr("streetName")
+            val hn = a.optStr("streetNumber")
+            val city = a.optStr("municipality") ?: a.optStr("municipalitySubdivision")
+            val postcode = a.optStr("postalCode")
+            val type = r.optStr("type") // "Point Address", "Address Range", "Street", "Geography" …
+            val title = when {
+                street != null -> listOfNotNull(street, hn).joinToString(" ")
+                else -> a.optStr("freeformAddress") ?: city ?: continue
+            }
+            val sub = listOfNotNull(postcode, city).joinToString(" ").takeIf { it.isNotBlank() && it != title }
+            val country = a.optStr("countryCode")
+            out.add(
+                Place(
+                    name = title,
+                    address = listOfNotNull(sub, a.optStr("country").takeIf { country != null && country != "DE" }).joinToString(", "),
+                    lat = lat, lon = lon, street = street, houseNumber = hn, postcode = postcode, city = city,
+                    category = "tomtom:" + (type ?: "?"),
+                )
+            )
+        }
+        return out
+    }
+
+    private fun normHn(s: String?): String? = s?.lowercase(Locale.GERMANY)?.replace(Regex("\\s"), "")?.takeIf { it.isNotEmpty() }
+
+    /** Hausnummer im Suchtext ("Am Anger 12a, Freising" -> "12a"; Postleitzahlen zaehlen nicht). */
+    fun houseNumberIn(q: String): String? {
+        // Ziffernfolgen mit 1–4 Stellen, optional mit Buchstabe ("12", "12a", "12 b"); 5 Stellen = PLZ
+        val m = Regex("(?<!\\d)(\\d{1,4})(?!\\d)(\\s?[a-zA-Z](?![a-zA-ZäöüÄÖÜß]))?").find(q) ?: return null
+        return normHn(m.groupValues[1] + m.groupValues[2])
+    }
+
+    /**
+     * OpenStreetMap- und TomTom-Treffer zusammenfuehren. Sucht man eine Hausnummer und OSM kennt sie
+     * nicht (Neubau), kommt der TomTom-Treffer mit genau dieser Nummer nach oben. Doppelte (gleiche
+     * Adresse in der Naehe) fallen weg.
+     */
+    fun merge(query: String, osm: List<Place>, tomtom: List<Place>): List<Place> {
+        val hn = houseNumberIn(query)
+        val extra = tomtom.filter { t ->
+            osm.none { o ->
+                Geo.distance(o.pos, t.pos) < 80.0 && (normHn(o.houseNumber) == normHn(t.houseNumber) || o.name.equals(t.name, ignoreCase = true))
+            }
+        }
+        if (hn == null) return osm + extra.filter { it.houseNumber != null }.take(3) + if (osm.isEmpty()) extra.filter { it.houseNumber == null } else emptyList()
+        val osmExact = osm.filter { normHn(it.houseNumber) == hn }
+        val ttExact = extra.filter { normHn(it.houseNumber) == hn }
+        return if (osmExact.isNotEmpty()) osmExact + ttExact + (osm - osmExact.toSet()) + (extra - ttExact.toSet())
+        else ttExact + osm + (extra - ttExact.toSet())
     }
 
     /**

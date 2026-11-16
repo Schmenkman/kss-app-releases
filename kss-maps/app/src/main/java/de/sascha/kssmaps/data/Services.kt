@@ -56,13 +56,38 @@ class Services(private val ctx: Context, private val prefs: Prefs) {
         Geocoding.parseCoordinates(q)?.let { c ->
             return@withContext listOf(Place("Koordinate", c.fmt(), c.lat, c.lon))
         }
+        // TomTom parallel, wenn eine Hausnummer gesucht wird (oder OSM nichts findet): kennt neue
+        // Hausnummern lange vor OpenStreetMap. Nicht bei jedem Buchstaben ohne Nummer – spart Anfragen.
+        val key = prefs.tomtomKey
+        val wantTomTom = key.isNotBlank() && Geocoding.houseNumberIn(q) != null
+        val tt = if (wantTomTom) async { tomtomGeocode(q, key, bias) } else null
+        var osm: List<Place> = emptyList()
+        var osmFailed: Exception? = null
         try {
-            val r = Geocoding.parsePhoton(Http.get(Geocoding.photonSearchUrl(q, bias), 10_000))
-            if (r.isNotEmpty()) return@withContext Geocoding.preferAddress(q, r)
+            osm = Geocoding.parsePhoton(Http.get(Geocoding.photonSearchUrl(q, bias), 10_000))
         } catch (e: Exception) {
             Log.w(TAG, "Photon: ${e.message}")
         }
-        Geocoding.preferAddress(q, Geocoding.dedupe(Geocoding.parseNominatim(Http.get(Geocoding.nominatimSearchUrl(q), 12_000))))
+        if (osm.isEmpty()) {
+            try {
+                osm = Geocoding.dedupe(Geocoding.parseNominatim(Http.get(Geocoding.nominatimSearchUrl(q), 12_000)))
+            } catch (e: Exception) {
+                osmFailed = e
+            }
+        }
+        var tomtom = tt?.await() ?: emptyList()
+        if (tt == null && osm.isEmpty() && key.isNotBlank()) tomtom = tomtomGeocode(q, key, bias)
+        if (osm.isEmpty() && tomtom.isEmpty()) osmFailed?.let { throw it }
+        val res = Geocoding.preferAddress(q, Geocoding.merge(q, osm, tomtom))
+        Log.i(TAG, "SEARCH osm=${osm.size} tomtom=${tomtom.size} erster=${res.firstOrNull()?.let { it.name + " [" + (it.category ?: "osm") + "]" }}")
+        res
+    }
+
+    private fun tomtomGeocode(q: String, key: String, bias: LatLon?): List<Place> = try {
+        Geocoding.parseTomTomGeocode(Http.get(Geocoding.tomtomGeocodeUrl(q, key, bias), 8_000))
+    } catch (e: Exception) {
+        Log.w(TAG, "TomTom-Suche: ${e.message}")
+        emptyList()
     }
 
     suspend fun reverse(p: LatLon): Place? = withContext(Dispatchers.IO) {

@@ -1,6 +1,7 @@
 {
-  "version": "1.4.4",
+  "version": "1.4.5",
   "notes": [
+    "Neue Hausnummern (Neubauten, Baustellen): die Adresssuche fragt zusätzlich TomTom – das kennt neue Adressen meist lange vor OpenStreetMap. Gibt es die Nummer dort noch nicht als Gebäude, wird ihre Lage aus dem Hausnummernbereich der Straße geschätzt. Gilt für die Suche, Android Auto und Termine aus COMP",
     "Nur noch eine Stimme: die Android-Stimme springt nicht mehr ein, wenn die eingebaute Stimme rechnet – es spricht immer die gewählte (beim App-Start wartet die Ansage kurz, bis sie bereit ist)",
     "Ansagen deutlich lauter und klarer neben Musik (Spotify, Radio): leise Stellen werden angehoben, die Musik wird schon kurz vor der Ansage leiser",
     "Tunnel: der Standort springt nicht mehr irgendwohin – ungenaue oder unmögliche GPS-Punkte werden verworfen, die Position läuft auf der Route weiter, bis das GPS wieder zwei gute Punkte liefert",
@@ -32,5 +33,5 @@
     "Android Auto: „Termine“ und „Kunde“ in der Leiste; die letzten Ziele sind jetzt unter „Mehr“ und in der Suche",
     "Neu: Startpunkt direkt in der Suche – oben „Von … ändern ›“ antippen, dann das Ziel"
   ],
-  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.4.4/kss-maps.apk"
+  "apkUrl": "https://github.com/Schmenkman/kss-app-releases/releases/download/kssmaps-v1.4.5/kss-maps.apk"
 }
